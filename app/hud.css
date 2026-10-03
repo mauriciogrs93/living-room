@@ -633,3 +633,20 @@
 @media (orientation: landscape) and (max-height: 500px) {
   .watch-badge { left: var(--hud-edge) !important; bottom: var(--hud-edge-bottom) !important; }
 }
+/* r1: the invite visibly changes. A quiet "New code in 0:12" + a thin bar that runs down to the 50 s rotation;
+   "Updated" beside Copy for ~2 s after a rotation; past 0:50 a plain warning; an expired code can't be copied. */
+.invite-countdown { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+.invite-countdown p { margin: 0; color: var(--hud-muted); font-size: 10.5px; letter-spacing: 0.06em; }
+.invite-countdown.is-warn p, .invite-countdown.is-dead p { color: #a33a1c; }
+.invite-bar { display: block; width: 100%; height: 2px; background: var(--hud-rule); overflow: hidden; }
+.invite-bar i { display: block; height: 100%; background: var(--hud-ink-55); transform-origin: left center; animation: invite-run linear forwards; }
+.invite-countdown.is-warn .invite-bar i, .invite-countdown.is-dead .invite-bar i { background: #a33a1c; }
+@keyframes invite-run { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.invite-tab .invite-value.is-dead { opacity: 0.45; text-decoration: line-through; }
+.invite-copy-row { display: flex; align-items: center; gap: 12px; }
+.invite-updated { color: var(--hud-muted); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; animation: invite-updated 2s ease forwards; }
+@keyframes invite-updated { 0% { opacity: 0; } 10%, 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .invite-bar { display: none; }
+  .invite-updated { animation: none; }
+}
