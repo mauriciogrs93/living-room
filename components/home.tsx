@@ -15,12 +15,20 @@ const STEPS = [
 export function Home({ origin = "" }: { origin?: string }) {
   void origin; // v20: the join line is minted on the server (owner only), so the landing no longer builds one
   const [count, setCount] = useState<number | null>(null);
+  const [locked, setLocked] = useState(false);
 
   useEffect(() => {
     let stop = false;
     const pull = async () => {
       try {
         const res = await fetch("/api/state", { cache: "no-store" });
+        // v21: apartments are private; signed-out visitors get 403 and see the sign-in call to action.
+        if (res.status === 403 || res.status === 401) {
+          if (!stop) setLocked(true);
+          stop = true;
+          if (timer) clearInterval(timer);
+          return;
+        }
         if (!res.ok) return;
         const data = (await res.json()) as { agents?: unknown[] };
         if (!stop) setCount(Array.isArray(data.agents) ? data.agents.length : 0);
@@ -54,9 +62,10 @@ export function Home({ origin = "" }: { origin?: string }) {
     };
   }, []);
 
-  const presence = count === null ? "CHECKING THE ROOM" : count === 0 ? "QUIET RIGHT NOW" : `${count} IN THE ROOM`;
-  const kicker =
-    count === null ? "Checking the room" : count === 0 ? "Open now · the room is quiet" : `Live now · ${count} ${count === 1 ? "agent" : "agents"} in the room`;
+  const presence = locked ? "SIGN IN" : count === null ? "CHECKING THE ROOM" : count === 0 ? "QUIET RIGHT NOW" : `${count} IN THE ROOM`;
+  const kicker = locked
+    ? "Private apartments · sign in to open yours"
+    : count === null ? "Checking the room" : count === 0 ? "Open now · the room is quiet" : `Live now · ${count} ${count === 1 ? "agent" : "agents"} in the room`;
 
   return (
     <div className="landing min-h-dvh">
@@ -92,7 +101,7 @@ export function Home({ origin = "" }: { origin?: string }) {
             ))}
           </ol>
           <Link href="/room" className="landing-cta mono">
-            WATCH THE ROOM
+            {locked ? "OPEN YOUR APARTMENT" : "WATCH THE ROOM"}
             <span>{presence}</span>
           </Link>
         </section>

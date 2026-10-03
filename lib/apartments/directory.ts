@@ -4,6 +4,7 @@ import { encodeState } from "@/lib/room/store/codec";
 import { MemoryPersist, type MemoryIndex } from "@/lib/room/store/memory-persist";
 import { SupabaseStore, envRpc, type Rpc } from "@/lib/room/store/supabase-store";
 import { roomRpcPrefix } from "@/lib/room/store/config";
+import { bindStore } from "@/lib/room/store/active";
 import type { InviteChanges } from "@/lib/room/store/persist";
 
 /**
@@ -16,6 +17,8 @@ export type WatchRedeem = { ok: true; apartmentId: string; expiresMs: number } |
 
 export interface Directory {
   readonly kind: "supabase" | "memory";
+  /** The global (nil-apartment) store: news kv cache and global rate limits. */
+  globalStore(): RoomPersistence;
   storeFor(apartmentId: string): RoomPersistence;
   forUser(userId: string): Promise<Apartment | null>;
   create(userId: string, stateJson: string, door: { locked: boolean; knocking: boolean }): Promise<{ id: string; created: boolean }>;
@@ -45,6 +48,9 @@ class SupabaseDirectory implements Directory {
   private global: SupabaseStore;
   constructor(private readonly rpc: Rpc) {
     this.global = new SupabaseStore(rpc, GLOBAL_SCOPE);
+  }
+  globalStore() {
+    return this.global;
   }
   storeFor(apartmentId: string) {
     let store = this.stores.get(apartmentId);
@@ -113,6 +119,9 @@ export class MemoryDirectory implements Directory, MemoryIndex {
   watchCodes = new Map<string, MemCode>();
   watchSessions = new Map<string, { apartmentId: string; exp: number }>();
   private global = new MemoryPersist(GLOBAL_SCOPE, null);
+  globalStore() {
+    return this.global;
+  }
 
   storeFor(apartmentId: string) {
     let store = this.stores.get(apartmentId);
@@ -251,12 +260,14 @@ const holder = globalThis as unknown as { __lrDirectory?: Directory };
 export function directory(): Directory {
   if (holder.__lrDirectory) return holder.__lrDirectory;
   // v19 rule kept: a preview never touches the live tables unless it names a test namespace (ROOM_RPC_PREFIX).
-  const previewOffLive = process.env.VERCEL_ENV === "preview" && !roomRpcPrefix() && process.env.ROOM_STORE !== "live";
+  // v21: same for a local run (no VERCEL_ENV): only production uses the unprefixed (live) apartment functions by default.
+  const previewOffLive = process.env.VERCEL_ENV !== "production" && !roomRpcPrefix() && process.env.ROOM_STORE !== "live";
   const rpc = process.env.ROOM_STORE === "memory" || previewOffLive ? null : envRpc();
   if (rpc) holder.__lrDirectory = new SupabaseDirectory(rpc);
   else {
     if (process.env.VERCEL_ENV === "production") throw new Error("Supabase is required in production.");
     holder.__lrDirectory = new MemoryDirectory();
   }
+  bindStore(holder.__lrDirectory.globalStore());
   return holder.__lrDirectory;
 }

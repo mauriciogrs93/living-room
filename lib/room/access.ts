@@ -7,7 +7,6 @@ import { flushMail, loadOwner, loadToken } from "@/lib/room/mailbox";
 import { RoomBusy, RoomOffline, RoomUnavailable } from "@/lib/room/errors";
 import { RedisError, redisCommand, redisConfig, redisTimed } from "@/lib/room/redis";
 import { roomRpcPrefix, supabaseConfig } from "@/lib/room/store/config";
-import { SupabaseStore } from "@/lib/room/store/supabase-store";
 import { VersionedRoom } from "@/lib/room/store/versioned-room";
 import { MemoryPersist } from "@/lib/room/store/memory-persist";
 
@@ -543,13 +542,8 @@ export function getEngine(): RoomPort {
     return versionedRoom;
   }
   if (supabaseConfig()) {
-    logStore("supabase");
-    if (!versionedRoom) {
-      const store = SupabaseStore.fromEnv();
-      if (!store) throw new Error("Supabase is selected but the secret key is missing.");
-      versionedRoom = new VersionedRoom(store);
-    }
-    return versionedRoom;
+    // v21: rooms are per apartment. Routes resolve the apartment first (lib/apartments/resolve.ts roomFor).
+    throw new Error("v21: use roomFor(apartmentId); there is no single shared room.");
   }
   if (usesSharedStore()) {
     logStore("redis");

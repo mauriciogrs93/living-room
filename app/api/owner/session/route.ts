@@ -1,6 +1,8 @@
 import { OWNER_COOKIE, OWNER_KEY_RE, ownerJson, ownerKeyFrom, readJson, sameOrigin } from "@/lib/http";
-import { getEngine, roomFailure } from "@/lib/room/access";
+import { roomFailure } from "@/lib/room/access";
 import { guarded } from "@/lib/room/guard";
+import { currentAccount } from "@/lib/apartments/auth";
+import { withCookies } from "@/lib/apartments/resolve";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,13 +13,16 @@ function cookie(value: string, maxAge: number) {
   return `${OWNER_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
-/** Is there an owner session, and does it open the Door? Never echoes the key. */
+/**
+ * signedIn: this browser holds an agent's owner link (the v19/v20 HttpOnly __Host-lr_owner cookie: notes
+ * to that agent, send it home). door: this browser is signed in to the account that owns an apartment
+ * (v21: the account IS the apartment owner). Never echoes a key.
+ */
 export const GET = guarded(async (req) => {
   try {
     const ownerKey = ownerKeyFrom(req);
-    if (!ownerKey) return ownerJson({ ok: true, signedIn: false, door: false });
-    const view = await getEngine().doorBrief(ownerKey);
-    return ownerJson({ ok: true, signedIn: true, door: Boolean(view) });
+    const { account, setCookies } = await currentAccount(req);
+    return withCookies(ownerJson({ ok: true, signedIn: Boolean(ownerKey), door: Boolean(account) }), setCookies);
   } catch (error) {
     const failure = roomFailure(error);
     if (failure) return failure;

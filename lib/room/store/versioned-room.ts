@@ -12,7 +12,7 @@ import {
   type Mailbox,
 } from "@/lib/room/mailbox";
 import type { ActResult, Book, RadioStation, Snapshot } from "@/lib/room/types";
-import { bindStore } from "@/lib/room/store/active";
+import { bindStore, boundStore } from "@/lib/room/store/active";
 import { applySeedBooks } from "@/lib/room/store/seed";
 import { mailWrite } from "@/lib/room/store/supabase-store";
 import { retryPause, sleep, type InviteChanges, type RoomPersistence, type RoomRead } from "@/lib/room/store/persist";
@@ -139,7 +139,8 @@ export class VersionedRoom {
   private cache: Cache | null = null;
 
   constructor(private readonly store: RoomPersistence) {
-    bindStore(store);
+    // v21: the news cache (kv) is global; the directory binds its global store first. Single-room tests bind here.
+    if (!boundStore()) bindStore(store);
   }
 
   private open(snap: { raw: string | null; seen: RoomRead["seen"] }) {

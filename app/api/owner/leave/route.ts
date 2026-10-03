@@ -1,5 +1,6 @@
 import { json, ownerKeyFrom, preflight, readJson, sameOrigin } from "@/lib/http";
-import { getEngine, roomFailure } from "@/lib/room/access";
+import { roomFailure } from "@/lib/room/access";
+import { agentRoom } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
 
 export const runtime = "nodejs";
@@ -22,7 +23,9 @@ async function post(req: Request) {
     if (!/^own_[0-9a-f]{36}$/.test(ownerKey)) {
       return json({ ok: false, error: "This page needs the owner link from your agent." }, 401);
     }
-    const engine = getEngine();
+    const found = await agentRoom("", ownerKey);
+    if (!found) return json({ ok: false, error: "This agent left. Ask it for a new link." }, 404);
+    const engine = found.room;
     const limit = await engine.allow(`owner-leave:${ownerKey.slice(4, 16)}`, 8, 60_000);
     if (!limit.ok) {
       return json({ ok: false, error: "Too many tries. Wait a moment." }, 429, {

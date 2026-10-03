@@ -1,14 +1,16 @@
-import { corsHeaders, ownerKeyFrom, preflight } from "@/lib/http";
-import { getEngine, roomFailure, stateCacheEtag } from "@/lib/room/access";
+import { preflight } from "@/lib/http";
+import { roomFailure, type RoomPort } from "@/lib/room/access";
+import { forbiddenViewer, ownerContext, viewerContext } from "@/lib/apartments/resolve";
 import { diffSnapshot } from "@/lib/room/sse-diff";
 import type { Snapshot } from "@/lib/room/types";
 
-const history: { id: string; snapshot: Snapshot }[] = [];
+// v21: resume history is per apartment, so a Last-Event-ID can never pull another apartment's frame.
+const history: { apt: string; id: string; snapshot: Snapshot }[] = [];
 
-function remember(snapshot: Snapshot) {
+function remember(apt: string, snapshot: Snapshot) {
   const id = snapshot.events[snapshot.events.length - 1]?.id;
-  if (!id || history.some((item) => item.id === id)) return;
-  history.push({ id, snapshot });
+  if (!id || history.some((item) => item.apt === apt && item.id === id)) return;
+  history.push({ apt, id, snapshot });
   if (history.length > 50) history.shift();
 }
 
@@ -25,7 +27,8 @@ const PULSE_MS = 2_000;
 const BEAT_MS = 2_000;
 
 const sseHeaders = {
-  ...corsHeaders,
+  // v21: private stream (cookie-authenticated), no wildcard CORS.
+  Vary: "Cookie",
   "Content-Type": "text/event-stream; charset=utf-8",
   "Cache-Control": "no-cache, no-transform",
   Connection: "keep-alive",
@@ -39,10 +42,19 @@ export function OPTIONS() {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const since = url.searchParams.get("since") || req.headers.get("last-event-id") || "";
-  const ownerKey = ownerKeyFrom(req);
-  let engine: ReturnType<typeof getEngine>;
+  let engine: RoomPort;
+  let apt = "";
+  let identity = "";
   try {
-    engine = getEngine();
+    const viewer = await viewerContext(req);
+    if (viewer instanceof Response) return viewer;
+    if (!viewer) return forbiddenViewer();
+    engine = viewer.room as RoomPort;
+    apt = viewer.apartmentId;
+    if (viewer.role === "owner") {
+      const owner = await ownerContext(req);
+      if (!(owner instanceof Response)) identity = owner.identity;
+    }
   } catch (error) {
     const failure = roomFailure(error);
     if (failure) return failure;
@@ -83,7 +95,7 @@ export async function GET(req: Request) {
         const next = diffSnapshot(resume ?? last, snapshot, dogAt);
         dogAt = next.dogAt;
         last = snapshot;
-        remember(snapshot);
+        remember(apt, snapshot);
         if (!next.changed && resume) {
           raw(`id: ${frameId(snapshot)}\nevent: diff\ndata: ${JSON.stringify({ serverTime: snapshot.serverTime })}\n\n`);
           return;
@@ -95,9 +107,9 @@ export async function GET(req: Request) {
       let doorSig = "";
       let sentState = "";
       const pushDoor = async () => {
-        if (!/^own_[0-9a-f]{36}$/.test(ownerKey)) return;
+        if (!identity) return;
         try {
-          const brief = await engine.doorBrief(ownerKey);
+          const brief = await engine.doorBrief(identity);
           if (!brief) return;
           const body = {
             paused: brief.paused,
@@ -122,7 +134,7 @@ export async function GET(req: Request) {
         }
         try {
           const snapshot = await engine.snapshot();
-          const tag = engine.shared ? stateCacheEtag() : "";
+          const tag = String(snapshot.events[snapshot.events.length - 1]?.id ?? "");
           push(snapshot, null);
           if (!tag || tag !== sentState) {
             sentState = tag;
@@ -137,7 +149,7 @@ export async function GET(req: Request) {
         }
       };
       raw("retry: 1000\n\n");
-      const prior = since ? history.find((item) => item.id === since)?.snapshot ?? null : null;
+      const prior = since ? history.find((item) => item.apt === apt && item.id === since)?.snapshot ?? null : null;
       if (prior) {
         try {
           push(await engine.snapshot(), prior);

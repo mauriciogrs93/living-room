@@ -1,0 +1,34 @@
+/**
+ * v21 rate limits, in one place. Global limits live in the store's rate_limits table under the nil
+ * apartment (directory().globalHit), so they hold across serverless instances. Every limited answer is
+ * 429 with Retry-After (seconds). IP keys are salted hashes, never raw addresses.
+ */
+export type Limit = { limit: number; windowMs: number };
+
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+
+export const LIMITS = {
+  /** Sign-in emails per IP (any address). Counted before the address is checked, so junk counts too. */
+  otpPerIp: { limit: 5, windowMs: 10 * MIN },
+  /** Sign-in emails per address (hashed). */
+  otpPerEmail: { limit: 3, windowMs: 10 * MIN },
+  /** Sign-in emails across the whole site (new and returning accounts): the signup ceiling. */
+  otpGlobal: { limit: 60, windowMs: HOUR },
+  /** 6-digit code checks per IP. */
+  verifyPerIp: { limit: 10, windowMs: 10 * MIN },
+  /** New apartments per IP, and across the site. */
+  createPerIp: { limit: 3, windowMs: HOUR },
+  createGlobal: { limit: 30, windowMs: HOUR },
+  /** Door attempts: registers per IP (any apartment), and failed invites per IP (see INVITE_FAIL_*). */
+  registerPerIp: { limit: 8, windowMs: MIN },
+  /** Invite button presses per IP (the owner's own mints are also capped per apartment inside the door write). */
+  invitePerIp: { limit: 20, windowMs: MIN },
+  /** Watch-link redemptions per IP (good or bad). */
+  watchPerIp: { limit: 10, windowMs: 10 * MIN },
+} satisfies Record<string, Limit>;
+
+/** Seconds for a Retry-After header (at least 1). */
+export function retryAfterSeconds(ms: number) {
+  return String(Math.max(1, Math.ceil(ms / 1000)));
+}

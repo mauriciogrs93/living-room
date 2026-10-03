@@ -224,6 +224,8 @@ export class RoomEngine {
    */
   setOwnerIdentity(identity: string, opts: { seeds?: boolean } = {}) {
     const room = this as unknown as RoomHost;
+    // A fresh apartment says "no seeds" before the first migration runs, so Poppy / Tester never appear.
+    if (opts.seeds === false && this.door) this.door.seeds = false;
     ensureMigratedFn(room);
     claimOwnerFn(room, identity);
     if (opts.seeds === false) {

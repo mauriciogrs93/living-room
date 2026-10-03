@@ -10,6 +10,7 @@ import { HouseFallback, RoomStageBoundary } from "./room/house-fallback";
 import { DoorProvider, useDoorAccess, useKnockCount } from "./room/door-client";
 import { OwnerMailProvider } from "./room/owner-notes";
 import { useRoom } from "./use-room";
+import { signOut } from "./account/me";
 import { HudChrome } from "./hud/chrome";
 import { useHudHash } from "./hud/hash";
 import type { HudModel } from "./hud/model";
@@ -25,19 +26,19 @@ const RoomCanvas = dynamic(() => import("@/components/room/room-canvas").then((m
   loading: () => <HouseFallback />,
 });
 
-export function WatchApp({ origin = "" }: { origin?: string }) {
+export function WatchApp({ origin = "", role = "owner" }: { origin?: string; role?: "owner" | "watch" }) {
   return (
     <AtmosphereProvider>
       <OwnerMailProvider>
         <DoorProvider>
-          <RoomWatch origin={origin} />
+          <RoomWatch origin={origin} role={role} />
         </DoorProvider>
       </OwnerMailProvider>
     </AtmosphereProvider>
   );
 }
 
-function RoomWatch({ origin = "" }: { origin?: string }) {
+function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "owner" | "watch" }) {
   const { snapshot, status } = useRoom();
   const { night } = useAtmosphere();
   const hud = useHudHash(sectionKnown);
@@ -149,6 +150,14 @@ function RoomWatch({ origin = "" }: { origin?: string }) {
           </span>
         </aside>
         {status === "offline" && <p className="hud-offline">Can’t reach the room. This page will keep trying.</p>}
+        {role === "watch" ? (
+          <p className="watch-badge mono" data-watch-badge="">
+            WATCHING · READ-ONLY
+            <button type="button" onClick={() => void signOut()}>
+              Stop
+            </button>
+          </p>
+        ) : null}
         <WhisperLayer events={snapshot?.events ?? []} live={Boolean(snapshot)} />
         <HudChrome model={model} shot={shot} setShot={setShot} night={night} />
         {readerOpen && <BookReader onClose={() => setReaderOpen(false)} />}

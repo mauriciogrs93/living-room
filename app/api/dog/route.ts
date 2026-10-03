@@ -1,5 +1,6 @@
 import { clientIp, json, preflight } from "@/lib/http";
-import { getEngine, roomFailure } from "@/lib/room/access";
+import { roomFailure } from "@/lib/room/access";
+import { forbiddenViewer, viewerContext } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
 
 export const runtime = "nodejs";
@@ -13,7 +14,10 @@ export const POST = guarded(post);
 
 async function post(req: Request) {
   try {
-    const engine = getEngine();
+    const viewer = await viewerContext(req);
+    if (viewer instanceof Response) return viewer;
+    if (!viewer || viewer.role !== "owner") return forbiddenViewer();
+    const engine = viewer.room;
     const limit = await engine.allow(`dog:${clientIp(req)}`, 30, 60_000);
     if (!limit.ok) {
       return json({ ok: false, error: "The dog needs a second." }, 429, {

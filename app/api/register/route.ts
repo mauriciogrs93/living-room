@@ -1,7 +1,9 @@
-import { getEngine, roomFailure } from "@/lib/room/access";
+import { roomFailure } from "@/lib/room/access";
 import { guarded } from "@/lib/room/guard";
 import { baseUrl, clientIp, json, preflight, readJson } from "@/lib/http";
-import { DOOR_COPY, INVITE_FAIL_LIMIT, INVITE_FAIL_WINDOW_MS, sha256 } from "@/lib/room/door";
+import { DOOR_COPY, INVITE_FAIL_LIMIT, INVITE_FAIL_WINDOW_MS, turnedAway } from "@/lib/room/door";
+import { agentRoom, inviteRoom, ipKey, limited, normalizeInvite } from "@/lib/apartments/resolve";
+import { LIMITS } from "@/lib/apartments/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,18 +14,31 @@ export function OPTIONS() {
 
 export const POST = guarded(post);
 
+/** v21: failed invites per hashed IP, across every apartment (the 6th in 10 minutes is a 429). */
+async function inviteFailLimit(req: Request) {
+  return limited(`invfail:${ipKey(req)}`, { limit: INVITE_FAIL_LIMIT, windowMs: INVITE_FAIL_WINDOW_MS }, DOOR_COPY.tries, "invite_rate_limited");
+}
+
 async function post(req: Request) {
   try {
-    const engine = getEngine();
-    const limit = await engine.allow(`register:${clientIp(req)}`, 8, 60_000);
-    if (!limit.ok) {
-      return json({ ok: false, error: "Too many registrations. Wait a moment and try again." }, 429, {
-        "Retry-After": String(limit.retryAfter),
-      });
-    }
+    const tooMany = await limited(`register-ip:${ipKey(req)}`, LIMITS.registerPerIp, "Too many registrations. Wait a moment and try again.");
+    if (tooMany) return tooMany;
     const body = await readJson(req);
     if (!body.ok) return body.response;
     const raw = body.value && typeof body.value === "object" ? (body.value as Record<string, unknown>) : {};
+    // v21: the invite names the apartment that minted it; otherwise the agent's own token / key does.
+    const str = (v: unknown) => (typeof v === "string" ? v : "");
+    let found = normalizeInvite(raw.invite) ? await inviteRoom(raw.invite) : null;
+    if (!found) found = await agentRoom(str(raw.token), str(raw.ownerKey));
+    if (!found) {
+      // No apartment knows this agent or this invite: the same Writer copy and codes the door gives.
+      const code = !normalizeInvite(raw.invite) ? "invite_missing" : "invite_invalid";
+      const fails = await inviteFailLimit(req);
+      if (fails) return withHint(fails);
+      const away = turnedAway(code);
+      return json({ ok: false, error: away.error, code: away.code, hint: away.hint }, 403);
+    }
+    const engine = found.room;
     const result = await engine.register({
       name: raw.name,
       color: raw.color,
@@ -37,16 +52,8 @@ async function post(req: Request) {
       seedSecret: raw.seedSecret,
     });
     if (!result.ok && typeof result.code === "string" && result.code.startsWith("invite_")) {
-      // v19: count failed invites per hashed IP in the store; the 6th in 10 minutes gets a 429.
-      const ipKey = sha256(`${process.env.IP_SALT ?? "lr-ip"}|${clientIp(req) || "local"}`).slice(0, 16);
-      const fails = await engine.allow(`invfail:${ipKey}`, INVITE_FAIL_LIMIT, INVITE_FAIL_WINDOW_MS);
-      if (!fails.ok) {
-        return json(
-          { ok: false, code: "invite_rate_limited", error: DOOR_COPY.tries, hint: "Wait a minute, then try again." },
-          429,
-          { "Retry-After": String(fails.retryAfter) },
-        );
-      }
+      const fails = await inviteFailLimit(req);
+      if (fails) return withHint(fails);
     }
     if (!result.ok) {
       const retry = result.retryAfter ? { "Retry-After": String(result.retryAfter) } : undefined;
@@ -66,4 +73,9 @@ async function post(req: Request) {
     if (failure) return failure;
     throw error;
   }
+}
+
+async function withHint(res: Response) {
+  const body = (await res.json()) as Record<string, unknown>;
+  return json({ ...body, hint: "Wait a minute, then try again." }, 429, { "Retry-After": res.headers.get("Retry-After") ?? "60" });
 }

@@ -1,5 +1,6 @@
 import { baseUrl, bearer, json, preflight } from "@/lib/http";
-import { allowFast, getEngine, roomFailure } from "@/lib/room/access";
+import { allowFast, roomFailure, type RoomPort } from "@/lib/room/access";
+import { agentRoom } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
 import { deadline } from "@/lib/room/deadline";
 import { calmTitle, ensureNews, peekTape } from "@/lib/room/news";
@@ -12,13 +13,15 @@ export function OPTIONS() {
 }
 
 async function respond(req: Request) {
-  const engine = getEngine();
   const token = bearer(req);
   if (!token) return json({ ok: false, error: "Send Authorization: Bearer YOUR_TOKEN." }, 401);
-  return deadline(load(engine, token, req), 5000);
+  return deadline(
+    agentRoom(token).then((found) => (found ? load(found.room, token, req) : json({ ok: false, error: "Unknown or missing token. Register again." }, 401))),
+    5000,
+  );
 }
 
-async function load(engine: ReturnType<typeof getEngine>, token: string, req: Request) {
+async function load(engine: RoomPort, token: string, req: Request) {
   // Door hold reads the same living-room:state blob as look. The 1s cache folds that into one GET.
   const held = await engine.doorHold(token);
   if (held) return json({ ok: false, error: held.error, code: held.code, hint: held.hint }, held.status);

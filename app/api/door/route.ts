@@ -1,6 +1,7 @@
-import { getEngine, roomFailure } from "@/lib/room/access";
+import { roomFailure } from "@/lib/room/access";
+import { ownerContext, withCookies } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
-import { baseUrl, ownerJson, ownerKeyFrom, readJson, sameOrigin } from "@/lib/http";
+import { baseUrl, ownerJson, readJson, sameOrigin } from "@/lib/http";
 import { inviteLine } from "@/lib/join-line";
 
 export const runtime = "nodejs";
@@ -17,12 +18,12 @@ export function OPTIONS() {
 
 export const GET = guarded(async (req) => {
   try {
-    const ownerKey = ownerKeyFrom(req);
-    if (!ownerKey) return ownerJson({ ok: false, error: "Only the room owner can see the door." }, 403);
-    const engine = getEngine();
-    const view = await engine.doorView(ownerKey);
-    if (!view.ok) return ownerJson({ ok: false, error: view.error }, view.status);
-    return ownerJson(view);
+    // v21: the owner is the signed-in account; the door key is its server-side identity.
+    const owner = await ownerContext(req, { resync: true });
+    if (owner instanceof Response) return forbid(owner);
+    const view = await owner.room.doorView(owner.identity);
+    if (!view.ok) return withCookies(ownerJson({ ok: false, error: view.error }, view.status), owner.setCookies);
+    return withCookies(ownerJson(view), owner.setCookies);
   } catch (error) {
     const failure = roomFailure(error);
     if (failure) return failure;
@@ -36,14 +37,14 @@ export const POST = guarded(async (req) => {
     const body = await readJson(req);
     if (!body.ok) return body.response;
     const record = body.value && typeof body.value === "object" ? (body.value as { action?: unknown; id?: unknown }) : {};
-    const ownerKey = ownerKeyFrom(req);
     const action = typeof record.action === "string" ? record.action.trim() : "";
     const id = typeof record.id === "string" ? record.id.trim().slice(0, 40) : "";
-    if (!ownerKey || !ACTIONS.has(action)) {
-      return ownerJson({ ok: false, error: "Only the room owner can see the door." }, 403);
-    }
-    const engine = getEngine();
-    const limit = await engine.allow(`door:${ownerKey.slice(4, 16)}`, 40, 60_000);
+    if (!ACTIONS.has(action)) return ownerJson({ ok: false, error: "Only the room owner can see the door." }, 403);
+    const owner = await ownerContext(req, { resync: true });
+    if (owner instanceof Response) return forbid(owner);
+    const ownerKey = owner.identity;
+    const engine = owner.room;
+    const limit = await engine.allow(`door:${owner.apartment.id.slice(0, 13)}`, 40, 60_000);
     if (!limit.ok) {
       return ownerJson({ ok: false, error: "Too many door actions. Wait a moment." }, 429, {
         "Retry-After": String(limit.retryAfter),
@@ -70,3 +71,11 @@ export const POST = guarded(async (req) => {
     throw error;
   }
 });
+
+/** v20 wording kept: anyone but the owner hears "Only the room owner can see the door." (403); 429s pass through. */
+async function forbid(res: Response) {
+  if (res.status === 429) return res;
+  const out = ownerJson({ ok: false, code: "signed_out", error: "Only the room owner can see the door." }, 403);
+  for (const c of res.headers.getSetCookie?.() ?? []) out.headers.append("Set-Cookie", c);
+  return out;
+}

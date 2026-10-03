@@ -1178,3 +1178,23 @@ html[data-floor-frame]:not([data-floor-frame="all"]) .sheet-caption {
   animation: copy-spin 0.8s linear infinite;
 }
 @keyframes copy-spin { to { transform: rotate(360deg); } }
+
+/* v21: sign-in screen */
+.signin-main { display: flex; justify-content: center; padding: 48px 20px 64px; }
+.signin-card { width: min(440px, 100%); display: flex; flex-direction: column; gap: 14px; }
+.signin-title { font-size: clamp(30px, 6vw, 44px); }
+.signin-form { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 6px; }
+.signin-form label { font-size: 11px; letter-spacing: 0.12em; color: var(--hud-muted, #6e7177); }
+.signin-form input {
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #1d1f22;
+  border-radius: 4px;
+  background: #fffdf8;
+  font: 400 16px/1 var(--mono, ui-monospace);
+}
+.signin-form input:focus-visible { outline: 2px solid #e07a3d; outline-offset: 1px; }
+.signin-form .invite-copy { justify-content: center; }
+.signin-link { align-self: flex-start; font-size: 12px; text-decoration: underline; color: var(--hud-muted, #6e7177); cursor: pointer; }
+.signin-note { font-size: 14px; line-height: 1.45; }
+.signin-note.is-error { color: #a33a1c; }

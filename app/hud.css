@@ -577,3 +577,46 @@
   animation: door-spin 0.8s linear infinite;
 }
 @keyframes door-spin { to { transform: rotate(360deg); } }
+
+/* v21: Invite button (owner only), next to the count button */
+.hud-invite-btn {
+  position: absolute;
+  z-index: var(--hud-z-fab);
+  right: calc(var(--hud-edge) + 128px);
+  bottom: var(--hud-edge-bottom);
+  height: var(--hud-button);
+  padding: 0 18px;
+  border: 1px solid var(--hud-ink);
+  border-radius: 4px;
+  background: var(--hud-ink);
+  color: var(--hud-paper);
+  box-shadow: var(--hud-shadow);
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.hud-invite-btn.is-on { background: var(--hud-paper); color: var(--hud-ink); }
+.invite-tab .invite-field { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 0; border-top: 1px solid var(--hud-rule); }
+.invite-tab .invite-value { font-size: 12px; line-height: 1.45; }
+.invite-tab .invite-timer { letter-spacing: 0.04em; }
+.invite-tab .invite-foot { justify-content: space-between; align-items: center; }
+.watch-badge {
+  position: absolute;
+  z-index: var(--hud-z-fab);
+  left: var(--hud-edge);
+  bottom: var(--hud-edge-bottom);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--hud-rule-strong);
+  border-radius: 4px;
+  background: var(--hud-paper);
+  color: var(--hud-ink);
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.12em;
+}
+.watch-badge button { text-decoration: underline; letter-spacing: 0.06em; cursor: pointer; }

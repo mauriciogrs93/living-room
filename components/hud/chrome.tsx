@@ -27,7 +27,9 @@ export function HudChrome({
   const knocks = useKnockCount();
   const doorAccess = useDoorAccess();
   const hash = useHudHash(sectionKnown);
-  const sections = visibleSections(owner).filter((section) => section.id !== "door" || doorAccess);
+  const sections = visibleSections(owner, doorAccess);
+  // The first tab (Now) stays the default card; Invite is opened by its own button or tab.
+  const firstSection = sections.find((section) => section.id !== "invite") ?? sections[0];
   const active = sections.find((section) => section.id === hash.section) ?? null;
   const [drag, setDrag] = useState(0);
   const pull = useRef<{ y: number; dy: number } | null>(null);
@@ -36,8 +38,8 @@ export function HudChrome({
 
   useEffect(() => {
     if (!checked) return;
-    if (hash.section && !visibleSections(owner).some((section) => section.id === hash.section)) hash.close();
-  }, [checked, owner, hash.section, hash.close]);
+    if (hash.section && !visibleSections(owner, doorAccess).some((section) => section.id === hash.section)) hash.close();
+  }, [checked, owner, doorAccess, hash.section, hash.close]);
 
   const marks = readBadges({ agents: model.snapshot?.agents.length ?? 0, unseen, owner });
   const live = marks.find((mark) => mark.id === "live")?.mark;
@@ -45,7 +47,7 @@ export function HudChrome({
   const count = live?.count ?? 0;
 
   function openCard() {
-    const next = hash.section && sections.some((section) => section.id === hash.section) ? hash.section : sections[0]?.id;
+    const next = hash.section && sections.some((section) => section.id === hash.section) ? hash.section : firstSection?.id;
     if (next) hash.open(next);
   }
 
@@ -148,6 +150,18 @@ export function HudChrome({
           </div>
         </section>
       )}
+      {doorAccess && !shot ? (
+        <button
+          type="button"
+          className={`hud-invite-btn${night ? " is-night" : ""}${active?.id === "invite" ? " is-on" : ""}`}
+          data-hud="invite"
+          aria-label="Invite an agent or a person"
+          aria-pressed={active?.id === "invite"}
+          onClick={() => (active?.id === "invite" ? hash.close() : hash.open("invite"))}
+        >
+          Invite
+        </button>
+      ) : null}
       <button
         type="button"
         className={`hud-fab${night ? " is-night" : ""} is-count`}

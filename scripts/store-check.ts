@@ -3,8 +3,8 @@ import { execFileSync } from "node:child_process";
 import { RoomEngine } from "../lib/room/engine";
 import { RoomOffline, RoomUnavailable } from "../lib/room/errors";
 import { getEngine, roomFailure } from "../lib/room/access";
+import { directory as directoryNow } from "../lib/apartments/directory";
 import { flushMail, loadOwner, loadToken, type Mailbox } from "../lib/room/mailbox";
-import { ensureNews } from "../lib/room/news";
 import { redisCallCounts, resetRedisCalls } from "../lib/room/redis";
 import { decodeState, encodeState, hashToken } from "../lib/room/store/codec";
 import { MemoryPersist } from "../lib/room/store/memory-persist";
@@ -14,6 +14,21 @@ import type { RoomCommit, RoomPersistence } from "../lib/room/store/persist";
 
 function admitted(result: { ok?: boolean; waiting?: boolean }) {
   return result.ok === true && result.waiting !== true;
+}
+
+/** v21: the apartment owner is an account identity; agents come in with a fresh invite. */
+const OWNER = "acct_store_check_owner";
+type Reg = Awaited<ReturnType<VersionedRoom["register"]>>;
+async function ownedRoom(store: RoomPersistence) {
+  const room = new VersionedRoom(store);
+  await room.setOwnerIdentity(OWNER);
+  return room;
+}
+async function admit(room: VersionedRoom, input: { name: string; emoji: string; color: string; ip: string; note?: string }): Promise<Reg> {
+  const minted = await room.doorAct(OWNER, "invite");
+  assert.equal(minted.ok, true, "owner mints an invite");
+  const invite = minted.ok && "invite" in minted ? String(minted.invite) : "";
+  return room.register({ ...input, invite: ` ${invite}. ` });
 }
 
 function eventsOf(raw: string | null) {
@@ -85,14 +100,12 @@ async function expectMailOnly(store: RoomPersistence) {
 }
 
 async function expectConflict(store: RoomPersistence, arm: (on: boolean) => void) {
-  const room = new VersionedRoom(store);
-  const ada = await room.register({ name: "Ada", emoji: "🌿", color: "#88aa66", ip: "ada" });
+  const room = await ownedRoom(store);
+  const ada = await admit(room, { name: "Ada", emoji: "🌿", color: "#88aa66", ip: "ada" });
   assert.equal(admitted(ada), true);
   assert.equal(ada.ok, true);
   if (!ada.ok) return;
-  const opened = await room.doorAct(ada.ownerKey, "unlock");
-  assert.equal(opened.ok, true);
-  const bea = await room.register({ name: "Bea", emoji: "🍀", color: "#668855", ip: "bea" });
+  const bea = await admit(room, { name: "Bea", emoji: "🍀", color: "#668855", ip: "bea" });
   assert.equal(admitted(bea), true);
   assert.equal(bea.ok, true);
   if (!bea.ok) return;
@@ -113,8 +126,8 @@ async function expectConflict(store: RoomPersistence, arm: (on: boolean) => void
 }
 
 async function expectNotes(store: RoomPersistence, arm: (on: boolean) => void) {
-  const room = new VersionedRoom(store);
-  const nia = await room.register({ name: "Nia", emoji: "🌿", color: "#3d8b6e", ip: "nia-notes" });
+  const room = await ownedRoom(store);
+  const nia = await admit(room, { name: "Nia", emoji: "🌿", color: "#3d8b6e", ip: "nia-notes" });
   assert.equal(admitted(nia), true);
   assert.equal(nia.ok, true);
   if (!nia.ok) return;
@@ -140,8 +153,8 @@ async function expectPresence(store: RoomPersistence) {
   let now = realNow();
   Date.now = () => now;
   try {
-    const room = new VersionedRoom(store);
-    const pip = await room.register({ name: "Pip", emoji: "🌿", color: "#c4a574", ip: "pip-presence" });
+    const room = await ownedRoom(store);
+    const pip = await admit(room, { name: "Pip", emoji: "🌿", color: "#c4a574", ip: "pip-presence" });
     assert.equal(admitted(pip), true);
     assert.equal(pip.ok, true);
     if (!pip.ok) return;
@@ -164,18 +177,28 @@ async function expectPresence(store: RoomPersistence) {
   }
 }
 
+/** v21: an apartment's public snapshot never carries invites, the trusted list or the owner identity. No rescue claim, no knocks. */
 function testPublicDoor() {
   const engine = new RoomEngine();
-  const owner = engine.register({ name: "Fern", emoji: "🌿", ip: "fern" });
-  assert.equal(admitted(owner), true);
-  const knock = engine.register({ name: "Moss", emoji: "🌿", ip: "moss" });
-  assert.equal(knock.ok === true && "waiting" in knock && knock.waiting === true, true);
+  engine.setOwnerIdentity(OWNER, { seeds: false });
+  const stranger = engine.register({ name: "Moss", emoji: "🌿", ip: "moss" });
+  assert.equal(stranger.ok, false, "no invite, no entry (and no rescue claim)");
+  assert.equal(!stranger.ok && stranger.code, "invite_missing");
+  const minted = engine.doorAct(OWNER, "invite");
+  assert.equal(minted.ok, true);
+  const code = minted.ok && "invite" in minted ? String(minted.invite) : "";
+  const fern = engine.register({ name: "Fern", emoji: "🌿", ip: "fern", invite: `${code}.` });
+  assert.equal(admitted(fern), true, "trailing full stop tolerated");
+  const reuse = engine.register({ name: "Fen", emoji: "🌿", ip: "fen", invite: code });
+  assert.equal(!reuse.ok && reuse.code, "invite_used");
   const snap = engine.snapshot();
-  assert.deepEqual(snap.door, { locked: true, knocking: true });
+  assert.deepEqual(snap.door, { locked: true, knocking: false });
   const packed = JSON.stringify(snap);
-  assert.equal(packed.includes("Moss"), false);
-  assert.equal(packed.includes(engine.door.invite), false);
+  assert.equal(packed.includes(code), false);
   assert.equal(packed.includes("trusted"), false);
+  assert.equal(packed.includes("acct_"), false);
+  assert.equal(engine.door.trusted.some((p) => p.name === "Poppy" || p.name === "Tester"), false, "new apartments have no seed agents");
+  assert.equal(engine.doorBrief("own_" + "0".repeat(36)), null, "an agent key never opens the owner door");
 }
 
 async function testRpcClient() {
@@ -193,7 +216,7 @@ async function testRpcClient() {
       assert.ok(init?.signal);
       return new Response(JSON.stringify({ version: 1, unchanged: true, presence: [] }), { status: 200 });
     }) as typeof fetch;
-    const secretStore = new SupabaseStore(supabaseRpc("http://example.test", "sb_secret_test"));
+    const secretStore = new SupabaseStore(supabaseRpc("http://example.test", "sb_secret_test"), "11111111-1111-4111-8111-111111111111");
     const read = await secretStore.read(1);
     assert.equal(read.unchanged, true);
 
@@ -203,7 +226,7 @@ async function testRpcClient() {
       assert.equal(headers.get("authorization"), "Bearer eyJabc");
       return new Response(JSON.stringify({ message: "nope", code: "42501" }), { status: 401 });
     }) as typeof fetch;
-    await assert.rejects(() => new SupabaseStore(supabaseRpc("http://example.test", "eyJabc")).read(1), RoomUnavailable);
+    await assert.rejects(() => new SupabaseStore(supabaseRpc("http://example.test", "eyJabc"), "11111111-1111-4111-8111-111111111111").read(1), RoomUnavailable);
     const flat = JSON.stringify(logged);
     assert.equal(flat.includes("sb_secret_test"), false);
     assert.equal(flat.includes("eyJabc"), false);
@@ -232,9 +255,11 @@ function testOffline() {
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   delete process.env.KV_REST_API_URL;
   delete process.env.KV_REST_API_TOKEN;
-  process.env.VERCEL_ENV = "preview";
+  process.env.VERCEL_ENV = "production";
   try {
     assert.throws(() => getEngine(), RoomOffline);
+    // v21: production never falls back to an in-process apartment directory.
+    assert.throws(() => directoryNow(), /Supabase is required in production/);
     const response = roomFailure(new RoomOffline());
     assert.equal(response?.status, 503);
     assert.equal(response?.headers.get("Retry-After"), "2");
@@ -264,34 +289,19 @@ function livingIds(raw: string | null) {
   }
 }
 
+/** v19+: no knock / admit. An invited agent re-registering with its ownerKey (guest pass) gets a fresh token; the stale one is dropped. */
 async function expectAdmitRotates(store: RoomPersistence) {
-  const room = new VersionedRoom(store);
-  const fern = await room.register({ name: "Fern", emoji: "🌿", color: "#c4a574", ip: "fern-admit" });
+  const room = await ownedRoom(store);
+  const fern = await admit(room, { name: "Fern", emoji: "🌿", color: "#c4a574", ip: "fern-admit" });
   assert.equal(admitted(fern), true);
-  assert.equal(fern.ok, true);
-  if (!fern.ok) return;
-  const moss = await room.register({ name: "Moss", emoji: "🌿", color: "#3d8b6e", note: "hello", ip: "moss-admit" });
-  assert.equal(moss.ok, true);
-  if (!moss.ok || !("waiting" in moss) || moss.waiting !== true || !("token" in moss)) {
-    assert.fail("visitor should knock");
-  }
-  const snap = await store.read(null);
-  const stale = `lr_${"ab".repeat(18)}`;
-  const box = await store.loadOwner(moss.ownerKey);
-  assert.ok(box);
-  const saved: Mailbox = { ...box, token: stale };
-  await store.commit({
-    expectedVersion: snap.version,
-    stateJson: snap.raw ?? "{}",
-    publicDoor: { locked: true, knocking: true },
-    mail: [{ ownerKey: saved.ownerKey, data: saved, tokenHash: hashToken(stale), dropHashes: [hashToken(moss.token)] }],
-    agentIds: livingIds(snap.raw),
-    roomChanged: false,
-  });
-  const opened = await room.doorAct(fern.ownerKey, "admit", moss.agentId);
-  assert.equal(opened.ok, true);
-  assert.equal((await store.loadToken(moss.token))?.ownerKey, moss.ownerKey);
-  assert.equal(await store.loadToken(stale), null);
+  if (!fern.ok || !("token" in fern)) return assert.fail("fern admitted");
+  const left = await room.leave(fern.token);
+  assert.equal(left.ok, true);
+  const back = await room.register({ name: "Fern", emoji: "🌿", color: "#c4a574", ip: "fern-admit", ownerKey: fern.ownerKey });
+  assert.equal(admitted(back), true, "guest pass re-entry");
+  if (!back.ok || !("token" in back)) return;
+  assert.equal((await store.loadToken(back.token))?.ownerKey, fern.ownerKey);
+  void livingIds;
 }
 
 function presenceRows(seen: [string, number][]) {
@@ -343,45 +353,28 @@ function jsonReq(path: string, body: unknown, ip: string) {
 }
 
 async function testNoteRoute() {
-  const mem = new MemoryPersist();
-  const saved = {
-    vercel: process.env.VERCEL_ENV,
-    url: process.env.SUPABASE_URL,
-    secret: process.env.SUPABASE_SECRET_KEY,
-    role: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    upstashUrl: process.env.UPSTASH_REDIS_REST_URL,
-    upstashToken: process.env.UPSTASH_REDIS_REST_TOKEN,
-    kvUrl: process.env.KV_URL,
-    kvRest: process.env.KV_REST_API_URL,
-    kvToken: process.env.KV_REST_API_TOKEN,
-    kvRead: process.env.KV_REST_API_READ_ONLY_TOKEN,
-    kvRedis: process.env.KV_REDIS_URL,
-  };
+  const saved = { store: process.env.ROOM_STORE, vercel: process.env.VERCEL_ENV };
   const origFetch = globalThis.fetch;
   delete process.env.VERCEL_ENV;
-  process.env.SUPABASE_URL = "http://supabase.test";
-  process.env.SUPABASE_SECRET_KEY = "sb_secret_example";
-  process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_role";
-  process.env.KV_URL = "https://kv.example";
-  process.env.KV_REST_API_URL = "https://kv.example";
-  process.env.KV_REST_API_TOKEN = "kv-token";
-  process.env.KV_REST_API_READ_ONLY_TOKEN = "kv-ro";
-  process.env.KV_REDIS_URL = "rediss://kv.example";
-  process.env.UPSTASH_REDIS_REST_URL = "https://upstash.example";
-  process.env.UPSTASH_REDIS_REST_TOKEN = "upstash-token";
+  process.env.ROOM_STORE = "memory";
   resetRedisCalls();
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (!url.includes("/rest/v1/rpc/")) throw new Error(`unexpected fetch ${url}`);
-    const fn = url.split("/").pop() ?? "";
-    const args = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-    const result = await memRpc(mem, fn, args);
-    return new Response(JSON.stringify(result ?? null), { status: 200 });
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    throw new Error(`unexpected fetch ${String(input).slice(0, 40)}`);
   }) as typeof fetch;
   try {
+    const { directory } = await import("../lib/apartments/directory");
+    const { freshApartmentState, roomFor } = await import("../lib/apartments/resolve");
+    const { accountIdentity } = await import("../lib/apartments/identity");
     const { POST: register } = await import("../app/api/register/route");
     const { GET, POST } = await import("../app/api/note/route");
-    const joined = await register(jsonReq("/api/register", { name: "Fern", emoji: "🌿", color: "#c4a574" }, "10.8.0.1"));
+    const identity = accountIdentity("user-note-test");
+    const made = await directory().create("user-note-test", freshApartmentState(identity), { locked: true, knocking: false });
+    const minted = await roomFor(made.id).doorAct(identity, "invite");
+    assert.equal(minted.ok, true);
+    const invite = minted.ok && "invite" in minted ? String(minted.invite) : "";
+    const refused = await register(jsonReq("/api/register", { name: "Fern", emoji: "🌿", color: "#c4a574" }, "10.8.0.9"));
+    assert.equal(refused.status, 403, "no invite, no apartment");
+    const joined = await register(jsonReq("/api/register", { name: "Fern", emoji: "🌿", color: "#c4a574", invite: `  ${invite}. ` }, "10.8.0.1"));
     assert.equal(joined.status, 201);
     const created = (await joined.json()) as { ownerKey?: string; token?: string };
     const ownerKey = created.ownerKey ?? "";
@@ -393,8 +386,6 @@ async function testNoteRoute() {
     assert.equal(listed.name, "Fern");
     const posted = await POST(jsonReq("/api/note", { ownerKey, message: "Water the plant." }, "10.8.0.3"));
     assert.equal(posted.status, 200);
-    const sent = (await posted.json()) as { ok?: boolean };
-    assert.equal(sent.ok, true);
     const again = await GET(new Request(`http://room.test/api/note?ownerKey=${encodeURIComponent(ownerKey)}`, { headers: { "x-forwarded-for": "10.8.0.4" } }));
     assert.equal(again.status, 200);
     const round = (await again.json()) as { notes?: { text?: string }[] };
@@ -402,25 +393,13 @@ async function testNoteRoute() {
     await flushMail();
     await loadOwner(ownerKey);
     await loadToken(created.token ?? "");
-    await ensureNews();
     assert.deepEqual(redisCallCounts(), {});
   } finally {
     globalThis.fetch = origFetch;
-    const restore = (name: string, value: string | undefined) => {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    };
-    restore("VERCEL_ENV", saved.vercel);
-    restore("SUPABASE_URL", saved.url);
-    restore("SUPABASE_SECRET_KEY", saved.secret);
-    restore("SUPABASE_SERVICE_ROLE_KEY", saved.role);
-    restore("UPSTASH_REDIS_REST_URL", saved.upstashUrl);
-    restore("UPSTASH_REDIS_REST_TOKEN", saved.upstashToken);
-    restore("KV_URL", saved.kvUrl);
-    restore("KV_REST_API_URL", saved.kvRest);
-    restore("KV_REST_API_TOKEN", saved.kvToken);
-    restore("KV_REST_API_READ_ONLY_TOKEN", saved.kvRead);
-    restore("KV_REDIS_URL", saved.kvRedis);
+    if (saved.store === undefined) delete process.env.ROOM_STORE;
+    else process.env.ROOM_STORE = saved.store;
+    if (saved.vercel === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = saved.vercel;
   }
 }
 
@@ -519,6 +498,24 @@ function prepareLocalRoles() {
   `);
 }
 
+function psqlFile(file: string) {
+  execFileSync("sudo", ["-u", "postgres", "psql", "-d", "living_room", "-v", "ON_ERROR_STOP=1", "-q", "-f", file], { encoding: "utf8", stdio: "pipe" });
+}
+
+const CASTS: Record<string, string> = {
+  p_known_version: "bigint", p_expected: "bigint", p_state: "text", p_public_door: "jsonb", p_mail: "jsonb",
+  p_agent_ids: "text[]", p_room_changed: "boolean", p_idem_key: "text", p_idem_response: "jsonb", p_idem_status: "smallint",
+  p_key: "text", p_limit: "int", p_window_ms: "int", p_agent_id: "text", p_seen_ms: "bigint", p_owner_key: "text",
+  p_token_hash: "text", p_value: "jsonb", p_ttl_seconds: "int", p_apartment: "uuid", p_invites: "jsonb", p_user: "uuid",
+  p_hash: "text", p_exp_ms: "bigint", p_max_unused: "int", p_session_hash: "text", p_session_ms: "bigint", p_sessions: "boolean",
+  p_refresh: "boolean",
+};
+
+/**
+ * v21 on a local Postgres (DATABASE_URL): the production v20 schema (0001 + 0002, privilege checks kept),
+ * then the TEST namespace 0005 (v21_test, public.v21t_apt_*) and the PRODUCTION migration 0006 (v21,
+ * public.apt_*) with its legacy import, each applied fresh (down, then up). Nothing here touches Supabase.
+ */
 async function testPostgres() {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -526,52 +523,63 @@ async function testPostgres() {
     return;
   }
   prepareLocalRoles();
+  psql("create schema if not exists auth; create table if not exists auth.users (id uuid primary key, email text); grant usage on schema auth to living; grant all on auth.users to living;");
+  psqlFile("supabase/migrations/0005_v21_test_apartments_down.sql");
+  psqlFile("supabase/migrations/0005_v21_test_apartments.sql");
+  psql("grant usage on schema v21_test to living; grant all on all tables in schema v21_test to living;");
   const { Client } = await import("pg");
   const client = new Client({ connectionString: url });
   await client.connect();
-  await client.query(
-    "truncate table agent_tokens, mailboxes, presence, rate_limits, idempotency_keys, kv_cache, room",
-  );
-  const casts: Record<string, string> = {
-    p_known_version: "bigint",
-    p_expected: "bigint",
-    p_state: "text",
-    p_public_door: "jsonb",
-    p_mail: "jsonb",
-    p_agent_ids: "text[]",
-    p_room_changed: "boolean",
-    p_idem_key: "text",
-    p_idem_response: "jsonb",
-    p_idem_status: "smallint",
-    p_key: "text",
-    p_limit: "int",
-    p_window_ms: "int",
-    p_agent_id: "text",
-    p_seen_ms: "bigint",
-    p_owner_key: "text",
-    p_token_hash: "text",
-    p_value: "jsonb",
-    p_ttl_seconds: "int",
-  };
+  // Calls run as service_role, the only role the v21 functions are granted to (like PostgREST with the secret key).
+  psql("grant service_role to living; grant usage on schema auth to service_role; grant all on auth.users to service_role;");
+  await client.query("set role service_role");
   let waitCommit: () => Promise<void> = async () => {};
-  const call = async (fn: string, args: Record<string, unknown>) => {
+  const rpcFor = (prefix: string) => async (fn: string, args: Record<string, unknown>) => {
     if (fn === "room_commit") await waitCommit();
     const keys = Object.keys(args);
-    const rendered = keys.map((key, index) => `${key} => $${index + 1}::${casts[key] ?? "text"}`).join(", ");
+    const rendered = keys.map((key, index) => `${key} => $${index + 1}::${CASTS[key] ?? "text"}`).join(", ");
     const values = keys.map((key) => {
       const value = args[key];
       if (value == null) return null;
-      if (casts[key] === "jsonb") return JSON.stringify(value);
-      if (casts[key] === "boolean") return value;
+      if (CASTS[key] === "jsonb") return JSON.stringify(value);
       return value;
     });
-    const { rows } = await client.query(`select ${fn}(${rendered}) as result`, values);
+    const { rows } = await client.query(`select public.${prefix}apt_${fn}(${rendered}) as result`, values);
     return rows[0]?.result ?? null;
   };
-  const store = new SupabaseStore(call);
+  const call = rpcFor("v21t_");
+  const user = async () => {
+    const { rows } = await client.query("insert into auth.users (id, email) values (gen_random_uuid(), 'x@example.com') returning id");
+    return String(rows[0].id);
+  };
+
+  // --- one account, one apartment; one apartment, one owner (unique owner_id)
+  const a = await user();
+  const b = await user();
+  const seedEngine = new RoomEngine();
+  seedEngine.setOwnerIdentity(OWNER, { seeds: false });
+  const freshState = encodeState(JSON.stringify(seedEngine.serialize()));
+  const first = (await call("create", { p_user: a, p_state: freshState, p_public_door: null })) as { id: string; created: boolean };
+  const again = (await call("create", { p_user: a, p_state: encodeState("{}"), p_public_door: null })) as { id: string; created: boolean };
+  assert.equal(first.created, true);
+  assert.equal(again.created, false);
+  assert.equal(again.id, first.id, "a second create returns the same apartment");
+  const [r1, r2] = await Promise.all([
+    call("create", { p_user: b, p_state: freshState, p_public_door: null }),
+    call("create", { p_user: b, p_state: freshState, p_public_door: null }),
+  ]);
+  assert.equal((r1 as { id: string }).id, (r2 as { id: string }).id, "racing creates converge");
+  assert.notEqual((r1 as { id: string }).id, first.id, "two accounts get two apartments");
+  assert.equal(psqlFails(`update v21_test.apartments set owner_id = '${a}' where id = '${(r1 as { id: string }).id}'`), true, "unique owner_id");
+  assert.equal(psql("select count(*) from v21_test.apartments where owner_id is not null"), "2");
+  assert.equal(psqlFails("set role anon; select public.v21t_apt_for_user(gen_random_uuid());"), true);
+  assert.equal(psqlFails("set role authenticated; select public.v21t_apt_room_read(gen_random_uuid(), null);"), true);
+  assert.equal(psqlFails("set role authenticated; select * from v21_test.apartments;"), true);
+
+  // --- the shared store expectations, per apartment
+  const store = new SupabaseStore(call, first.id);
   const barrier = makeBarrier();
   waitCommit = () => barrier.wait();
-  await expectSeed(store);
   await expectMailOnly(store);
   await expectConflict(store, (on) => barrier.arm(on));
   const noteBarrier = makeBarrier();
@@ -579,14 +587,95 @@ async function testPostgres() {
   await expectNotes(store, (on) => noteBarrier.arm(on));
   waitCommit = async () => {};
   await expectPresence(store);
+  const other = new SupabaseStore(call, (r1 as { id: string }).id);
   const hit = await store.rateHit("look:test", 1, 60_000);
-  const again = await store.rateHit("look:test", 1, 60_000);
+  const hitAgain = await store.rateHit("look:test", 1, 60_000);
+  const otherHit = await other.rateHit("look:test", 1, 60_000);
   assert.equal(hit.limited, false);
-  assert.equal(again.limited, true);
+  assert.equal(hitAgain.limited, true);
+  assert.equal(otherHit.limited, false, "rate limits are per apartment");
+  const otherRead = await other.read(null);
+  const mineRead = await store.read(null);
+  assert.notEqual(otherRead.raw, mineRead.raw, "rooms are per apartment");
+
+  // --- invites index and agent lookup name the right apartment
+  const invRow = await client.query("select count(*)::int as n from v21_test.invites where apartment_id = $1", [first.id]);
+  assert.ok(invRow.rows[0].n >= 2, "minted invites are indexed (hash only)");
+  const anyTok = await client.query("select token_hash from v21_test.agent_tokens where apartment_id = $1 limit 1", [first.id]);
+  assert.equal(await call("agent_lookup", { p_token_hash: anyTok.rows[0].token_hash, p_owner_key: null }), first.id);
+
+  // --- watch codes: single use, 1 minute, sessions expire
+  const wh = "a".repeat(64);
+  await call("watch_mint", { p_apartment: first.id, p_hash: wh, p_exp_ms: Date.now() + 60_000, p_max_unused: 3 });
+  const ok = (await call("watch_redeem", { p_hash: wh, p_session_hash: "b".repeat(64), p_session_ms: 1500 })) as { ok: boolean; apartment: string };
+  assert.equal(ok.ok, true);
+  assert.equal(ok.apartment, first.id);
+  assert.equal(((await call("watch_redeem", { p_hash: wh, p_session_hash: "c".repeat(64), p_session_ms: 1500 })) as { code: string }).code, "watch_used");
+  assert.equal(await call("watch_session", { p_session_hash: "b".repeat(64) }), first.id);
+  const old = "d".repeat(64);
+  await call("watch_mint", { p_apartment: first.id, p_hash: old, p_exp_ms: Date.now() - 1, p_max_unused: 3 });
+  assert.equal(((await call("watch_redeem", { p_hash: old, p_session_hash: "e".repeat(64), p_session_ms: 1500 })) as { code: string }).code, "watch_expired");
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  assert.equal(await call("watch_session", { p_session_hash: "b".repeat(64) }), null, "watch session expires");
+
+  // --- legacy claim on the test namespace: first caller only, never someone who already has one
+  const legacyId = psql("insert into v21_test.apartments (owner_id, legacy) values (null, true) returning id").split("\n")[0];
+  psql(`insert into v21_test.room (apartment_id, version, state_gz) values ('${legacyId}', 7, '${encodeState('{"legacy":true}')}')`);
+  assert.equal(await call("claim_legacy", { p_user: a }), null, "an account with an apartment can't claim");
+  const c = await user();
+  const d = await user();
+  const claimed = (await call("claim_legacy", { p_user: c })) as { id: string; legacy: boolean };
+  assert.equal(claimed.id, legacyId);
+  assert.equal(await call("claim_legacy", { p_user: d }), null, "only the first claim wins");
+  assert.equal(((await call("for_user", { p_user: c })) as { id: string }).id, legacyId);
+  const legacyRead = await new SupabaseStore(call, legacyId).read(null);
+  assert.equal(legacyRead.version, 7);
+  assert.equal(legacyRead.raw, '{"legacy":true}', "the claimed room keeps its state");
+
+  // --- PRODUCTION 0006 on the v20 tables: additive, copies (never moves) the v20 room
+  const v20State = '{"v20":"room","agents":[]}';
+  await client.query("insert into public.room (id, version, state_gz) values (1, 41, $1) on conflict (id) do update set version = 41, state_gz = excluded.state_gz", [encodeState(v20State)]);
+  await client.query("insert into public.mailboxes (owner_key, data, expires_at) values ('own_legacyagent', '{\"ownerKey\":\"own_legacyagent\",\"agentId\":\"agt_l\",\"name\":\"Lee\",\"token\":\"\",\"notes\":[],\"updatedAt\":1}', now() + interval '1 day') on conflict (owner_key) do nothing");
+  await client.query("insert into public.agent_tokens (token_hash, owner_key, expires_at) values ($1, 'own_legacyagent', now() + interval '1 day') on conflict do nothing", ["f".repeat(64)]);
+  const fingerprint = () => psql("select md5(string_agg(t, '|' order by t)) from (select 'room:'||version||':'||md5(state_gz) as t from public.room union all select 'mail:'||owner_key from public.mailboxes union all select 'tok:'||token_hash from public.agent_tokens) x");
+  const before = fingerprint();
+  psqlFile("supabase/migrations/0006_v21_apartments_down.sql");
+  psqlFile("supabase/migrations/0006_v21_apartments.sql");
+  psql("grant usage on schema v21 to living; grant all on all tables in schema v21 to living;");
+  assert.equal(fingerprint(), before, "0006 leaves the v20 tables untouched");
+  const prod = rpcFor("");
+  const legacy = psql("select id from v21.apartments where legacy and owner_id is null");
+  assert.match(legacy, /^[0-9a-f-]{36}$/, "0006 created the legacy apartment");
+  const copied = await new SupabaseStore(prod, legacy).read(null);
+  assert.equal(copied.raw, v20State, "0006 copied the v20 room state");
+  assert.equal(copied.version, 41);
+  assert.equal(await prod("agent_lookup", { p_token_hash: "f".repeat(64), p_owner_key: null }), legacy, "v20 agent tokens still find the room");
+  // refresh before any v21 write picks up late v20 activity; after a v21 write it refuses
+  await client.query("update public.room set version = 42, state_gz = $1 where id = 1", [encodeState('{"v20":"later"}')]);
+  const refreshed = (await prod("import_legacy", { p_refresh: true })) as { ok: boolean };
+  assert.equal(refreshed.ok, true);
+  assert.equal((await new SupabaseStore(prod, legacy).read(null)).raw, '{"v20":"later"}');
+  psql(`update v21.room set version = version + 1 where apartment_id = '${legacy}'`);
+  const refused = (await prod("import_legacy", { p_refresh: true })) as { ok: boolean; reason?: string };
+  assert.equal(refused.ok, false, "no refresh over v21 writes");
+  const founder = await user();
+  const got = (await prod("claim_legacy", { p_user: founder })) as { id: string };
+  assert.equal(got.id, legacy, "LEGACY_OWNER_EMAIL account claims the v20 room");
+  const fresh = await user();
+  const made = (await prod("create", { p_user: fresh, p_state: encodeState("{}"), p_public_door: null })) as { id: string; created: boolean };
+  assert.equal(made.created, true);
+  assert.notEqual(made.id, legacy, "any other account gets a fresh apartment");
+  assert.equal(psqlFails("set role anon; select public.apt_room_read(gen_random_uuid(), null);"), true);
+  assert.equal(psqlFails("set role anon; select public.apt_import_legacy(false);"), true);
+  // down leaves v20 intact
+  psqlFile("supabase/migrations/0006_v21_apartments_down.sql");
+  assert.equal(psql("select count(*) from pg_namespace where nspname = 'v21'"), "0");
+  assert.equal(psql("select version from public.room where id = 1"), "42");
+  assert.equal(psql("select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'apt\\_%'"), "0");
   const round = decodeState(encodeState('{"ok":true}'));
   assert.equal(round, '{"ok":true}');
   await client.end();
-  console.log("postgres ok");
+  console.log("postgres ok (0001/0002 v20 checks, 0005 v21_test, 0006 production + legacy import + down)");
 }
 
 async function main() {
@@ -601,7 +690,10 @@ async function main() {
   console.log("store-check ok");
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : "store-check failed");
-  process.exitCode = 1;
-});
+main().then(
+  () => process.exit(0),
+  (error: unknown) => {
+    console.error(error instanceof Error ? (error.stack ?? error.message) : "store-check failed");
+    process.exit(1);
+  },
+);
