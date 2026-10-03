@@ -143,7 +143,7 @@ export function SignIn() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
               />
-              <button type="submit" className="invite-copy mono" aria-busy={phase === "sending"} disabled={phase === "sending"}>
+              <button type="submit" className="invite-copy signin-submit mono" aria-busy={phase === "sending"} disabled={phase === "sending"}>
                 {phase === "sending" ? "SENDING…" : "EMAIL ME A SIGN-IN LINK"}
               </button>
             </form>
@@ -164,7 +164,7 @@ export function SignIn() {
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
               />
-              <button type="submit" className="invite-copy mono" disabled={phase === "verifying" || code.replace(/\s/g, "").length < 6}>
+              <button type="submit" className="invite-copy signin-submit mono" disabled={phase === "verifying" || code.replace(/\s/g, "").length < 6}>
                 {phase === "verifying" ? "CHECKING…" : "SIGN IN"}
               </button>
               <button type="button" className="signin-link mono" onClick={() => { setPhase("email"); setCode(""); }}>
