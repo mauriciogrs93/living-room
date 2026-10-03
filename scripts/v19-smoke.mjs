@@ -27,6 +27,9 @@ function viaCurl(method, path, h, body) {
     resolve({ status, json, headers: { get: (k) => hdrs.get(k.toLowerCase()) ?? null } });
   }));
 }
+function skillViaCurl() {
+  return new Promise((resolve) => execFile(VERCEL_BIN, ["curl", "/skill.md", "--deployment", VIA, "--scope", "mauriciogrs93s-projects", "--", "-s"], { maxBuffer: 8 << 20 }, (e, out) => resolve(String(out || ""))));
+}
 async function call(method, path, { body, cookie, token, xff, headers = {} } = {}) {
   const h = { "content-type": "application/json", origin: BASE, ...headers };
   if (cookie) h.cookie = cookie;
@@ -84,6 +87,8 @@ const reuse = await reg({ name: "Reuser", invite: code });
 check("reused invite rejected: invite_used", reuse.status === 403 && reuse.json?.code === "invite_used", `${reuse.status} ${reuse.json?.code} "${reuse.json?.error}"`);
 const missing = await reg({ name: "Nobody" });
 check("no invite: invite_missing + Writer copy", missing.status === 403 && missing.json?.code === "invite_missing" && missing.json?.error === "This room is private. Ask your person for an invite.", missing.json?.error);
+check("missing invite: no 'Don't retry' hint", !/retry/i.test(missing.json?.hint || ""), missing.json?.hint);
+check("used invite: 'Don't retry the same invite' hint", /Don't retry the same invite/.test(reuse.json?.hint || ""), reuse.json?.hint);
 const wrong = await reg({ name: "Wrongo", invite: "aaaaaaaaaaaaaaaaaaaaaaaaaa" });
 check("wrong invite: invite_invalid + Writer copy", wrong.status === 403 && wrong.json?.code === "invite_invalid" && wrong.json?.error === "This invite didn't work. Ask for a new one.");
 const junk = await reg({ name: "Junk", invite: "../../etc/passwd'\"😀" });
@@ -116,13 +121,57 @@ const blockedCreate = await call("POST", "/api/door", { cookie, body: { action: 
 check("server refuses to create invites while paused", blockedCreate.status === 409 && blockedCreate.json?.code === "invites_paused");
 const whilePaused = await reg({ name: "PausedTry", invite: keep });
 check("invite while paused rejected (invite_paused, same message)", whilePaused.status === 403 && whilePaused.json?.code === "invite_paused" && whilePaused.json?.error === "This invite didn't work. Ask for a new one.");
+check("paused: no 'Don't retry' hint", !/retry/i.test(whilePaused.json?.hint || ""), whilePaused.json?.hint);
 const resumed = await call("POST", "/api/door", { cookie, body: { action: "resume" } });
 check("resume", resumed.status === 200 && resumed.json?.paused === false);
 const oldAfter = await reg({ name: "OldLine", invite: keep });
-check("old invite stays dead after Resume", oldAfter.status === 403 && ["invite_invalid", "invite_expired"].includes(oldAfter.json?.code), oldAfter.json?.code);
+check("invite cancelled by Pause -> invite_cancelled after Resume", oldAfter.status === 403 && oldAfter.json?.code === "invite_cancelled" && !/retry/i.test(oldAfter.json?.hint || ""), `${oldAfter.json?.code} / ${oldAfter.json?.hint}`);
 const fresh = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json?.invite;
 const freshIn = await reg({ name: "Fresh", invite: fresh });
 check("fresh invite after Resume works", freshIn.status === 201);
+
+// guest pass: an invited (untrusted) agent rejoins with its own key or token (server GUEST_PASS_MS is short in tests)
+const fk = freshIn.json?.ownerKey, fTok = freshIn.json?.token, fEmoji = freshIn.json?.emoji, fColor = freshIn.json?.color;
+await call("POST", "/api/leave", { token: fTok });
+const rj1 = await reg({ name: "Fresh", ownerKey: fk });
+check("rejoin after removal with own ownerKey -> 201", rj1.status === 201, `${rj1.status} ${rj1.json?.code || ""}`);
+check("rejoin keeps the earlier look (no emoji/colour sent)", rj1.json?.emoji === fEmoji && rj1.json?.color === fColor, `${rj1.json?.emoji} ${rj1.json?.color} vs ${fEmoji} ${fColor}`);
+const fDoor = await call("GET", "/api/door", { cookie });
+check("rejoin grants no trust", !(fDoor.json?.trusted || []).some((p) => p.id === freshIn.json?.agentId));
+const fCookie = `__Host-lr_owner=${encodeURIComponent(fk)}`;
+check("rejoined guest gets no owner rights", (await call("GET", "/api/door", { cookie: fCookie })).status === 403);
+await call("POST", "/api/leave", { token: rj1.json?.token });
+const rj2 = await reg({ name: "Fresh", token: rj1.json?.token });
+check("rejoin with own token -> 201", rj2.status === 201, `${rj2.status} ${rj2.json?.code || ""}`);
+await call("POST", "/api/leave", { token: rj2.json?.token });
+await call("POST", "/api/door", { cookie, body: { action: "pause" } });
+const rjP = await reg({ name: "Fresh", ownerKey: fk });
+check("guest pass refused while paused (invite_paused)", rjP.status === 403 && rjP.json?.code === "invite_paused", `${rjP.status} ${rjP.json?.code}`);
+await call("POST", "/api/door", { cookie, body: { action: "resume" } });
+const rjR = await reg({ name: "Fresh", ownerKey: fk });
+check("Pause did not cancel the guest pass: rejoin after Resume -> 201", rjR.status === 201, `${rjR.status} ${rjR.json?.code || ""}`);
+await call("POST", "/api/leave", { token: rjR.json?.token });
+const rem = await call("POST", "/api/door", { cookie, body: { action: "remove", id: freshIn.json?.agentId } });
+const rjX = await reg({ name: "Fresh", ownerKey: fk });
+check("rejoin after owner's Remove -> refused", rem.status === 200 && rjX.status === 403, `remove ${rem.status}; rejoin ${rjX.status} ${rjX.json?.code}`);
+const lateInv = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json?.invite;
+const late = await reg({ name: "Later", invite: lateInv });
+await call("POST", "/api/leave", { token: late.json?.token });
+await sleep(Number(process.env.PASS_WAIT_MS || 11000));
+const rjL = await reg({ name: "Later", ownerKey: late.json?.ownerKey });
+check("rejoin after the pass expires (24 h; short in tests) -> refused", late.status === 201 && rjL.status === 403, `${late.status} -> ${rjL.status} ${rjL.json?.code}`);
+
+// skill.md first register example works as written (invite in the body)
+const skillRes = VIA ? null : await fetch(BASE + "/skill.md");
+const skillTxt = skillRes ? await skillRes.text() : await skillViaCurl();
+const sec = skillTxt.split("## 1. Register")[1] || "";
+const ex = (sec.match(/-d '(\{[^']+\})'/) || [])[1] || "";
+const exInv = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json?.invite;
+let exBody = null; try { exBody = JSON.parse(ex.replace("THE_INVITE", exInv)); } catch {}
+const exReg = exBody ? await reg(exBody) : { status: 0 };
+check("skill.md '## 1. Register' example includes invite and works as written (201)", /"invite":"THE_INVITE"/.test(ex) && exReg.status === 201, `${ex.slice(0, 90)} -> ${exReg.status} ${exReg.json?.code || ""}`);
+check("skill.md quotes the real join line", skillTxt.includes("skill.md and join the Living Room with invite THE_INVITE."));
+if (exReg.json?.token) await call("POST", "/api/leave", { token: exReg.json.token });
 
 // impostor: an invited/trusted agent's key has no owner powers
 const gkey = guest.json.ownerKey;
@@ -135,6 +184,7 @@ check("owner can Trust a recent visitor from People", trust.status === 200 && (t
 await call("POST", "/api/leave", { token: guest.json.token });
 const back = await reg({ name: "Guest", ownerKey: gkey });
 check("trusted agent with its key walks in without an invite", back.status === 201, `status ${back.status} ${back.json?.code || ""}`);
+check("look kept after Trust (re-register without emoji/colour)", back.json?.emoji === guest.json?.emoji && back.json?.color === guest.json?.color, `${back.json?.emoji} ${back.json?.color} vs ${guest.json?.emoji} ${guest.json?.color}`);
 const tDoor = await call("GET", "/api/door", { cookie: gcookie });
 const tPause = await call("POST", "/api/door", { cookie: gcookie, body: { action: "pause" } });
 check("trusted is NOT owner: no Door view, cannot pause (403)", tDoor.status === 403 && tPause.status === 403);

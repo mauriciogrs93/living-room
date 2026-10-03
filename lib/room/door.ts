@@ -41,7 +41,16 @@ export type Invite = {
   exp: number;
   usedBy: string;
   usedAt: number;
+  /** v19: set when Pause (or the 10-unused cap) cancels it. Answers invite_cancelled. */
+  cancelledAt?: number;
 };
+
+/**
+ * v19: an agent admitted by a valid invite may rejoin with its own ownerKey or token for 24 hours.
+ * Only sha256(ownerKey) is stored. Never grants trust or owner rights. Pause leaves passes alone;
+ * only the owner's Remove (or Untrust) deletes one. Paused or blocked rules still apply.
+ */
+export type GuestPass = { id: string; hash: string; exp: number; name: string; color: string; emoji: string };
 
 /** Agents that came in with an invite. The owner can Trust them from People. */
 export type Visitor = { id: string; name: string; color: string; emoji: string; at: number };
@@ -61,10 +70,13 @@ export type DoorState = {
   /** v19: single-use invites (hashes only). Unused ones expire after INVITE_TTL_MS. */
   invites: Invite[];
   visitors: Visitor[];
+  passes: GuestPass[];
 };
 
 export const INVITE_TTL_MS = Math.max(5_000, Number(process.env.INVITE_TTL_MS) || 10 * 60 * 1000);
 export const INVITE_MAX_UNUSED = 10;
+/** Guest pass length. GUEST_PASS_MS env is for test previews only (floor 5 s). */
+export const GUEST_PASS_MS = Math.max(5_000, Number(process.env.GUEST_PASS_MS) || 24 * 3600_000);
 /** Failed invite attempts per hashed IP per 10 min. INVITE_FAIL_LIMIT env is for test previews only (floor 3). */
 export const INVITE_FAIL_LIMIT = Math.max(3, Number(process.env.INVITE_FAIL_LIMIT) || 5);
 export const INVITE_FAIL_WINDOW_MS = 10 * 60 * 1000;
@@ -78,12 +90,12 @@ export const DOOR_COPY = {
   blocked: "The owner has asked you not to come in.",
 };
 
-export type InviteFail = "invite_missing" | "invite_invalid" | "invite_used" | "invite_expired" | "invite_paused";
+export type InviteFail = "invite_missing" | "invite_invalid" | "invite_used" | "invite_expired" | "invite_paused" | "invite_cancelled";
 
 export type EntryPlan =
   | { kind: "blocked" }
   | { kind: "inside" }
-  | { kind: "enter"; trust: boolean; seedId: string; owner: boolean; inviteHash: string }
+  | { kind: "enter"; trust: boolean; seedId: string; owner: boolean; inviteHash: string; pass?: boolean }
   | { kind: "turned_away"; code: InviteFail }
   | { kind: "room_full" }
   | { kind: "limited"; retryAfter: number };
@@ -101,6 +113,7 @@ export function freshDoor(): DoorState {
     paused: false,
     invites: [],
     visitors: [],
+    passes: [],
   };
 }
 
@@ -198,6 +211,8 @@ export function planEntry(
     alreadyInside: boolean;
     seedId?: string;
     seedSecret?: string;
+    /** The returning agent's own ownerKey (from its mailbox via ownerKey or token). */
+    passKey?: string;
   },
 ): EntryPlan {
   ensureMigrated(room);
@@ -205,9 +220,9 @@ export function planEntry(
   const id = input.agentId;
   if (id && isBlocked(room, id)) return { kind: "blocked" };
   if (input.alreadyInside) return { kind: "inside" };
-  const enter = (plan: { trust: boolean; seedId?: string; owner?: boolean; inviteHash?: string }): EntryPlan => {
+  const enter = (plan: { trust: boolean; seedId?: string; owner?: boolean; inviteHash?: string; pass?: boolean }): EntryPlan => {
     if (room.agents.size >= MAX_AGENTS) return { kind: "room_full" };
-    return { kind: "enter", trust: plan.trust, seedId: plan.seedId ?? "", owner: Boolean(plan.owner), inviteHash: plan.inviteHash ?? "" };
+    return { kind: "enter", trust: plan.trust, seedId: plan.seedId ?? "", owner: Boolean(plan.owner), inviteHash: plan.inviteHash ?? "", pass: Boolean(plan.pass) };
   };
   // Trusted agents holding their own key or token always walk in. Trust never means owner.
   if (id && isTrusted(room, id)) return enter({ trust: true });
@@ -218,6 +233,11 @@ export function planEntry(
   // Invites only (Option A). No knocking.
   // Failed-invite limiting lives in the register route (store rate_hit), so it is committed even
   // though a turned-away register writes nothing to the room.
+  // Guest pass: an invited agent coming back with its own key within 24 hours. Untrusted, never owner.
+  if (id && input.passKey && validPass(room, id, input.passKey, now)) {
+    if (room.door.paused) return { kind: "turned_away", code: "invite_paused" };
+    return enter({ trust: false, pass: true });
+  }
   const verdict = checkInvite(room, input.invite, now);
   if (verdict.ok) return enter({ trust: false, inviteHash: verdict.hash });
   return { kind: "turned_away", code: verdict.code };
@@ -231,6 +251,7 @@ function checkInvite(room: RoomHost, raw: string, now: number): { ok: true; hash
   const hash = inviteHash(text);
   const found = room.door.invites.find((item) => timingSafeEqual(Buffer.from(item.hash), Buffer.from(hash)));
   if (!found) return { ok: false, code: "invite_invalid" };
+  if (found.cancelledAt) return { ok: false, code: "invite_cancelled" };
   if (found.usedAt) return { ok: false, code: "invite_used" };
   if (found.exp <= now) return { ok: false, code: "invite_expired" };
   return { ok: true, hash };
@@ -244,6 +265,31 @@ export function consumeInvite(room: RoomHost, hash: string, agentId: string) {
   found.usedBy = agentId;
 }
 
+function validPass(room: RoomHost, id: string, ownerKey: string, now: number) {
+  const pass = room.door.passes.find((item) => item.id === id);
+  if (!pass || pass.exp <= now) return false;
+  const hash = sha256(ownerKey);
+  return pass.hash.length === hash.length && timingSafeEqual(Buffer.from(pass.hash), Buffer.from(hash));
+}
+
+/** Issued once, when a valid invite admits the agent (same commit). Not extended by rejoining. */
+export function grantPass(room: RoomHost, person: { id: string; ownerKey: string; name: string; color: string; emoji: string }) {
+  if (!person.ownerKey) return;
+  const now = Date.now();
+  room.door.passes = room.door.passes.filter((item) => item.id !== person.id && item.exp > now);
+  room.door.passes.push({ id: person.id, hash: sha256(person.ownerKey), exp: now + GUEST_PASS_MS, name: person.name, color: person.color, emoji: person.emoji });
+  if (room.door.passes.length > 40) room.door.passes.splice(0, room.door.passes.length - 40);
+}
+
+/** The look an agent had last time, so a re-register without emoji or colour keeps it. */
+export function priorLook(room: RoomHost, id: string): { color: string; emoji: string } | null {
+  if (!id) return null;
+  const agent = room.agents.get(id);
+  if (agent) return { color: agent.homeColor || agent.color, emoji: agent.emoji };
+  const known = room.door.trusted.find((item) => item.id === id) ?? room.door.passes.find((item) => item.id === id) ?? room.door.visitors.find((item) => item.id === id);
+  return known ? { color: known.color, emoji: known.emoji } : null;
+}
+
 export function rememberVisitor(room: RoomHost, visitor: Omit<Visitor, "at">) {
   room.door.visitors = room.door.visitors.filter((item) => item.id !== visitor.id);
   room.door.visitors.push({ ...visitor, at: Date.now() });
@@ -254,12 +300,16 @@ export function turnedAway(code: InviteFail): ActErr {
   if (code === "invite_missing") {
     return { ok: false, status: 403, code, error: DOOR_COPY.missing, hint: "Register with the invite from your person, sent as \"invite\" in the JSON body." };
   }
+  if (code === "invite_paused" || code === "invite_cancelled") {
+    return { ok: false, status: 403, code, error: DOOR_COPY.bad, hint: "Ask your person for a new invite." };
+  }
   return { ok: false, status: 403, code, error: DOOR_COPY.bad, hint: "Don't retry the same invite. Ask your person for a new one." };
 }
 
 /** Old invites, used records and expired ones are pruned so the blob stays small. */
 function pruneInvites(room: RoomHost, now = Date.now()) {
   room.door.invites = room.door.invites.filter((item) => (item.usedAt ? now - item.usedAt < 24 * 3600_000 : now - item.exp < 24 * 3600_000));
+  room.door.passes = room.door.passes.filter((item) => item.exp > now);
   if (room.door.invites.length > 40) room.door.invites.splice(0, room.door.invites.length - 40);
 }
 
@@ -406,19 +456,17 @@ export function doorAct(room: RoomHost, ownerKey: string, action: string, id: st
     if (room.door.paused) {
       return { ok: false as const, status: 409, code: "invites_paused", error: "Invites are paused. Resume to make a new one." };
     }
-    const unused = room.door.invites.filter((item) => !item.usedAt && item.exp > now);
-    while (unused.length >= INVITE_MAX_UNUSED) {
-      const oldest = unused.shift()!;
-      room.door.invites = room.door.invites.filter((item) => item !== oldest);
-    }
+    const unused = room.door.invites.filter((item) => !item.usedAt && !item.cancelledAt && item.exp > now);
+    while (unused.length >= INVITE_MAX_UNUSED) unused.shift()!.cancelledAt = now;
     const code = newInviteCode();
     room.door.invites.push({ hash: inviteHash(code), at: now, exp: now + INVITE_TTL_MS, usedBy: "", usedAt: 0 });
     return { ok: true as const, message: "Invite ready.", invite: code };
   }
   if (action === "pause") {
     // One write: pause, and cancel every unused invite. Used records stay for the audit trail.
+    // Guest passes are NOT touched: only the owner's Remove deletes one.
     room.door.paused = true;
-    room.door.invites = room.door.invites.filter((item) => item.usedAt);
+    for (const item of room.door.invites) if (!item.usedAt && !item.cancelledAt) item.cancelledAt = now;
     return { ok: true as const, message: "Invites paused. Old invites stop working." };
   }
   if (action === "resume") {
@@ -427,6 +475,7 @@ export function doorAct(room: RoomHost, ownerKey: string, action: string, id: st
   }
   if (action === "trust") return trustVisitor(room, id);
   if (action === "untrust") return untrust(room, id);
+  if (action === "remove") return removeGuest(room, id);
   if (action === "unblock") return unblock(room, id);
   return { ok: false as const, status: 400, error: "Unknown door action." };
 }
@@ -448,7 +497,20 @@ function untrust(room: RoomHost, id: string) {
     return { ok: false as const, status: 409, error: "The owner's own agent stays trusted." };
   }
   room.door.trusted = room.door.trusted.filter((item) => item.id !== id);
+  room.door.passes = room.door.passes.filter((item) => item.id !== id);
   return { ok: true as const, message: `${person.name} will need an invite next time.` };
+}
+
+/** Owner's Remove on a recent visitor: ends its guest pass (and trust, never the owner's own agent). */
+function removeGuest(room: RoomHost, id: string) {
+  const person = room.door.trusted.find((item) => item.id === id);
+  if (person && ownerPerson(room, person)) return { ok: false as const, status: 409, error: "The owner's own agent stays trusted." };
+  const known = room.door.visitors.find((item) => item.id === id) ?? room.door.passes.find((item) => item.id === id) ?? person;
+  if (!known) return { ok: false as const, status: 404, error: "That visitor has gone." };
+  room.door.passes = room.door.passes.filter((item) => item.id !== id);
+  room.door.trusted = room.door.trusted.filter((item) => item.id !== id);
+  room.door.visitors = room.door.visitors.filter((item) => item.id !== id);
+  return { ok: true as const, message: `${known.name} will need an invite next time.` };
 }
 
 function unblock(room: RoomHost, id: string) {
@@ -465,7 +527,7 @@ function publicLists(room: RoomHost) {
   return {
     locked: room.door.locked,
     paused: room.door.paused,
-    unused: room.door.invites.filter((item) => !item.usedAt && item.exp > now).length,
+    unused: room.door.invites.filter((item) => !item.usedAt && !item.cancelledAt && item.exp > now).length,
     visitors: [...room.door.visitors]
       .reverse()
       .filter((item) => !trustedIds.has(item.id))
@@ -682,7 +744,27 @@ function sanitize(raw: unknown): DoorState {
     paused: data.paused === true,
     invites: invites(data.invites),
     visitors: visitors(data.visitors),
+    passes: passes(data.passes),
   };
+}
+
+function passes(raw: unknown): GuestPass[] {
+  if (!Array.isArray(raw)) return [];
+  const list: GuestPass[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const pass = item as Partial<GuestPass>;
+    if (typeof pass.id !== "string" || typeof pass.hash !== "string" || !/^[0-9a-f]{64}$/.test(pass.hash)) continue;
+    list.push({
+      id: pass.id.slice(0, 40),
+      hash: pass.hash,
+      exp: Number(pass.exp) || 0,
+      name: typeof pass.name === "string" ? pass.name.slice(0, 40) : "",
+      color: typeof pass.color === "string" ? pass.color : "#c4a574",
+      emoji: typeof pass.emoji === "string" ? pass.emoji : "•",
+    });
+  }
+  return list.slice(-40);
 }
 
 function invites(raw: unknown): Invite[] {
@@ -698,6 +780,7 @@ function invites(raw: unknown): Invite[] {
       exp: Number(invite.exp) || 0,
       usedBy: typeof invite.usedBy === "string" ? invite.usedBy.slice(0, 40) : "",
       usedAt: Number(invite.usedAt) || 0,
+      ...(Number(invite.cancelledAt) ? { cancelledAt: Number(invite.cancelledAt) } : {}),
     });
   }
   return list.slice(-40);

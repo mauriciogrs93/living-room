@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // v19 Door (Option A): invite, pause, resume, trust, untrust, unblock. No knock actions.
-const ACTIONS = new Set(["invite", "pause", "resume", "trust", "untrust", "unblock"]);
+const ACTIONS = new Set(["invite", "pause", "resume", "trust", "untrust", "remove", "unblock"]);
 
 export function OPTIONS() {
   return new Response(null, { status: 204 });

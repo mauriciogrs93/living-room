@@ -36,6 +36,8 @@ import {
   claimOwner,
   consumeInvite,
   rememberVisitor,
+  grantPass,
+  priorLook,
 } from "./door";
 import { claimIdentity, ensureBox, openBox, peekOwner, pendingNotes, queueNote, rotateToken, touchBox, type Mailbox } from "./mailbox";
 import { SPAWNS } from "./layout";
@@ -114,14 +116,16 @@ export function register(room: RoomHost, input: {
         error: `${name} is already in the room. Pick another name.`,
       };
     }
-    let color = PALETTE[room.agents.size % PALETTE.length]!;
+    // Keep the earlier look when a returning agent sends no colour or emoji (also after Trust).
+    const before = priorLook(room, returningId);
+    let color = before?.color ?? PALETTE[room.agents.size % PALETTE.length]!;
     if (input.color !== undefined && input.color !== null && input.color !== "") {
       if (typeof input.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(input.color.trim())) {
         return { ok: false, status: 400, error: "color must be a #rrggbb hex string." };
       }
       color = input.color.trim().toLowerCase();
     }
-    let emoji = EMOJIS[room.agents.size % EMOJIS.length]!;
+    let emoji = before?.emoji ?? EMOJIS[room.agents.size % EMOJIS.length]!;
     if (input.emoji !== undefined && input.emoji !== null && input.emoji !== "") {
       if (typeof input.emoji !== "string") {
         return { ok: false, status: 400, error: "emoji must be a short emoji string." };
@@ -135,7 +139,7 @@ export function register(room: RoomHost, input: {
 
     const seedId = typeof input.seedId === "string" ? input.seedId : "";
     const seedSecret = typeof input.seedSecret === "string" ? input.seedSecret : "";
-    const plan = planEntry(room, { agentId: returningId, name, emoji, color, invite, ip, alreadyInside: alreadyHere, seedId, seedSecret });
+    const plan = planEntry(room, { agentId: returningId, name, emoji, color, invite, ip, alreadyInside: alreadyHere, seedId, seedSecret, passKey: claimed.box?.ownerKey ?? "" });
     if (plan.kind === "blocked") {
       return {
         ok: false,
@@ -180,6 +184,7 @@ export function register(room: RoomHost, input: {
       if (usedInvite) {
         consumeInvite(room, usedInvite, id);
         rememberVisitor(room, { id, name, color, emoji });
+        grantPass(room, { id, ownerKey, name, color, emoji });
         console.log(`[door] register enter invite=valid`);
       }
     };

@@ -143,6 +143,9 @@ export function DoorSection({ model }: { model: HudModel }) {
               <button type="button" className="hud-chip" onClick={() => void run("trust", person.id)}>
                 Trust
               </button>
+              <button type="button" className="hud-chip" onClick={() => void run("remove", person.id)}>
+                Remove
+              </button>
             </div>
           ))}
           <p className="hud-kicker">Trusted</p>
