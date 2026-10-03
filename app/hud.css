@@ -652,7 +652,7 @@
 }
 /* r1: 12px under the tab divider before the Invite intro; the card keeps a fixed height (so a fixed top) on
    every tab, so switching NOW <-> INVITE doesn't make it jump. The body scrolls inside. */
-.invite-tab .invite-intro { margin-top: 12px; }
+.invite-tab .invite-intro { margin-top: 6px; } /* + the body's 6px top padding = 12px under the tab rule */
 .hud-card { height: var(--hud-card-max); }
 @media (max-width: 799px) {
   .hud-card { height: 38dvh; }
