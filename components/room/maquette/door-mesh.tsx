@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { FLOORS } from "@/lib/room/layout";
 import { Tap, useBuilt, useMats } from "../furniture-kit";
-import { GEO } from "./config";
+import { GEO, PAL } from "./config";
 import { bar, blk, cap, cyl, sph, type Mats } from "./kit";
 import type { Built } from "./pieces";
 
@@ -30,6 +30,8 @@ export const DOOR_PLACEMENT = {
 export type DoorMeshProps = { locked: boolean; knocking: boolean; open: boolean; onTap?: () => void };
 
 const W = DOOR_PLACEMENT.width;
+/** knock shiver of the leaf (about 2 degrees) */
+const KNOCK_SHIVER = THREE.MathUtils.degToRad(2);
 const H = DOOR_PLACEMENT.height;
 
 function buildDoor(M: Mats, locked: boolean): Built {
@@ -106,7 +108,7 @@ export function DoorMesh({ locked, knocking, open, onTap }: DoorMeshProps) {
   useMemo(() => built.parts.pivot.traverse((o) => (o.castShadow = false)), [built]);
   const swing = useRef(open ? 1 : 0);
   const ring = useRef<THREE.Mesh>(null);
-  const ringMat = useMemo(() => new THREE.MeshBasicMaterial({ color: "#F5F2EB", transparent: true, opacity: 0, depthWrite: false }), []);
+  const ringMat = useMemo(() => new THREE.MeshBasicMaterial({ color: PAL.steel, transparent: true, opacity: 0, depthWrite: false }), []);
   useEffect(() => () => ringMat.dispose(), [ringMat]);
   useFrame(({ clock }, delta) => {
     swing.current += ((open ? 1 : 0) - swing.current) * Math.min(1, delta * 4);
@@ -115,23 +117,23 @@ export function DoorMesh({ locked, knocking, open, onTap }: DoorMeshProps) {
     // knock: three small raps every 1.8 s, a 0.5 degree shiver of the leaf, never a glow
     const cycle = t % 1.8;
     const rap = knocking && cycle < 0.6 ? Math.max(0, Math.sin((cycle / 0.2) * Math.PI)) : 0;
-    built.parts.pivot.rotation.y = THREE.MathUtils.degToRad(70) * swing.current + (knocking && !open ? rap * 0.009 : 0);
+    built.parts.pivot.rotation.y = THREE.MathUtils.degToRad(70) * swing.current + (knocking && !open ? rap * KNOCK_SHIVER : 0);
     const r = ring.current;
     if (r) {
       r.visible = knocking;
       if (knocking) {
         const p = (t % 1.8) / 1.8;
         r.scale.setScalar(1 + p * 0.9);
-        ringMat.opacity = 0.32 * (1 - p);
+        ringMat.opacity = 0.85 * (1 - p);
       }
     }
   });
   const inner = (
     <>
       <primitive object={built.group} />
-      {/* soft pulse ring around the lock while someone knocks (plaster tone, low opacity) */}
+      {/* pulse ring around the lock while someone knocks: graphite ink, readable at phone zoom, never a glow */}
       <mesh ref={ring} position={[-W / 2 + 0.07 + 0.005, 1.25, 0.075]} material={ringMat} visible={false} userData={{ noContact: true }} raycast={() => null}>
-        <ringGeometry args={[0.07, 0.08, 40]} />
+        <ringGeometry args={[0.064, 0.09, 40]} />
       </mesh>
     </>
   );

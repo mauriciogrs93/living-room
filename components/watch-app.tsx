@@ -134,8 +134,8 @@ function RoomWatch({ origin = "" }: { origin?: string }) {
         </div>
         {/* drawing-sheet caption: desktop only, hidden while a card or the Tonight story is open (CSS) */}
         <aside className="sheet-caption" aria-hidden="true">
-          <b>FIG. 1 · THE LIVING ROOM</b>
-          <span>LR–01 · SECTION A–A · 1:50</span>
+          <b>FIG. 1 · LIVING ROOM</b>
+          <span>SECTION A–A · 1:50</span>
           <span className="sheet-scalebar">
             <i />
             <i />
