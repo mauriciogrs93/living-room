@@ -248,7 +248,9 @@ export function planEntry(
 }
 
 function checkInvite(room: RoomHost, raw: string, now: number): { ok: true; hash: string } | { ok: false; code: InviteFail } {
-  const text = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  // v20 (Security-approved): trim surrounding whitespace and drop ONE trailing "." (agents often copy the line's
+  // full stop) before the format check and hashing. "<code>.." still fails the format check.
+  const text = typeof raw === "string" ? raw.trim().replace(/\.$/, "").toLowerCase() : "";
   if (!text) return { ok: false, code: "invite_missing" };
   if (room.door.paused) return { ok: false, code: "invite_paused" };
   if (text.length > 64 || !INVITE_RE.test(text)) return { ok: false, code: "invite_invalid" };

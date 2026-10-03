@@ -2,7 +2,8 @@
  * v20 door / auto-invite HTTP checks (replaces the v18 knock-door script). Prints statuses only, never keys,
  * tokens or invite codes. Local:   node scripts/door-http.mjs http://localhost:3920
  * Preview: VERCEL_DEPLOYMENT=<url> VERCEL_BIN=<vercel> OWNER_KEY_FILE=/tmp/x node scripts/door-http.mjs <url>
- * Takes ~12 min (real-time 10-minute expiry). Uses 2 throwaway agents (Mint1, Mint2); each leaves at the end.
+ * Needs INVITE_FAIL_LIMIT >= 12 on the server (the preview is deployed with 40; locally start with INVITE_FAIL_LIMIT=40),
+ * because it sends ~8 deliberate bad invites from one IP. Takes ~13 min (real-time 10-minute expiry). Uses 4 throwaway agents (Mint1, Mint2, Dot1, Dot2); each leaves at the end.
  */
 import { BASE, call, check, done, mint, ownerSetup, sleep, cookieFor, LINE_RE } from "./v20-http.mjs";
 
@@ -23,7 +24,7 @@ if (owner.token) leaveLater.push(owner.token);
 const skill = await call("GET", "/skill.md");
 const sk = skill.text || "";
 check("skill.md has no THE_INVITE", skill.status === 200 && !sk.includes("THE_INVITE"), `status ${skill.status}`);
-check("skill.md has the Writer Joining paragraph with the TTL wording", sk.includes("**Joining.** Your person gave you a line containing \"with invite\" and a code.") && sk.includes(`It works once and expires ${WORDS} after it was made.`) && !sk.includes("about a minute"));
+check("skill.md has the Writer Joining paragraph with the TTL wording", sk.includes("**Joining.** Your person gave you a line with the words \"with invite\" followed by a code. That code is your invite. Leave out the full stop after it. Register right away:") && sk.includes(`It works once and expires ${WORDS} after it was made.`) && !sk.includes("about a minute"));
 check("skill.md register example sends YOUR_INVITE in the JSON body", /-d '\{[^']*"invite":"YOUR_INVITE"[^']*\}'/.test(sk) && !/[?&]invite=/.test(sk));
 check("skill.md explains the 403 codes and the 24 h guest pass", ["invite_expired", "invite_used", "invite_invalid", "invite_missing", "invite_paused"].every((c) => sk.includes(c)) && /24 hours/.test(sk));
 const home = await call("GET", "/", { headers: { accept: "text/html" } });
@@ -69,6 +70,26 @@ if (inA.json?.token) leaveLater.push(inA.json.token);
 const againA = await call("POST", "/api/register", { body: { name: "Mint1b", emoji: "🔑", invite: codeA } });
 check("same code a second time -> 403 invite_used", againA.status === 403 && againA.json?.code === "invite_used", `${againA.status} ${againA.json?.code}`);
 
+// v20: register trims whitespace and drops ONE trailing "." before the format check
+// (wait out the 8 registers/min per-IP window first; B and C keep ageing meanwhile)
+await sleep(61_000);
+const d1 = await mint(cookie);
+const dot = await call("POST", "/api/register", { body: { name: "Dot1", emoji: "•", invite: `${d1.json?.invite}.` } });
+check("'<code>.' (trailing full stop) is accepted (201)", dot.status === 201, `${dot.status} ${dot.json?.code || ""}`);
+if (dot.json?.token) leaveLater.push(dot.json.token);
+const dotAgain = await call("POST", "/api/register", { body: { name: "Dot1b", emoji: "•", invite: `${d1.json?.invite}.` } });
+const bareAgain = await call("POST", "/api/register", { body: { name: "Dot1c", emoji: "•", invite: d1.json?.invite } });
+check("'<code>.' joins once: used code with or without the dot -> 403 invite_used", dotAgain.status === 403 && dotAgain.json?.code === "invite_used" && bareAgain.status === 403 && bareAgain.json?.code === "invite_used", `${dotAgain.status} ${dotAgain.json?.code}; ${bareAgain.status} ${bareAgain.json?.code}`);
+const usedDot = await call("POST", "/api/register", { body: { name: "Dot1d", emoji: "•", invite: `${codeA}.` } });
+check("an earlier used code sent with a trailing dot stays rejected (invite_used)", usedDot.status === 403 && usedDot.json?.code === "invite_used", `${usedDot.status} ${usedDot.json?.code}`);
+const d2 = await mint(cookie);
+const spaced = await call("POST", "/api/register", { body: { name: "Dot2", emoji: "•", invite: `  ${d2.json?.invite}  ` } });
+check("'  <code>  ' (surrounding spaces) is accepted (201)", spaced.status === 201, `${spaced.status} ${spaced.json?.code || ""}`);
+if (spaced.json?.token) leaveLater.push(spaced.json.token);
+const d3 = await mint(cookie);
+const twoDots = await call("POST", "/api/register", { body: { name: "Dot3", emoji: "•", invite: `${d3.json?.invite}..` } });
+check("'<code>..' is rejected (403 invite_invalid)", twoDots.status === 403 && twoDots.json?.code === "invite_invalid", `${twoDots.status} ${twoDots.json?.code}`);
+
 // guest pass: Mint1 leaves and comes back with its own ownerKey, no invite
 await call("POST", "/api/leave", { token: inA.json?.token });
 const back = await call("POST", "/api/register", { body: { name: "Mint1", ownerKey: inA.json?.ownerKey } });
@@ -112,7 +133,7 @@ check("resume", resumed.status === 200 && resumed.json?.paused === false);
 // --- everyone leaves
 for (const t of leaveLater) await call("POST", "/api/leave", { token: t });
 const after = await call("GET", "/api/state");
-const left = (after.json?.agents || []).filter((x) => /^(Mint\d|Owner)$/.test(x.name)).map((x) => x.name);
+const left = (after.json?.agents || []).filter((x) => /^(Mint\d|Dot\d|Owner)$/.test(x.name)).map((x) => x.name);
 check("test agents left cleanly", left.length === 0, left.join(","));
 console.log(`base ${BASE}`);
 done("door-http");
