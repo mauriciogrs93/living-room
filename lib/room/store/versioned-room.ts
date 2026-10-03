@@ -128,7 +128,8 @@ export class VersionedRoom {
   }
 
   private take(snap: RoomRead): Cache {
-    if (this.cache && snap.version < this.cache.version) {
+    // Version 0 means the row is gone (a test reset): start fresh instead of keeping a stale cache.
+    if (this.cache && snap.version < this.cache.version && snap.version > 0) {
       this.cache = { ...this.cache, at: Date.now() };
       return this.cache;
     }
