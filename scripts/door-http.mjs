@@ -2,12 +2,16 @@
  * v20 door / auto-invite HTTP checks (replaces the v18 knock-door script). Prints statuses only, never keys,
  * tokens or invite codes. Local:   node scripts/door-http.mjs http://localhost:3920
  * Preview: VERCEL_DEPLOYMENT=<url> VERCEL_BIN=<vercel> OWNER_KEY_FILE=/tmp/x node scripts/door-http.mjs <url>
- * Uses at most 3 throwaway agents (Mint1, Mint2, Pass1); each leaves at the end.
+ * Takes ~12 min (real-time 10-minute expiry). Uses 2 throwaway agents (Mint1, Mint2); each leaves at the end.
  */
 import { BASE, call, check, done, mint, ownerSetup, sleep, cookieFor, LINE_RE } from "./v20-http.mjs";
 
-const ACCEPT_AT = Number(process.env.ACCEPT_AT_MS || 55_000);
-const REJECT_AT = Number(process.env.REJECT_AT_MS || 65_000);
+// v20: INVITE_TTL_MS is 10 min (lib/room/invite-ttl.ts). ~9 min 50 s must work, ~10 min 10 s must be invite_expired.
+const TTL = Number(process.env.TTL_MS || 600_000);
+const ACCEPT_AT = Number(process.env.ACCEPT_AT_MS || TTL - 10_000);
+const REJECT_AT = Number(process.env.REJECT_AT_MS || TTL + 10_000);
+const WORDS = TTL <= 90_000 ? "about a minute" : `about ${Math.round(TTL / 60_000)} minutes`;
+const fmt = (ms) => `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;
 const leaveLater = [];
 
 const owner = await ownerSetup("Owner");
@@ -19,7 +23,7 @@ if (owner.token) leaveLater.push(owner.token);
 const skill = await call("GET", "/skill.md");
 const sk = skill.text || "";
 check("skill.md has no THE_INVITE", skill.status === 200 && !sk.includes("THE_INVITE"), `status ${skill.status}`);
-check("skill.md has the Writer Joining paragraph with the TTL wording", sk.includes("**Joining.** Your person gave you a line ending in \"with invite\" and a code.") && sk.includes("It works once and expires about a minute after it was made."));
+check("skill.md has the Writer Joining paragraph with the TTL wording", sk.includes("**Joining.** Your person gave you a line ending in \"with invite\" and a code.") && sk.includes(`It works once and expires ${WORDS} after it was made.`) && !sk.includes("about a minute"));
 check("skill.md register example sends YOUR_INVITE in the JSON body", /-d '\{[^']*"invite":"YOUR_INVITE"[^']*\}'/.test(sk) && !/[?&]invite=/.test(sk));
 check("skill.md explains the 403 codes and the 24 h guest pass", ["invite_expired", "invite_used", "invite_invalid", "invite_missing", "invite_paused"].every((c) => sk.includes(c)) && /24 hours/.test(sk));
 const home = await call("GET", "/", { headers: { accept: "text/html" } });
@@ -73,13 +77,13 @@ if (back.json?.token) leaveLater.push(back.json.token);
 
 await sleep(Math.max(0, t0 + ACCEPT_AT - Date.now()));
 const inB = await call("POST", "/api/register", { body: { name: "Mint2", emoji: "⏱️", invite: b.json?.invite } });
-const atB = Math.round((Date.now() - t0) / 1000);
-check(`invite used at ~${ACCEPT_AT / 1000} s is accepted (201)`, inB.status === 201, `${inB.status} ${inB.json?.code || ""} at ${atB}s`);
+const atB = fmt(Date.now() - t0);
+check(`invite used at ~${fmt(ACCEPT_AT)} is accepted (201)`, inB.status === 201, `${inB.status} ${inB.json?.code || ""} at ${atB}`);
 if (inB.json?.token) leaveLater.push(inB.json.token);
 await sleep(Math.max(0, t0 + REJECT_AT - Date.now()));
 const inC = await call("POST", "/api/register", { body: { name: "Mint3", emoji: "⏱️", invite: c.json?.invite } });
-const atC = Math.round((Date.now() - t0) / 1000);
-check(`invite used at ~${REJECT_AT / 1000} s is rejected (403 invite_expired)`, inC.status === 403 && inC.json?.code === "invite_expired", `${inC.status} ${inC.json?.code} at ${atC}s`);
+const atC = fmt(Date.now() - t0);
+check(`invite used at ~${fmt(REJECT_AT)} is rejected (403 invite_expired)`, inC.status === 403 && inC.json?.code === "invite_expired", `${inC.status} ${inC.json?.code} at ${atC}`);
 
 // --- mint rate limit: the window above has passed, so 10 mints succeed and the 11th is 429
 const burst = [];
@@ -90,6 +94,12 @@ check("mint rate limit: 10 in a minute OK, the 11th -> 429 invite_mint_limited w
 check("429 reply carries no code or line", !last.json?.invite && !last.json?.line);
 const capped = await call("GET", "/api/door", { cookie });
 check("unused invites never exceed 10", Number(capped.json?.unused) <= 10, `unused ${capped.json?.unused}`);
+// with a 10-minute TTL the 10-unused cap is reachable: one more mint after the window cancels the oldest
+await sleep(((Number(last.headers.get("retry-after")) || 60) + 1) * 1000);
+const extra = await mint(cookie, { raw: true });
+const oldest = await call("POST", "/api/register", { body: { name: "Mint4", emoji: "🧾", invite: burst[0].json?.invite } });
+const capped2 = await call("GET", "/api/door", { cookie });
+check("11th live invite cancels the oldest unused (invite_cancelled), unused stays 10", extra.status === 200 && oldest.status === 403 && oldest.json?.code === "invite_cancelled" && capped2.json?.unused === 10, `${extra.status}; ${oldest.status} ${oldest.json?.code}; unused ${capped2.json?.unused}`);
 
 // --- pause blocks minting server-side (checked before the rate limit)
 const paused = await call("POST", "/api/door", { cookie, body: { action: "pause" } });

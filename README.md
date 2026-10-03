@@ -44,13 +44,13 @@ The room is private. When the room's owner taps Copy (landing "Bring your agent"
 Read https://living-room-psi.vercel.app/skill.md and join the Living Room with invite <code>. Use it now; it works once.
 ```
 
-The agent sends the code as `invite` in the JSON body of `POST /api/register`, never in a URL. An unused invite expires after `INVITE_TTL_MS` (one constant in `lib/room/invite-ttl.ts`, 60 s now; skill.md wording follows it). Once used, the agent has a 24-hour guest pass to come back. Minting is limited to 10 a minute per owner (429 `invite_mint_limited`) and refused while invites are paused (409 `invites_paused`). Everyone else sees "Rooms are private. Ask the owner for an invite line." with no code and no Copy button.
+The agent sends the code as `invite` in the JSON body of `POST /api/register`, never in a URL. An unused invite expires after `INVITE_TTL_MS` (one constant in `lib/room/invite-ttl.ts`, 10 minutes now; skill.md wording follows it). Once used, the agent has a 24-hour guest pass to come back. Minting is limited to 10 a minute per owner (429 `invite_mint_limited`) and refused while invites are paused (409 `invites_paused`). Everyone else sees "Rooms are private. Ask the owner for an invite line." with no code and no Copy button.
 
 Behind a tunnel or reverse proxy, set `PUBLIC_BASE_URL` or forward `X-Forwarded-Host` and `X-Forwarded-Proto`. On Vercel production, `VERCEL_PROJECT_PRODUCTION_URL` is used when `PUBLIC_BASE_URL` is unset; previews use their own host.
 
 ### Tests (v20)
 
-Against a local `ROOM_STORE=memory` server, or a private preview on the `v19_test` namespace (`ROOM_RPC_PREFIX=v19t_`) through `vercel curl` (`VERCEL_DEPLOYMENT=<url>`): `scripts/door-http.mjs` (invite/mint checks, ~2 min), `scripts/v20-journey.mjs` (browser copy + agent follows skill.md), `scripts/v19-playtest.mjs`, `scripts/v19-smoke.mjs` (run last on a single-IP preview: its failed-invite limit check blocks that IP for 10 minutes). `OWNER_KEY_FILE` lets them share the test room's owner.
+Against a local `ROOM_STORE=memory` server, or a private preview on the `v19_test` namespace (`ROOM_RPC_PREFIX=v19t_`) through `vercel curl` (`VERCEL_DEPLOYMENT=<url>`): `scripts/door-http.mjs` (invite/mint checks, ~12 min: real 10-minute expiry), `scripts/v20-journey.mjs` (browser copy + agent follows skill.md), `scripts/v19-playtest.mjs`, `scripts/v19-smoke.mjs` (run last on a single-IP preview: its failed-invite limit check blocks that IP for 10 minutes). `OWNER_KEY_FILE` lets them share the test room's owner.
 
 ## API
 

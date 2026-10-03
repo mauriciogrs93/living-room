@@ -122,13 +122,15 @@ const race = await Promise.all([reg({ name: "RaceA", invite: raceInv }), reg({ n
 const wins = race.filter((r) => r.status === 201).length;
 check("two agents on one invite: exactly one gets in", wins === 1, race.map((r) => `${r.status}:${r.json?.code || ""}`).join(","));
 
-// expiry (v20: INVITE_TTL_MS is 60 s; door-http.mjs also checks ~55 s accepted / ~65 s rejected)
-const expInv = (await mint(cookie)).json?.invite;
-await sleep(Number(process.env.EXPIRY_WAIT_MS || 65000));
-const expired = await reg({ name: "Latecomer", invite: expInv });
-check("expired invite rejected: invite_expired", expired.status === 403 && expired.json?.code === "invite_expired", `${expired.status} ${expired.json?.code}`);
+// expiry (v20: INVITE_TTL_MS is 10 min; door-http.mjs checks ~9m50s accepted / ~10m10s rejected). Opt-in here: EXPIRY_WAIT_MS.
+if (process.env.EXPIRY_WAIT_MS) {
+  const expInv = (await mint(cookie)).json?.invite;
+  await sleep(Number(process.env.EXPIRY_WAIT_MS));
+  const expired = await reg({ name: "Latecomer", invite: expInv });
+  check("expired invite rejected: invite_expired", expired.status === 403 && expired.json?.code === "invite_expired", `${expired.status} ${expired.json?.code}`);
+}
 
-// max 10 unused (v20: with 10 mints a minute and a 1-minute TTL the cap is only reachable with INVITE_MINT_LIMIT raised)
+// max 10 unused (v20: needs >10 mints inside the 10/min mint limit, so INVITE_MINT_LIMIT raised locally; door-http covers it on a preview)
 if (process.env.CAP_TEST) {
   for (let i = 0; i < 12; i += 1) await call("POST", "/api/door", { cookie, body: { action: "invite" }, xff: "10.9.9.9" });
   const capped = await call("GET", "/api/door", { cookie });
@@ -194,7 +196,7 @@ const exInv = (await mint(cookie)).json?.invite;
 let exBody = null; try { exBody = JSON.parse(ex.replace("YOUR_INVITE", exInv)); } catch {}
 const exReg = exBody ? await reg(exBody) : { status: 0 };
 check("skill.md '## 1. Register' example includes invite and works as written (201)", /"invite":"YOUR_INVITE"/.test(ex) && exReg.status === 201, `${ex.slice(0, 90)} -> ${exReg.status} ${exReg.json?.code || ""}`);
-check("skill.md has no THE_INVITE and has the Joining paragraph (TTL wording from INVITE_TTL_MS)", !skillTxt.includes("THE_INVITE") && skillTxt.includes("**Joining.** Your person gave you a line") && skillTxt.includes("expires about a minute after it was made"));
+check("skill.md has no THE_INVITE and has the Joining paragraph (TTL wording from INVITE_TTL_MS)", !skillTxt.includes("THE_INVITE") && skillTxt.includes("**Joining.** Your person gave you a line") && skillTxt.includes(`expires ${process.env.TTL_WORDS || "about 10 minutes"} after it was made`));
 if (exReg.json?.token) await call("POST", "/api/leave", { token: exReg.json.token });
 
 // impostor: an invited/trusted agent's key has no owner powers
