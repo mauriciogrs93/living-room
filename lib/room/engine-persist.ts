@@ -9,7 +9,7 @@ import {
   FOOD,
   GUEST_NAMES,
   freshHouse,
-  plantStage,
+  currentPlantStage,
   pruneDiary,
 } from "./house";
 import { SPOTS } from "./layout";
@@ -209,7 +209,7 @@ export function settle(room: RoomHost) {
     }
     const plant = room.objects.get("plant");
     if (plant) {
-      const stage = plantStage(room.house.plantWateredAt, now);
+      const stage = currentPlantStage(room.house, now);
       if (plant.state.stage !== stage) {
         plant.state.stage = stage;
         dirty = true;

@@ -19,6 +19,7 @@ import {
 import { cleanText, dogStand } from "./house";
 import { sitterNames, sittingPhrase } from "./engine-present";
 import { useCloset } from "./engine-closet";
+import { cookHeld, cookable } from "./engine-appliances";
 import { useDogBed } from "./engine-dog";
 import { answerNote } from "./mailbox";
 import { didYouMean } from "./near-action";
@@ -200,6 +201,14 @@ export function perform(room: RoomHost, agent: AgentRecord, body: unknown): ActR
     if (book) agent.holding = null;
     const down = book ? ` You put ${book} down.` : "";
     const now = Date.now();
+    // v19: eat where you sit (table or sofa) instead of walking back to the fridge.
+    if (action === "eat" && agent.seatId && agent.holding?.kind === "snack") {
+      room.cancelMotion(agent);
+      const applied = room.applyArrived(agent, pending);
+      room.emit();
+      if (!applied.ok) return { ok: false, status: applied.status, error: applied.message, code: applied.code };
+      return room.ok(agent, `${applied.message}${down}`, now);
+    }
     const target = room.approachFor(object, action, agent);
     const fromSofa = reachFromSofa(agent, object, action);
     if (fromSofa || room.closeEnough(agent, object, target, now)) {
@@ -321,7 +330,6 @@ export function applyArrived(room: RoomHost, agent: AgentRecord, pending: Pendin
       agent.anchor = "feet";
       agent.lie = false;
       agent.poseAt = null;
-      agent.holding = null;
       if (object) {
         agent.yaw = yawToward(agent.position, { x: object.position.x, z: object.position.z }, agent.yaw);
         agent.status = `standing by the ${object.name.toLowerCase()}`;
@@ -359,8 +367,11 @@ export function applyArrived(room: RoomHost, agent: AgentRecord, pending: Pendin
       case "water_on":
       case "water_off":
         return room.setFlag(agent, object, "running", pending.action === "water_on", 20_000, "the tap");
+      case "cook":
+        return cookHeld(room, agent, object);
       case "stove_on":
       case "stove_off":
+        if (pending.action === "stove_on" && agent.holding?.kind === "snack" && cookable(agent.holding.label)) return cookHeld(room, agent, object);
         return room.setFlag(agent, object, "hot", pending.action === "stove_on", 90_000, "the stove");
       case "kettle_on":
       case "kettle_off":

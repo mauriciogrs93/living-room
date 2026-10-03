@@ -24,7 +24,8 @@ function storeyShell(g: THREE.Group, M: Mats, i: number) {
   if (i > 0) {
     blk(g, M.plaster, cut - wallOutX, slab - 0.02, FRONT - wallOutZ, (cut + wallOutX) / 2, y - slab, (FRONT + wallOutZ) / 2, { r: 0.02 });
     blk(g, M.screed, cut - wallInX - 0.01, 0.02, FRONT - wallInZ - 0.01, (cut + wallInX) / 2, y - 0.02, (FRONT + wallInZ) / 2, { r: 0.006, cast: false });
-    blk(g, M.plaster, edgeR - cut, slab, 0.42, (edgeR + cut) / 2, y - slab, wallInZ + 0.21, { r: 0.02 });
+    // Physicist 1e: back landing 0.42 → 0.30 deep so its edge meets the top tread.
+    blk(g, M.plaster, edgeR - cut, slab, 0.3, (edgeR + cut) / 2, y - slab, wallInZ + 0.15, { r: 0.02 });
     if (i < 2) blk(g, M.plaster, edgeR - cut, slab, 0.5, (edgeR + cut) / 2, y - slab, FRONT - 0.25, { r: 0.02 });
   }
   const back = rectShape(wallOutX, y, edgeR, top);
@@ -104,8 +105,9 @@ function flight(M: Mats, lower: number) {
   g.userData.keep = true;
   const y0 = FLOORS[lower].y;
   const y1 = FLOORS[lower + 1].y;
-  const z0 = HOUSE.zFront - 0.02;
-  const z1 = wallInZ + 0.42;
+  // Physicist 1e: treads line up with the walker's 8 steps (run 0.3125).
+  const z0 = HOUSE.zFront;
+  const z1 = HOUSE.zBack + 0.3125;
   const steps = 8;
   const rise = (y1 - y0) / steps;
   const run = (z0 - z1) / steps;

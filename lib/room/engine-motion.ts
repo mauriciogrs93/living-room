@@ -109,7 +109,7 @@ export function occupy(room: RoomHost,
     agent.lie = lie;
     agent.anchor = "hips";
     agent.standAt = { ...standAt };
-    agent.holding = null;
+    // v19: held food and books survive sitting (Tester bug 1).
     agent.poseUntil = null;
     agent.motion = null;
     agent.pending = null;
@@ -123,7 +123,7 @@ export function idleAt(room: RoomHost, agent: AgentRecord, object: RoomObject) {
     agent.lie = false;
     agent.anchor = "feet";
     agent.poseAt = null;
-    agent.holding = null;
+    // v19: held food survives walking to an object (Tester bug 1).
     agent.poseUntil = null;
     agent.yaw = yawToward(agent.position, { x: object.position.x, z: object.position.z }, agent.yaw);
   }
@@ -152,7 +152,7 @@ export function release(room: RoomHost, agent: AgentRecord) {
     agent.poseAt = null;
     agent.lie = false;
     agent.standAt = null;
-    agent.holding = null;
+    // v19: standing up keeps what you hold. Eat, put back, leave or timeout clear it.
     agent.poseUntil = null;
   }
 

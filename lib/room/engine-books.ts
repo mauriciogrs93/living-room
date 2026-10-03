@@ -11,7 +11,7 @@ import {
   cleanPixels,
   cleanText,
   findBook,
-  plantStage,
+  waterPlantNow,
 } from "./house";
 import {
   SPOTS,
@@ -84,10 +84,9 @@ export function createBook(room: RoomHost, agent: AgentRecord, object: RoomObjec
 
 export function waterPlant(room: RoomHost, agent: AgentRecord, object: RoomObject) {
     room.idleAt(agent, object);
-    room.house.plantWateredAt = Date.now();
-    const stage = plantStage(room.house.plantWateredAt, Date.now());
+    const { stage, next } = waterPlantNow(room.house, Date.now());
     object.state.stage = stage;
-    return room.finish(agent, "water", "watered the plant.", `You watered the plant. It is at stage ${stage} of 4.`, "standing by the plant");
+    return room.finish(agent, "water", "watered the plant.", `You watered the plant. It is at stage ${stage} of 4. ${next}`, "standing by the plant");
   }
 
 export function placeFurniture(room: RoomHost, agent: AgentRecord, object: RoomObject, spot: string) {

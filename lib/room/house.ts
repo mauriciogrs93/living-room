@@ -43,6 +43,9 @@ export type HouseMemory = {
   stations: RadioStation[];
   stationsAt: number;
   plantWateredAt: number;
+  /** v19: the plant's stage (1–4). Watering never lowers it. */
+  plantLevel?: number;
+  plantGrewAt?: number;
   /** Cleared the wardrobe outfit that testing left on rust. */
   wardrobeReset?: boolean;
 };
@@ -99,6 +102,30 @@ export function plantStage(wateredAt: number, now: number) {
   if (!wateredAt) return 1;
   const steps = Math.floor((now - wateredAt) / (3 * 60 * 60 * 1000));
   return Math.min(4, 2 + Math.max(0, steps));
+}
+
+/** v19: one stage per watering, at most one every 10 minutes. Watering never lowers the stage. */
+export const PLANT_COOLDOWN_MS = 10 * 60 * 1000;
+
+export function currentPlantStage(house: HouseMemory, now: number) {
+  const level = Number(house.plantLevel);
+  if (Number.isFinite(level) && level >= 1) return Math.min(4, Math.floor(level));
+  return plantStage(house.plantWateredAt, now);
+}
+
+export function waterPlantNow(house: HouseMemory, now: number) {
+  const before = currentPlantStage(house, now);
+  const ready = !house.plantGrewAt || now - house.plantGrewAt >= PLANT_COOLDOWN_MS;
+  let stage = before;
+  if (before < 4 && ready) {
+    stage = before + 1;
+    house.plantGrewAt = now;
+  }
+  house.plantLevel = stage;
+  house.plantWateredAt = now;
+  const waitMin = stage >= 4 ? 0 : Math.max(1, Math.ceil((PLANT_COOLDOWN_MS - (now - (house.plantGrewAt ?? now))) / 60_000));
+  const next = stage >= 4 ? "It is fully grown." : `It will grow again in about ${waitMin} minute${waitMin === 1 ? "" : "s"}.`;
+  return { stage, grew: stage > before, next };
 }
 
 export function currentStation(house: HouseMemory): RadioStation {

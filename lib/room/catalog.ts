@@ -226,7 +226,8 @@ export function createObjects(): RoomObject[] {
       state: { hot: false, until: 0 },
       seats: [],
       actions: [
-        { id: "stove_on", description: "Heat the stove." },
+        { id: "stove_on", description: "Heat the stove. If you are holding raw food, it cooks." },
+        { id: "cook", description: "Cook the food you are holding (eggs, bread, milk). Heats the stove if needed." },
         { id: "stove_off", description: "Turn the stove off." },
       ],
     },

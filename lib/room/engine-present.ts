@@ -8,7 +8,7 @@ import {
   bookIndex,
   currentStation,
   dogPose,
-  plantStage,
+  currentPlantStage,
   pruneDiary,
 } from "./house";
 import { ROOM } from "./layout";
@@ -202,7 +202,7 @@ export function stateText(room: RoomHost, object: RoomObject): string {
       case "radio":
         return room.house.radioOn ? `on, ${currentStation(room.house).name}` : "off";
       case "plant":
-        return `growth stage ${plantStage(room.house.plantWateredAt, Date.now())} of 4`;
+        return `growth stage ${currentPlantStage(room.house, Date.now())} of 4`;
       case "wall": {
         const count = room.house.drawings.length;
         if (!count) return "bare";

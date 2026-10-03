@@ -1,6 +1,6 @@
 import { CHANNELS, outsideView } from "./content";
 import { type RoomHost } from "./engine-host";
-import { plantStage } from "./house";
+import { waterPlantNow } from "./house";
 import { type RoomObject } from "./types";
 
 function bodyId(raw: unknown) {
@@ -86,8 +86,7 @@ function apply(room: RoomHost, object: RoomObject) {
       return message;
     }
     case "plant": {
-      room.house.plantWateredAt = Date.now();
-      const stage = plantStage(room.house.plantWateredAt, Date.now());
+      const { stage } = waterPlantNow(room.house, Date.now());
       object.state.stage = stage;
       const message = `A viewer watered the plant. It is at stage ${stage} of 4.`;
       room.log(message, undefined, "viewer:plant");

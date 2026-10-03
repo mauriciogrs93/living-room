@@ -72,7 +72,14 @@ export function standBefore(x: number, z: number, forward = 0.55): Vec2 {
   return approachOnFloor(side, Math.min(edge, Math.max(backEdge, z)));
 }
 
-export const WALK_SPEED = 2.75;
+/** Physicist 1a: 1.19 plan-units/s ≈ 1.3 m/s cruise (was 2.75, about 2.2× real). */
+export const WALK_SPEED = 1.19;
+/** Physicist 1b: stair segments cost 4× (≈0.45 m/s vertical) in both duration and sampling. */
+const STAIR_COST = 4;
+
+function segmentWeight(a: Vec2, b: Vec2) {
+  return bandOf(a.z).floor !== bandOf(b.z).floor || bandOf(a.z).gap || bandOf(b.z).gap ? STAIR_COST : 1;
+}
 
 type Band = { floor: number; gap: boolean; flight: number };
 
@@ -103,13 +110,22 @@ function dedupe(points: Vec2[]): Vec2[] {
 function climb(points: Vec2[], fromFloor: number, toFloor: number) {
   const steps = 8;
   let floor = fromFloor;
+  // Physicist 1d: between flights, walk on the landing slab inside the guardrail (x = 1.0), not over the stairwell.
+  const landing = (band: { z0: number; z1: number }, up: boolean) => {
+    const a = band.z0 + 0.53;
+    const b = band.z1 - 0.42;
+    const seq = up ? [a, b] : [b, a];
+    points.push({ x: STAIR_X, z: seq[0]! }, { x: 1.0, z: seq[0]! }, { x: 1.0, z: seq[1]! }, { x: STAIR_X, z: seq[1]! });
+  };
   while (floor < toFloor) {
+    if (floor > fromFloor) landing(FLOORS[floor]!, true);
     const z0 = FLOORS[floor]!.z1;
     const z1 = FLOORS[floor + 1]!.z0;
     for (let i = 0; i <= steps; i += 1) points.push({ x: STAIR_X, z: z0 + ((z1 - z0) * i) / steps });
     floor += 1;
   }
   while (floor > toFloor) {
+    if (floor < fromFloor) landing(FLOORS[floor]!, false);
     const z0 = FLOORS[floor]!.z0;
     const z1 = FLOORS[floor - 1]!.z1;
     for (let i = 0; i <= steps; i += 1) points.push({ x: STAIR_X, z: z0 + ((z1 - z0) * i) / steps });
@@ -236,15 +252,13 @@ export function pathLength(points: Vec2[]) {
   for (let i = 1; i < points.length; i += 1) {
     const a = points[i - 1]!;
     const b = points[i]!;
-    let span = Math.hypot(b.x - a.x, b.z - a.z);
-    if (bandOf(a.z).floor !== bandOf(b.z).floor || bandOf(a.z).gap || bandOf(b.z).gap) span *= 1.35;
-    total += span;
+    total += Math.hypot(b.x - a.x, b.z - a.z) * segmentWeight(a, b);
   }
   return total;
 }
 
 export function walkMs(points: Vec2[]) {
-  return Math.min(9000, Math.max(420, (pathLength(points) / WALK_SPEED) * 1000));
+  return Math.min(14000, Math.max(420, (pathLength(points) / WALK_SPEED) * 1000));
 }
 
 /** Ease only the first and last steps so a stair flight stays a steady climb. */
@@ -268,7 +282,7 @@ export function samplePath(points: Vec2[], t: number): { x: number; z: number; y
   for (let i = 1; i < points.length; i += 1) {
     const a = points[i - 1]!;
     const b = points[i]!;
-    total += Math.hypot(b.x - a.x, b.z - a.z);
+    total += Math.hypot(b.x - a.x, b.z - a.z) * segmentWeight(a, b);
     lengths.push(total);
   }
   if (total < 1e-4) return { x: first.x, z: first.z, yaw: 0 };

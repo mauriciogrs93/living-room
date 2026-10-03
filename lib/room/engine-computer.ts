@@ -21,6 +21,10 @@ export function useComputer(room: RoomHost, agent: AgentRecord, object: RoomObje
   if (pending.action === "computer_off") {
     object.state.power = false;
     object.state.mode = "off";
+    // v19: the dark screen keeps no name and no typed line (same as leave).
+    object.state.user = "";
+    object.state.line = "";
+    object.state.source = "";
     agent.status = agent.objectId === object.id ? "sitting at the computer" : "standing by the computer";
     room.log(`${agent.name} turned the computer off.`, agent.id, "computer_off");
     return { ok: true as const, message: "The monitor is dark.", status: 200 };

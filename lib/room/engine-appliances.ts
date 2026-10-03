@@ -75,10 +75,13 @@ export function eatHeld(room: RoomHost, agent: AgentRecord, object: RoomObject) 
     }
     const label = agent.holding.label;
     const now = Date.now();
-    room.idleAt(agent, object);
-    agent.pose = "eating";
+    const seated = Boolean(agent.seatId);
+    if (!seated) {
+      room.idleAt(agent, object);
+      agent.pose = "eating";
+      agent.poseUntil = now + 5000;
+    }
     agent.holding = null;
-    agent.poseUntil = now + 5000;
     const drink = /\b(milk|juice|water|tea|coffee)\b/i.test(label);
     const bare = label.replace(/^(a|an|the)\s+/i, "");
     const phrase = drink ? `drank the ${bare}.` : `ate ${label}.`;
@@ -167,3 +170,31 @@ export function lookOutside(room: RoomHost, agent: AgentRecord, object: RoomObje
     room.log(`${agent.name} looked outside. ${view}`, agent.id, "look_outside");
     return { ok: true, message: view, status: 200 };
   }
+
+/** v19 cooking (Tester bug 2): raw food held at a hot stove becomes a dish. */
+const DISHES: [RegExp, string][] = [
+  [/\beggs?\b/i, "an omelette"],
+  [/\bbread\b/i, "toast"],
+  [/\bmilk\b/i, "warm milk"],
+];
+
+export function cookable(label: string) {
+  return DISHES.some(([rule]) => rule.test(label));
+}
+
+export function cookHeld(room: RoomHost, agent: AgentRecord, object: RoomObject) {
+  if (!agent.holding || agent.holding.kind !== "snack") {
+    room.idleAt(agent, object);
+    return { ok: false, message: "Take something from the fridge first.", status: 400 };
+  }
+  const dish = DISHES.find(([rule]) => rule.test(agent.holding!.label))?.[1];
+  if (!dish) {
+    room.idleAt(agent, object);
+    return { ok: false, message: `${agent.holding.label} doesn't need cooking. You can eat it as it is.`, status: 400 };
+  }
+  room.idleAt(agent, object);
+  object.state.hot = true;
+  object.state.until = Date.now() + 90_000;
+  agent.holding = { kind: "snack", label: dish };
+  return room.finish(agent, "cook", `cooked ${dish}.`, `You cooked ${dish}. Sit at the table and eat it.`, `holding ${dish}`);
+}

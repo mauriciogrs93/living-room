@@ -389,6 +389,7 @@ export function AgentAvatar({
   const eyeL = useRef<Mesh>(null);
   const eyeR = useRef<Mesh>(null);
   const phase = useRef(0);
+  const lastStage = useRef({ x: 0, z: 0 });
   const climb = useRef(stagePose(agent.position.x, agent.position.z).y);
   const smooth = useRef({
     x: agent.position.x,
@@ -424,7 +425,8 @@ export function AgentAvatar({
       const at = motionPoint(agent.motion.path, agent.motion.from, agent.motion.to, agent.motion.startedAt, agent.motion.arriveAt, now);
       x = at.x;
       z = at.z;
-      yaw = at.yaw;
+      // Physicist 1c: on a stair flight plan z runs against stage z, so face the direction of travel.
+      yaw = inStairGap(z) ? Math.PI - at.yaw : at.yaw;
       feet = true;
     }
     const y = feet ? HIPS : agent.position.y;
@@ -433,14 +435,18 @@ export function AgentAvatar({
     s.x += (x - s.x) * follow;
     s.y += (y - s.y) * follow;
     s.z += (z - s.z) * follow;
-    s.yaw = lerpAngle(s.yaw, yaw, Math.min(1, delta * 8));
+    // Physicist 1f: turn at 2.5/s (a 90° turn reads in ~1.2 s instead of snapping).
+    s.yaw = lerpAngle(s.yaw, yaw, Math.min(1, delta * 2.5));
     const walking = Boolean(agent.motion) || agent.pose === "walking";
     const talking = Boolean(agent.speech);
     const sitting = !feet && !agent.lie && (agent.pose === "sitting" || agent.pose === "reading" || agent.pose === "eating" || s.y < HIPS - 0.08);
-    phase.current += delta * (walking ? 9 : talking ? 5 : agent.emote === "dance" ? 8 : 1.6);
+    const staged = stagePose(s.x, s.z);
+    // Physicist 1a(c): drive the gait from distance travelled (0.64 m per step) so feet don't skate.
+    const travelled = Math.hypot(staged.x - lastStage.current.x, staged.z - lastStage.current.z);
+    lastStage.current = { x: staged.x, z: staged.z };
+    phase.current += walking ? Math.min(0.6, (travelled / 0.64) * Math.PI) : delta * (talking ? 5 : agent.emote === "dance" ? 8 : 1.6);
     const bob = walking ? Math.abs(Math.sin(phase.current)) * 0.03 : agent.emote === "dance" ? Math.abs(Math.sin(phase.current)) * 0.06 : 0;
     const jump = agent.emote === "jump" ? Math.abs(Math.sin(phase.current * 3)) * 0.24 : 0;
-    const staged = stagePose(s.x, s.z);
     const stepY = feet ? tread(s.z, staged.y) : staged.y;
     climb.current += (stepY - climb.current) * Math.min(1, delta * 9);
     const lift = climb.current;
@@ -782,4 +788,12 @@ export function AgentAvatar({
       </group>
     </>
   );
+}
+
+/** True while a plan z sits between two floor bands (on a stair flight). */
+function inStairGap(z: number) {
+  for (let i = 0; i < FLOORS.length - 1; i += 1) {
+    if (z > FLOORS[i]!.z1 && z < FLOORS[i + 1]!.z0) return true;
+  }
+  return false;
 }

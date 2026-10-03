@@ -60,12 +60,15 @@ export function worldXZ(
 }
 
 /** Map a walkable x/z into the stacked dollhouse. Mid-stair z values rise between floors. */
+const BACK_CLEAR = 0.12;
+
 export function stagePose(x: number, z: number): { x: number; y: number; z: number } {
   const depth = HOUSE.zFront - HOUSE.zBack;
   for (const floor of FLOORS) {
     if (z >= floor.z0 && z <= floor.z1) {
       const t = (z - floor.z0) / (floor.z1 - floor.z0);
-      return { x, y: floor.y, z: HOUSE.zBack + t * depth };
+      // Physicist 1e: keep the torso off the back wall (inner face at zBack).
+      return { x, y: floor.y, z: HOUSE.zBack + BACK_CLEAR + t * (depth - BACK_CLEAR) };
     }
   }
   for (let i = 0; i < FLOORS.length - 1; i += 1) {
@@ -76,7 +79,7 @@ export function stagePose(x: number, z: number): { x: number; y: number; z: numb
       return {
         x: x + (STAIR_X - 0.12 - x) * Math.sin(Math.PI * t),
         y: below.y + (above.y - below.y) * t,
-        z: HOUSE.zFront + (HOUSE.zBack - HOUSE.zFront) * t,
+        z: HOUSE.zFront + (HOUSE.zBack + BACK_CLEAR - HOUSE.zFront) * t,
       };
     }
   }
@@ -102,7 +105,8 @@ export const tv = {
 export const lamp = {
   position: { x: 0.22, y: 0, z: 10.6 } as Vec3,
   rotation: 0,
-  approach: { x: -0.48, z: 10.48 } as Vec2,
+  // Physicist #6: the old approach (−0.48, 10.48) stood inside the bed.
+  approach: { x: 0.3, z: 10.05 } as Vec2,
 };
 
 export const bookshelf = {

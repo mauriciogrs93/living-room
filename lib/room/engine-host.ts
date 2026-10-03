@@ -64,6 +64,7 @@ export const VERBS: Record<string, string> = {
   fridge_close: "close the fridge",
   take: "take food",
   eat: "eat",
+  cook: "cook",
   radio_on: "turn the radio on",
   radio_off: "turn the radio off",
   radio_next: "change the station",
