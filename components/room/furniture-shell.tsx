@@ -121,6 +121,17 @@ function DaylightPatches({ lift }: { lift: number | null }) {
     return g;
   }, [lift]);
   useEffect(() => () => geo.dispose(), [geo]);
+  // draft 6: the sun patch follows the hour and the weather (bright and warm at midday, amber at golden hour,
+  // faint under cloud, almost gone in rain or fog) so passing weather reads on the floor, not just in the window
+  const { hour, sky } = useAtmosphere();
+  useEffect(() => {
+    const golden = hour >= 16;
+    const morning = hour < 10;
+    const peak = golden ? 0.34 : morning ? 0.3 : 0.36;
+    const k = sky === "clouds" ? 0.35 : sky === "rain" ? 0.1 : sky === "fog" ? 0.12 : sky === "snow" ? 0.25 : 1;
+    DAYLIGHT.uniforms.uPeak.value = peak * k;
+    DAYLIGHT.uniforms.uColor.value.set(golden ? "#FFB878" : morning ? "#FFE9CC" : "#FFE4BC");
+  }, [hour, sky]);
   return <mesh name="daylight" geometry={geo} material={DAYLIGHT} renderOrder={1} raycast={() => null} userData={{ noContact: true, skipContact: true }} />;
 }
 

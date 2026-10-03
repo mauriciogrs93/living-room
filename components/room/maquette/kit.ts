@@ -34,8 +34,8 @@ function createMats(night: boolean) {
     terracotta: std(PAL.terracotta, 0.95),
     linen: linen(PAL.linen),
     linenDeep: linen(PAL.linenDeep),
-    stone: std("#EEEAE3", 0.82),
-    enamel: std("#EFECE6", 0.82),
+    stone: std("#E6E0D6", 0.82),
+    enamel: std("#E8E3DA", 0.82),
     foliage: std(PAL.foliage, 0.9),
     graphite: std("#33363B", 0.8),
     /** hairline grooves: plank seams, panel joints, slab laminations (a shade under the screed, never black) */

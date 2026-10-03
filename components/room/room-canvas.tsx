@@ -143,16 +143,41 @@ const _dir = new THREE.Vector3();
 const _c = new THREE.Vector3();
 const _q = new THREE.Vector3();
 
+/**
+ * Draft 7 camera options (?cam=a|b|c|d|e). v20 default = e. The single-floor tap-in camera keeps the old angle (fitCamera).
+ * fov: lens (smaller = longer lens, flatter perspective); yaw/pitch in degrees; level: keep verticals straight
+ * (two-point perspective: the camera looks level and the frame is lens-shifted); fill: share of the free area
+ * the house may use (smaller = more air around it); ground: soft ground plane under the plinth.
+ */
+type CamPreset = { fov: number; yawD: number; yawP: number; pitch: number; level: boolean; fill: number; ground: boolean };
+const CAMS: Record<string, CamPreset> = {
+  a: { fov: 15, yawD: 27, yawP: 25, pitch: 20, level: false, fill: 0.94, ground: false },
+  b: { fov: 18, yawD: 11, yawP: 9, pitch: 14, level: false, fill: 0.95, ground: false },
+  c: { fov: 24, yawD: 30, yawP: 28, pitch: 9, level: true, fill: 0.93, ground: false },
+  d: { fov: 16, yawD: 24, yawP: 22, pitch: 16, level: true, fill: 0.8, ground: true },
+  // e = recommended hybrid: C's eye-level plumb camera standing on D's ground plane, a touch more air than C
+  e: { fov: 22, yawD: 29, yawP: 27, pitch: 11, level: true, fill: 0.89, ground: true },
+};
+/** v20: angle E is the default whole-house view. ?cam=a|b|c|d|e still picks a preset; ?cam=v19 shows the old near-isometric view. */
+export const DEFAULT_CAM = "e";
+export function camPreset(): CamPreset | null {
+  const key = typeof window === "undefined" ? DEFAULT_CAM : (new URLSearchParams(window.location.search).get("cam") ?? DEFAULT_CAM);
+  if (key === "v19") return null;
+  return CAMS[key] ?? CAMS[DEFAULT_CAM];
+}
+
 function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number, floor: FloorName | null) {
   const phone = W < 800;
-  const yaw = THREE.MathUtils.degToRad(phone ? MAQUETTE.yawPhone : MAQUETTE.yawDesktop);
+  const cam = floor ? null : camPreset();
+  const yaw = THREE.MathUtils.degToRad(cam ? (phone ? cam.yawP : cam.yawD) : phone ? MAQUETTE.yawPhone : MAQUETTE.yawDesktop);
   // short landscape phones: a slightly lower eye flattens the plinth's depth so the tall house can use the full height
   const short = W > H && H < 500;
-  const pitch = THREE.MathUtils.degToRad(MAQUETTE.pitch - (short ? 7 : 0));
+  const pitch = THREE.MathUtils.degToRad((cam ? cam.pitch : MAQUETTE.pitch) - (short ? 7 : 0));
+  const aimLevel = (at: THREE.Vector3) => (cam?.level ? camera.lookAt(at.x, camera.position.y, at.z) : camera.lookAt(at));
   const box = viewBox(floor);
   box.getCenter(_c);
   const r = freeRect(W, H);
-  camera.fov = MAQUETTE.fov;
+  camera.fov = cam ? cam.fov : MAQUETTE.fov;
   camera.near = 0.5;
   camera.far = 120;
   camera.up.set(0, 1, 0);
@@ -164,7 +189,7 @@ function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number, floor:
   const shift = new THREE.Vector2();
   for (let it = 0; it < 8; it += 1) {
     camera.position.copy(_c).addScaledVector(_dir, dist);
-    camera.lookAt(_c);
+    aimLevel(_c);
     camera.clearViewOffset();
     camera.aspect = r.w / r.h;
     camera.updateProjectionMatrix();
@@ -185,10 +210,10 @@ function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number, floor:
     const cropX = floor && W < 800 && !LINEUP_BOX ? 0.62 : 1;
     const need = Math.max(((mxx - mnx) / 2) * cropX, (mxy - mny) / 2);
     shift.set((mxx + mnx) / 2, (mxy + mny) / 2);
-    dist *= need / (floor ? 0.995 : 0.988);
+    dist *= need / (floor ? 0.995 : cam ? cam.fill : 0.988);
   }
   camera.position.copy(_c).addScaledVector(_dir, dist);
-  camera.lookAt(_c);
+  aimLevel(_c);
   camera.updateMatrixWorld();
   const ox = -r.x + (shift.x * r.w) / 2;
   let oy = -r.y - (shift.y * r.h) / 2;
@@ -539,25 +564,82 @@ function GlWatch({ onLost }: { onLost: () => void }) {
   return null;
 }
 
-function Picture({ night }: { night: boolean }) {
+/**
+ * Draft 6 light grade: one palette per time of day (morning, midday, golden hour, evening, night), dimmed and
+ * cooled by the weather. Lower exposure and fill than draft 5 so the key light and its shadows do the modelling,
+ * plus a toned paper behind the house so the white shell no longer melts into the page.
+ */
+export type Grade = { exposure: number; sun: string; sunI: number; sky: string; ground: string; hemiI: number; fill: string; fillI: number; paper: string | null; fog: string | null; shadowR: number; drift: number };
+export function lightGrade(hour: number, sky: string, night: boolean): Grade {
+  let g: Grade;
+  if (night) g = { exposure: 0.9, sun: "#AFC0DD", sunI: 0.45 / Math.PI, sky: "#6F7F9C", ground: "#5A4A3C", hemiI: 0.36, fill: "#6A7A96", fillI: 0.09, paper: null, fog: null, shadowR: 6, drift: 0 };
+  else if (hour < 10) g = { exposure: 0.86, sun: "#FFE3C4", sunI: 1.5, sky: "#D3DEEE", ground: "#B9AE9F", hemiI: 0.25, fill: "#D6E0F0", fillI: 0.16, paper: "#E3E2DE", fog: null, shadowR: 4.5, drift: 0 };
+  else if (hour < 16) g = { exposure: 0.84, sun: "#FFEEDA", sunI: 1.8, sky: "#D9E2F0", ground: "#BFB3A2", hemiI: 0.24, fill: "#DCE4F2", fillI: 0.15, paper: "#E2DDD4", fog: null, shadowR: 4, drift: 0 };
+  else if (hour < 19) g = { exposure: 0.86, sun: "#FFB676", sunI: 1.6, sky: "#E2CDB8", ground: "#A98F75", hemiI: 0.2, fill: "#C9B9C9", fillI: 0.12, paper: "#E4D7C6", fog: null, shadowR: 4.5, drift: 0 };
+  else g = { exposure: 0.9, sun: "#B9A6C8", sunI: 0.75, sky: "#7F8AAB", ground: "#5E5047", hemiI: 0.34, fill: "#8E9AB8", fillI: 0.12, paper: "#CFCFD3", fog: null, shadowR: 5.5, drift: 0 };
+  if (night) return g;
+  const cool = (a: string, b: string, t: number) => "#" + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
+  if (sky === "clouds") g = { ...g, sun: cool(g.sun, "#E9ECEF", 0.6), sunI: g.sunI * 0.5, hemiI: g.hemiI * 1.35, sky: cool(g.sky, "#D9DCDF", 0.6), shadowR: 9, drift: 0.28, paper: g.paper && cool(g.paper, "#D9D9D7", 0.5), exposure: g.exposure - 0.02 };
+  if (sky === "rain") g = { ...g, sun: cool(g.sun, "#C9D3E0", 0.75), sunI: g.sunI * 0.32, hemiI: g.hemiI * 1.3, sky: cool(g.sky, "#AEB8C6", 0.7), ground: cool(g.ground, "#8E8E8C", 0.5), fill: "#B8C4D4", shadowR: 11, drift: 0.12, paper: g.paper && cool(g.paper, "#C9CDD2", 0.75), exposure: g.exposure - 0.04 };
+  if (sky === "fog") g = { ...g, sun: cool(g.sun, "#F0F0EE", 0.7), sunI: g.sunI * 0.35, hemiI: g.hemiI * 1.55, sky: "#E6E6E3", shadowR: 12, paper: g.paper && cool(g.paper, "#DEDDDA", 0.8), fog: g.paper && cool(g.paper, "#E4E3E0", 0.85) };
+  if (sky === "snow") g = { ...g, sun: cool(g.sun, "#EEF2F7", 0.7), sunI: g.sunI * 0.45, hemiI: g.hemiI * 1.45, sky: "#E8EDF3", shadowR: 10, paper: g.paper && cool(g.paper, "#E6E9ED", 0.7) };
+  return g;
+}
+
+/**
+ * Draft 7 option D: a soft ground the plinth stands on, fading into the paper (one draw call; no sun-shadow receive, the contact shadow grounds it).
+ * Keep receiveShadow OFF: with it on, the stair throws a striped, detached shadow across the ground (Designer, v20).
+ */
+function GroundPlane({ grade }: { grade: Grade }) {
+  const mat = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.95, transparent: true, depthWrite: false });
+    m.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec2 vGp;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvGp = position.xy;");
+      sh.fragmentShader = sh.fragmentShader
+        .replace("#include <common>", "#include <common>\nvarying vec2 vGp;")
+        .replace("#include <alphamap_fragment>", "#include <alphamap_fragment>\ndiffuseColor.a *= 1.0 - smoothstep(3.2, 11.0, length(vGp));");
+    };
+    return m;
+  }, []);
+  useEffect(() => {
+    mat.color.set(grade.paper ?? "#2B2D31").offsetHSL(0, -0.02, grade.paper ? -0.07 : 0.03);
+  }, [mat, grade.paper]);
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.1, -0.362, 0.6]} material={mat} renderOrder={-1} raycast={() => null} userData={{ noContact: true, skipContact: true }}>
+      <circleGeometry args={[11, 48]} />
+    </mesh>
+  );
+}
+
+function Picture({ grade }: { grade: Grade }) {
   const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  const camera = useThree((state) => state.camera);
   useLayoutEffect(() => {
     gl.shadowMap.enabled = true;
     gl.shadowMap.type = THREE.PCFShadowMap;
     gl.outputColorSpace = THREE.SRGBColorSpace;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
-    gl.toneMappingExposure = night ? 0.92 : 1.0;
-    gl.setClearColor(0x000000, 0);
-  }, [gl, night]);
+    gl.toneMappingExposure = grade.exposure;
+    if (grade.paper) gl.setClearColor(new THREE.Color(grade.paper), 1);
+    else gl.setClearColor(0x000000, 0);
+    // fog: a depth haze from the front of the house to the back wall (no draw calls)
+    if (grade.fog) {
+      const d = camera.position.distanceTo(new THREE.Vector3(0, 3.6, 0.9));
+      scene.fog = new THREE.Fog(new THREE.Color(grade.fog), d - 2, d + 22);
+    } else scene.fog = null;
+  }, [gl, scene, camera, grade]);
   return null;
 }
 
 /** Warm low key ~39 deg left of the camera axis, cool shadowless fill from the camera side, sky/ground hemisphere. */
-function LightRig({ night, phone, mapSize }: { night: boolean; phone: boolean; mapSize: number }) {
+function LightRig({ night, phone, mapSize, grade }: { night: boolean; phone: boolean; mapSize: number; grade: Grade }) {
+  const hemi = useRef<THREE.HemisphereLight>(null);
   const sun = useRef<THREE.DirectionalLight>(null);
   const scene = useThree((state) => state.scene);
   const target = useMemo(() => new THREE.Object3D(), []);
-  const camYaw = phone ? MAQUETTE.yawPhone : MAQUETTE.yawDesktop;
+  const cp = camPreset();
+  const camYaw = cp ? (phone ? cp.yawP : cp.yawD) : phone ? MAQUETTE.yawPhone : MAQUETTE.yawDesktop;
   const az = THREE.MathUtils.degToRad(MAQUETTE.sunLeadDeg - camYaw);
   const el = THREE.MathUtils.degToRad(MAQUETTE.sunElevationDeg);
   target.position.set(0, 3.6, 0.9);
@@ -576,10 +658,18 @@ function LightRig({ night, phone, mapSize }: { night: boolean; phone: boolean; m
   useLayoutEffect(() => {
     const light = sun.current;
     if (!light) return;
-    light.shadow.radius = night ? 6 : 4.5;
+    light.shadow.radius = grade.shadowR;
     light.shadow.blurSamples = 16;
     light.shadow.needsUpdate = true;
-  }, [night]);
+  }, [night, grade.shadowR]);
+  // passing clouds: the key light breathes slowly (a cloud crossing the sun); intensity only, so no shadow redraw
+  useFrame(({ clock }) => {
+    const light = sun.current;
+    if (!light || !grade.drift) return;
+    const t = clock.elapsedTime;
+    const c = 0.5 + 0.5 * Math.sin(t * 0.21) * Math.sin(t * 0.077 + 1.3);
+    light.intensity = grade.sunI * Math.PI * (1 - grade.drift * c);
+  });
   // the shadow camera also sees the shadow proxies (casting parts only; tiny props stay out of the map)
   useEffect(() => {
     sun.current?.shadow.camera.layers.enable(SHADOW_LAYER);
@@ -590,8 +680,8 @@ function LightRig({ night, phone, mapSize }: { night: boolean; phone: boolean; m
       <directionalLight
         ref={sun}
         position={pos}
-        color={night ? "#AFC0DD" : "#FFDDB5"}
-        intensity={night ? 0.45 : 1.6 * L}
+        color={grade.sun}
+        intensity={grade.sunI * L}
         castShadow
         shadow-mapSize-width={mapSize}
         shadow-mapSize-height={mapSize}
@@ -604,8 +694,8 @@ function LightRig({ night, phone, mapSize }: { night: boolean; phone: boolean; m
         shadow-bias={-0.0003}
         shadow-normalBias={0.02}
       />
-      <hemisphereLight args={[night ? "#6F7F9C" : "#DDE6F5", night ? "#5A4A3C" : "#C4B8A8", (night ? 0.4 : 0.4) * L]} />
-      <directionalLight position={[12, 7, 18]} color={night ? "#6A7A96" : "#DCE4F2"} intensity={(night ? 0.1 : 0.32) * L} />
+      <hemisphereLight ref={hemi} args={[grade.sky, grade.ground, grade.hemiI * L]} />
+      <directionalLight position={[12, 7, 18]} color={grade.fill} intensity={grade.fillI * L} />
     </>
   );
 }
@@ -849,9 +939,9 @@ function ContactShadows({ bakeKey, night, lift }: { bakeKey: string; night: bool
         }
       });
       const fresh = [
-        bakeContact(gl, scene, FLOORS[0].y, GEO.wallInX, GEO.edgeR, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.74, blur: 2.4 }),
-        bakeContact(gl, scene, FLOORS[1].y, GEO.wallInX, GEO.cut, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.74, blur: 2.4 }),
-        bakeContact(gl, scene, FLOORS[2].y, GEO.wallInX, GEO.cut, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.74, blur: 2.4 }),
+        bakeContact(gl, scene, FLOORS[0].y, GEO.wallInX, GEO.edgeR, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.86, blur: 2.4 }),
+        bakeContact(gl, scene, FLOORS[1].y, GEO.wallInX, GEO.cut, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.86, blur: 2.4 }),
+        bakeContact(gl, scene, FLOORS[2].y, GEO.wallInX, GEO.cut, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.86, blur: 2.4 }),
         bakeContact(gl, scene, -0.26, GEO.wallOutX - 1.2, GEO.edgeR + 1.2, GEO.wallOutZ - 1.2, FRONT + 1.2, {
           far: 0.5,
           res: 256,
@@ -916,7 +1006,8 @@ export function RoomCanvas({
   onTapRadio?: () => void;
   onTapDog?: () => void;
 }) {
-  const { night } = useAtmosphere();
+  const { night, hour, sky } = useAtmosphere();
+  const grade = useMemo(() => lightGrade(hour, sky, night), [hour, sky, night]);
   const skew = snapshot.serverTime - snapshot.receivedAt;
   const lit = (id: string) => snapshot.objects.some((object) => object.id === id && object.state.on === true);
   const kettle = snapshot.objects.some((object) => object.id === "kettle" && object.state.heating === true);
@@ -985,8 +1076,8 @@ export function RoomCanvas({
                   if (mini) setFloor(null);
                 }}
               >
-                <Picture night={night} />
-                <LightRig night={night} phone={phone} mapSize={budget.shadow} />
+                <Picture grade={grade} />
+                <LightRig night={night} phone={phone} mapSize={budget.shadow} grade={grade} />
                 <HouseMaterials night={night}>
                   <SceneLiveProvider value={live}>
                     <group
@@ -1019,6 +1110,7 @@ export function RoomCanvas({
                     <AgentAvatar key={agent.id} agent={agent} skew={skew} focused={agent.id === selectedId} onSelect={onSelectAgent} />
                   ))}
                 <ContactShadows bakeKey={bakeKey} night={night} lift={lift} />
+                {camPreset()?.ground && <GroundPlane grade={grade} />}
                 <LabelSpacing />
                 <HudAnchors snapshot={snapshot} />
                 {hero != null ? <HeroCamera who={hero} agents={snapshot.agents} /> : <FixedCamera floor={floor} />}
