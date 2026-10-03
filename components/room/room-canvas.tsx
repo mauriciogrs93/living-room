@@ -587,22 +587,24 @@ export function lightGrade(hour: number, sky: string, night: boolean): Grade {
 }
 
 /**
- * Draft 7 option D: a soft ground the plinth stands on, fading into the paper (one draw call; no sun-shadow receive, the contact shadow grounds it).
+ * Draft 7 option D: a soft ground the plinth stands on, fading into the paper (one draw call, unlit MeshBasicMaterial; no sun-shadow receive, the contact shadow grounds it).
  * Keep receiveShadow OFF: with it on, the stair throws a striped, detached shadow across the ground (Designer, v20).
  */
 function GroundPlane({ grade }: { grade: Grade }) {
   const mat = useMemo(() => {
-    const m = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.95, transparent: true, depthWrite: false });
+    // v20 (Designer BLOCK fix): unlit, so the amber golden-hour key can't paint an orange disc. toneMapped off so the
+    // ground is the page paper itself (the clear colour is not tone-mapped either), just 5% darker, at every hour/weather.
+    const m = new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, depthWrite: false, toneMapped: false });
     m.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec2 vGp;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvGp = position.xy;");
       sh.fragmentShader = sh.fragmentShader
         .replace("#include <common>", "#include <common>\nvarying vec2 vGp;")
-        .replace("#include <alphamap_fragment>", "#include <alphamap_fragment>\ndiffuseColor.a *= 1.0 - smoothstep(3.2, 11.0, length(vGp));");
+        .replace("#include <alphamap_fragment>", "#include <alphamap_fragment>\ndiffuseColor.a *= 1.0 - smoothstep(2.4, 8.0, length(vGp));");
     };
     return m;
   }, []);
   useEffect(() => {
-    mat.color.set(grade.paper ?? "#2B2D31").offsetHSL(0, -0.02, grade.paper ? -0.07 : 0.03);
+    mat.color.set(grade.paper ?? "#2B2D31").offsetHSL(0, -0.02, grade.paper ? -0.05 : 0.03);
   }, [mat, grade.paper]);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.1, -0.362, 0.6]} material={mat} renderOrder={-1} raycast={() => null} userData={{ noContact: true, skipContact: true }}>

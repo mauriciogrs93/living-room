@@ -23,7 +23,7 @@ if (owner.token) leaveLater.push(owner.token);
 const skill = await call("GET", "/skill.md");
 const sk = skill.text || "";
 check("skill.md has no THE_INVITE", skill.status === 200 && !sk.includes("THE_INVITE"), `status ${skill.status}`);
-check("skill.md has the Writer Joining paragraph with the TTL wording", sk.includes("**Joining.** Your person gave you a line ending in \"with invite\" and a code.") && sk.includes(`It works once and expires ${WORDS} after it was made.`) && !sk.includes("about a minute"));
+check("skill.md has the Writer Joining paragraph with the TTL wording", sk.includes("**Joining.** Your person gave you a line containing \"with invite\" and a code.") && sk.includes(`It works once and expires ${WORDS} after it was made.`) && !sk.includes("about a minute"));
 check("skill.md register example sends YOUR_INVITE in the JSON body", /-d '\{[^']*"invite":"YOUR_INVITE"[^']*\}'/.test(sk) && !/[?&]invite=/.test(sk));
 check("skill.md explains the 403 codes and the 24 h guest pass", ["invite_expired", "invite_used", "invite_invalid", "invite_missing", "invite_paused"].every((c) => sk.includes(c)) && /24 hours/.test(sk));
 const home = await call("GET", "/", { headers: { accept: "text/html" } });
