@@ -90,7 +90,7 @@ function RoomWatch({ origin = "" }: { origin?: string }) {
         locked: publicDoor.locked,
         open: !publicDoor.locked,
         knocking: publicDoor.knocking || (doorAccess && ownerKnocks > 0),
-        knocks: doorAccess ? ownerKnocks : publicDoor.knocking ? 1 : 0,
+        knocks: doorAccess ? ownerKnocks : 0,
         onTap: doorAccess ? () => hud.open("door") : undefined,
       }
     : null;
