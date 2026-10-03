@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { MAX_AGENTS, cleanMessage, type RoomHost } from "./engine-host";
 import { SPAWNS } from "./layout";
 import { peekOwner, rotateToken } from "./mailbox";
@@ -108,7 +108,17 @@ export function expireKnocks(room: RoomHost, now = Date.now()) {
 
 export function planEntry(
   room: RoomHost,
-  input: { agentId: string; name: string; emoji: string; color: string; invite: string; ip: string; alreadyInside: boolean },
+  input: {
+    agentId: string;
+    name: string;
+    emoji: string;
+    color: string;
+    invite: string;
+    ip: string;
+    alreadyInside: boolean;
+    seedId?: string;
+    seedSecret?: string;
+  },
 ): EntryPlan {
   ensureMigrated(room);
   const id = input.agentId;
@@ -437,20 +447,28 @@ function isTesterRecord(agent: AgentRecord) {
   return hasCredential(agent) && isTesterShape(agent);
 }
 
-function claimableSeed(
-  room: RoomHost,
-  input: { agentId: string; name: string; emoji: string; color: string },
-): DoorPerson | null {
-  for (const person of room.door.trusted) {
-    if (person.ownerKey) continue;
-    if (input.agentId && person.id === input.agentId) return person;
-    if (person.id === TESTER_AGENT_ID && isTesterShape(input)) return person;
-    if (person.id === POPPY_SEED_ID && input.name.trim().toLowerCase() === "poppy") return person;
-  }
-  return null;
+/**
+ * An unclaimed seed (trusted row with no owner key) can be claimed only with the server secret
+ * SEED_CLAIM_SECRET plus the seed's id. Name, emoji, colour and agentId never claim a seed.
+ * With SEED_CLAIM_SECRET unset, seed claims are off.
+ */
+function claimableSeed(room: RoomHost, input: { seedId?: string; seedSecret?: string }): DoorPerson | null {
+  const seedId = typeof input.seedId === "string" ? input.seedId.trim() : "";
+  if (!seedId || !seedSecretMatches(input.seedSecret)) return null;
+  return room.door.trusted.find((person) => !person.ownerKey && person.id === seedId) ?? null;
 }
 
-/** Recognise Poppy and Tester on the next register, even if this save has neither of them. */
+function seedSecretMatches(raw: unknown) {
+  const expect = (process.env.SEED_CLAIM_SECRET ?? "").trim();
+  if (!expect || typeof raw !== "string" || !raw) return false;
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(raw.trim()), digest(expect));
+}
+
+/**
+ * Keep placeholder rows for Poppy and Tester. They grant nothing by name, emoji or colour:
+ * claimableSeed only accepts SEED_CLAIM_SECRET.
+ */
 function ensureSeeds(room: RoomHost) {
   const trusted = room.door.trusted;
   const agents = [...room.agents.values()];

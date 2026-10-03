@@ -25,6 +25,8 @@ type RegisterInput = {
   invite?: unknown;
   note?: unknown;
   ip?: unknown;
+  seedId?: unknown;
+  seedSecret?: unknown;
 };
 
 type MailChange = { ownerKey: string; data: Mailbox; dropTokens: string[] };

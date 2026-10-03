@@ -32,6 +32,8 @@ async function post(req: Request) {
       invite: raw.invite,
       note: raw.note,
       ip: clientIp(req),
+      seedId: raw.seedId,
+      seedSecret: raw.seedSecret,
     });
     if (!result.ok) return json({ ok: false, error: result.error, code: result.code, hint: result.hint }, result.status);
     const ownerKey = "ownerKey" in result ? result.ownerKey : "";

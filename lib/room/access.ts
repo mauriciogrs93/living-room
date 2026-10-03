@@ -100,6 +100,8 @@ type RegisterInput = {
   invite?: unknown;
   note?: unknown;
   ip?: unknown;
+  seedId?: unknown;
+  seedSecret?: unknown;
 };
 type RegisterResult = ReturnType<RoomEngine["register"]>;
 type LookResult = ReturnType<RoomEngine["look"]>;

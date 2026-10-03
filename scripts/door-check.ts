@@ -304,10 +304,40 @@ function testAbsentSeedThenClaim() {
   assert.equal(locked.doorView(ada.ok ? ada.ownerKey : "").ok, true);
 }
 
+function testSeedNeedsSecret() {
+  const prior = process.env.SEED_CLAIM_SECRET;
+  delete process.env.SEED_CLAIM_SECRET;
+  const { engine, owner } = founder("Fern", "🌿");
+  assert.equal(owner.ok, true);
+  const saved = engine.serialize();
+  const next = new RoomEngine();
+  next.hydrate(saved);
+  assert.equal(next.door.trusted.some((person) => person.id === "agt_poppy_seed" && person.ownerKey === ""), true);
+  assert.equal(next.door.trusted.some((person) => person.id === "agt_b71b2b01" && person.ownerKey === ""), true);
+  const poppy = next.register({ name: "Poppy", emoji: "🌸", ip: "seed-poppy" });
+  assert.equal(waiting(poppy), true, "the Poppy name alone does not claim the seed");
+  const tester = next.register({ name: "Tester", emoji: "🧪", color: "#3d8be0", ip: "seed-tester" });
+  assert.equal(waiting(tester), true, "Tester's name, icon and colour alone do not claim the seed");
+  const noSecret = next.register({ name: "Seedless", seedId: "agt_poppy_seed", seedSecret: "anything", ip: "seed-off" });
+  assert.equal(waiting(noSecret), true, "with SEED_CLAIM_SECRET unset, seed claims are off");
+  process.env.SEED_CLAIM_SECRET = "s3cret-for-test";
+  const wrong = next.register({ name: "Wrongkey", seedId: "agt_poppy_seed", seedSecret: "nope", ip: "seed-wrong" });
+  assert.equal(waiting(wrong), true, "a wrong secret does not claim the seed");
+  const claim = next.register({ name: "Poppy Real", seedId: "agt_poppy_seed", seedSecret: "s3cret-for-test", ip: "seed-ok" });
+  assert.equal(admitted(claim), true, "the server secret claims the seed");
+  assert.equal(next.door.trusted.some((person) => person.id === "agt_poppy_seed"), false);
+  assert.equal(next.door.trusted.some((person) => claim.ok && person.id === claim.agentId && person.ownerKey === claim.ownerKey), true);
+  const back = next.register({ name: "Fern", emoji: "🌿", ownerKey: owner.ok ? owner.ownerKey : "", ip: "owner" });
+  assert.equal(back.ok, true, "the existing owner key still works");
+  if (prior === undefined) delete process.env.SEED_CLAIM_SECRET;
+  else process.env.SEED_CLAIM_SECRET = prior;
+}
+
 testKnockAndSpoof();
 testLetInOnceAlwaysDecline();
 testExpireBlockInviteOpen();
 testLimitsAndPrivacy();
 testMigration();
 testAbsentSeedThenClaim();
+testSeedNeedsSecret();
 console.log("door-check ok");

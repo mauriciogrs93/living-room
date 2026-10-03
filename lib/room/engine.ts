@@ -178,6 +178,8 @@ export class RoomEngine {
     invite?: unknown;
     note?: unknown;
     ip?: unknown;
+    seedId?: unknown;
+    seedSecret?: unknown;
   }): import("./types").ActErr | {
     ok: true;
     message: string;

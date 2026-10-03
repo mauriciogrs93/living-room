@@ -52,6 +52,8 @@ export function register(room: RoomHost, input: {
     invite?: unknown;
     note?: unknown;
     ip?: unknown;
+    seedId?: unknown;
+    seedSecret?: unknown;
   }): ActErr | {
     ok: true;
     message: string;
@@ -127,7 +129,9 @@ export function register(room: RoomHost, input: {
       emoji = trimmed;
     }
 
-    const plan = planEntry(room, { agentId: returningId, name, emoji, color, invite, ip, alreadyInside: alreadyHere });
+    const seedId = typeof input.seedId === "string" ? input.seedId : "";
+    const seedSecret = typeof input.seedSecret === "string" ? input.seedSecret : "";
+    const plan = planEntry(room, { agentId: returningId, name, emoji, color, invite, ip, alreadyInside: alreadyHere, seedId, seedSecret });
     if (plan.kind === "blocked") {
       return {
         ok: false,
@@ -158,9 +162,9 @@ export function register(room: RoomHost, input: {
       (plan.kind === "enter" && plan.trust) ||
       inviteMatches(room, invite) ||
       Boolean(returningId && isTrusted(room, returningId));
-    const seedId = plan.kind === "enter" ? plan.seedId : "";
+    const claimedSeed = plan.kind === "enter" ? plan.seedId : "";
     const seal = (id: string, ownerKey: string) => {
-      if (seedId && seedId !== id) room.door.trusted = room.door.trusted.filter((person) => person.id !== seedId);
+      if (claimedSeed && claimedSeed !== id) room.door.trusted = room.door.trusted.filter((person) => person.id !== claimedSeed);
       forgetId(room, id);
       if (trust) grantTrust(room, { id, name, color, emoji, ownerKey });
     };
