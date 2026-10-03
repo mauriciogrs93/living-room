@@ -10,15 +10,40 @@ export type Headline = {
   publishedAt: number;
 };
 
-const SOURCES = new Set(["BBC", "NPR", "Al Jazeera", "Guardian", "DW", "Living Room"]);
+const SOURCES = new Set(["Guardian", "NPR", "ScienceDaily", "NASA", "Positive News", "Living Room"]);
 
+/** v19 gentle feed (writer-kb/v19-copy/headline-feed.md, recommended mix). */
 const FEEDS: [string, string][] = [
-  ["BBC", "https://feeds.bbci.co.uk/news/world/rss.xml"],
-  ["NPR", "https://feeds.npr.org/1004/rss.xml"],
-  ["Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"],
-  ["Guardian", "https://www.theguardian.com/world/rss"],
-  ["DW", "https://rss.dw.com/rdf/rss-en-world"],
+  ["Guardian", "https://www.theguardian.com/science/rss"],
+  ["NPR", "https://feeds.npr.org/1007/rss.xml"],
+  ["ScienceDaily", "https://www.sciencedaily.com/rss/top/science.xml"],
+  ["NASA", "https://www.nasa.gov/feed/"],
+  ["Guardian", "https://www.theguardian.com/food/rss"],
+  ["Positive News", "https://www.positive.news/feed/"],
 ];
+
+/** Skip list from the Writer's policy: violence, war, disasters, partisan politics, scandal and health scares. */
+const SKIP =
+  /\b(attack\w*|kill\w*|murder\w*|shoot\w*|stab\w*|assault\w*|axe|prison\w*|execut\w*|police|arrest\w*|trial|sentenced|abuse\w*|rape\w*|terror\w*|war|wars|strikes?|missiles?|drones?|bomb\w*|troops|soldiers?|militia|warlord|invasion|ceasefire|hostages?|gaza|ukraine|russia\w*|crash\w*|missing|dead|death\w*|died|dies|injur\w*|earthquake\w*|flood\w*|wildfire\w*|hurricane\w*|collaps\w*|election\w*|vote\w*|candidate\w*|president\w*|prime minister|minister\w*|parliament\w*|congress\w*|senate\w*|party|trump\w*|far-right|far-left|protest\w*|sanction\w*|interference|accused|plagiarism|scandal\w*|hospital\w*|outbreak\w*|horoscope\w*)\b/i;
+
+/** Writer's display rules: no questions, no leading quote fragment, no section suffix, 72 chars at a word boundary. */
+export function gentleTitle(raw: string): string | null {
+  let title = raw.trim();
+  if (!title || title.endsWith("?") || SKIP.test(title)) return null;
+  title = title.replace(/^['‘"“][^'’"”]{1,40}['’"”]\s+/, "");
+  title = title.split(" | ")[0]!.replace(/\s+[–-]\s+recipe$/i, "").trim();
+  title = title.replace(/!+/g, "").replace(/\p{Extended_Pictographic}/gu, "").trim();
+  const words = title.split(/\s+/);
+  const caps = words.filter((word) => /^[A-Z][a-z]/.test(word)).length;
+  if (words.length > 3 && caps > words.length / 2) {
+    title = words.map((word, index) => (index === 0 || !/^[A-Z][a-z]+$/.test(word) ? word : word.toLowerCase())).join(" ");
+  }
+  if (title.length > 72) {
+    const cut = title.slice(0, 72);
+    title = `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40)).replace(/[\s,;:.-]+$/, "")}…`;
+  }
+  return title.length >= 12 ? title : null;
+}
 
 const RULES: [Region, RegExp][] = [
   ["TECH", /\b(tech|software|silicon|chip|startup|cyber|artificial intelligence|\bai\b)\b/i],
@@ -48,7 +73,10 @@ export async function gatherNews(): Promise<Headline[]> {
   const batches = await Promise.all(FEEDS.map(([source, url]) => pull(source, url)));
   const merged = batches.flat().sort((a, b) => b.publishedAt - a.publishedAt);
   const kept: Headline[] = [];
-  for (const item of merged) {
+  for (const raw of merged) {
+    const title = gentleTitle(raw.title);
+    if (!title || (raw.summary && SKIP.test(raw.summary))) continue;
+    const item = { ...raw, title };
     if (kept.some((other) => near(other.title, item.title))) continue;
     kept.push(item);
     if (kept.length >= 30) break;

@@ -14,6 +14,13 @@ export class MemoryPersist implements RoomPersistence {
   mail = new Map<string, MailRow>();
   tokens = new Map<string, { ownerKey: string; expiresAt: number }>();
   beforeCommit?: () => Promise<void>;
+  idem = new Map<string, { response: unknown; status: number; expiresAt: number }>();
+
+  async idemGet(key: string) {
+    const hit = this.idem.get(key);
+    if (!hit || hit.expiresAt <= Date.now()) return null;
+    return { response: hit.response, status: hit.status };
+  }
 
   async read(knownVersion: number | null): Promise<RoomRead> {
     const seen: SeenStamp[] = [...this.seen.entries()];
@@ -24,8 +31,16 @@ export class MemoryPersist implements RoomPersistence {
   }
 
   async commit(input: RoomCommit) {
+    if (input.idem?.key) {
+      const hit = await this.idemGet(input.idem.key);
+      if (hit) return { conflict: false as const, version: this.version, idempotent: true, response: hit.response, status: hit.status };
+    }
     if (this.beforeCommit) await this.beforeCommit();
     if (input.expectedVersion !== this.version) return { conflict: true as const };
+    if (input.idem?.key && input.idem.response != null) {
+      this.idem.set(input.idem.key, { response: input.idem.response, status: input.idem.status, expiresAt: Date.now() + 10 * 60_000 });
+      if (this.idem.size > 2000) this.idem.delete(this.idem.keys().next().value!);
+    }
     if (input.roomChanged) {
       this.version += 1;
       this.state = input.stateJson;

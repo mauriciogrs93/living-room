@@ -1,4 +1,4 @@
-import { clientIp, json, preflight, readJson } from "@/lib/http";
+import { clientIp, json, ownerKeyFrom, preflight, readJson, sameOrigin } from "@/lib/http";
 import { getEngine, roomFailure } from "@/lib/room/access";
 import { guarded } from "@/lib/room/guard";
 import { NOTE_MAX, UNREAD_CAP, flushMail, loadOwner, publicNotes, touchBox, unreadCount, type Mailbox } from "@/lib/room/mailbox";
@@ -15,7 +15,8 @@ export const GET = guarded(getNote);
 
 async function getNote(req: Request) {
   try {
-    const ownerKey = new URL(req.url).searchParams.get("ownerKey") ?? "";
+    // v19: the owner page reads its key from the HttpOnly cookie. ?ownerKey= still works for agents' own GETs.
+    const ownerKey = ownerKeyFrom(req) || (new URL(req.url).searchParams.get("ownerKey") ?? "");
     if (!/^own_[0-9a-f]{36}$/.test(ownerKey)) {
       return json({ ok: false, error: "This page needs the owner link from your agent." }, 401);
     }
@@ -69,7 +70,8 @@ async function postNote(req: Request) {
     const body = await readJson(req);
     if (!body.ok) return body.response;
     const value = body.value && typeof body.value === "object" ? (body.value as { ownerKey?: unknown; message?: unknown }) : {};
-    const ownerKey = typeof value.ownerKey === "string" ? value.ownerKey : "";
+    if (!value.ownerKey && !sameOrigin(req)) return json({ ok: false, error: "Wrong origin." }, 403);
+    const ownerKey = ownerKeyFrom(req, value.ownerKey);
     if (!ownerKey.startsWith("own_")) {
       return json({ ok: false, error: "Send the ownerKey from your agent's register or look response." }, 401);
     }

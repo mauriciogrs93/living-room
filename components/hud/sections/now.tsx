@@ -6,10 +6,10 @@ import type { HudModel } from "../model";
 import { tapRadio } from "../radio";
 
 export function NowSection({ model }: { model: HudModel }) {
-  const { label, clock, place } = useAtmosphere();
+  const { clock, place } = useAtmosphere();
   const { muted, toggleMute, hearing } = useAmbience();
   const radio = model.snapshot?.radio;
-  const where = place ? `${label} in ${place}` : label;
+  const where = place;
   const playing = Boolean(radio?.on);
 
   return (

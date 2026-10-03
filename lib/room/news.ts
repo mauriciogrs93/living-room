@@ -7,7 +7,8 @@ export type { Headline };
 
 const MEMORY_MS = 12 * 60 * 1000;
 const REDIS_TTL = 15 * 60;
-const KEY = "living-room:news:v2";
+// v19 gentle feed: its own cache key, so it never mixes with the v18 world feed in the shared store.
+const KEY = "living-room:news:v3-gentle";
 
 let memory: { at: number; items: Headline[] } | null = null;
 let inflight: Promise<Headline[]> | null = null;

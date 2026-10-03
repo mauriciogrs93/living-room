@@ -1,7 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { MAX_AGENTS, cleanMessage, type RoomHost } from "./engine-host";
-import { SPAWNS } from "./layout";
-import { peekOwner, rotateToken } from "./mailbox";
 import type { ActErr, AgentRecord } from "./types";
 
 export const KNOCK_MS = 15 * 60 * 1000;
@@ -36,6 +34,18 @@ export type Settled = {
   at: number;
 };
 
+/** A single-use invite. Only the SHA-256 hash of the 128-bit value is stored. */
+export type Invite = {
+  hash: string;
+  at: number;
+  exp: number;
+  usedBy: string;
+  usedAt: number;
+};
+
+/** Agents that came in with an invite. The owner can Trust them from People. */
+export type Visitor = { id: string; name: string; color: string; emoji: string; at: number };
+
 export type DoorState = {
   locked: boolean;
   invite: string;
@@ -44,16 +54,37 @@ export type DoorState = {
   knocks: Knock[];
   settled: Settled[];
   migrated: boolean;
+  /** v19: sha256 of the single room-owner key. Only this key controls the door. Trusted != owner. */
+  ownerHash: string;
+  /** v19: Pause invites. While true the server refuses to create invites and no invite enters. */
+  paused: boolean;
+  /** v19: single-use invites (hashes only). Unused ones expire after INVITE_TTL_MS. */
+  invites: Invite[];
+  visitors: Visitor[];
 };
+
+export const INVITE_TTL_MS = Math.max(60_000, Number(process.env.INVITE_TTL_MS) || 10 * 60 * 1000);
+export const INVITE_MAX_UNUSED = 10;
+export const INVITE_FAIL_LIMIT = 5;
+export const INVITE_FAIL_WINDOW_MS = 10 * 60 * 1000;
+const INVITE_RE = /^[a-z2-7]{26}$/;
+const B32 = "abcdefghijklmnopqrstuvwxyz234567";
+
+export const DOOR_COPY = {
+  missing: "This room is private. Ask your person for an invite.",
+  bad: "This invite didn't work. Ask for a new one.",
+  tries: "Too many tries. Wait a minute, then try again.",
+  blocked: "The owner has asked you not to come in.",
+};
+
+export type InviteFail = "invite_missing" | "invite_invalid" | "invite_used" | "invite_expired" | "invite_paused";
 
 export type EntryPlan =
   | { kind: "blocked" }
   | { kind: "inside" }
-  | { kind: "enter"; trust: boolean; seedId: string }
-  | { kind: "wait" }
-  | { kind: "knock" }
+  | { kind: "enter"; trust: boolean; seedId: string; owner: boolean; inviteHash: string }
+  | { kind: "turned_away"; code: InviteFail }
   | { kind: "room_full" }
-  | { kind: "door_full" }
   | { kind: "limited"; retryAfter: number };
 
 export function freshDoor(): DoorState {
@@ -65,7 +96,51 @@ export function freshDoor(): DoorState {
     knocks: [],
     settled: [],
     migrated: false,
+    ownerHash: "",
+    paused: false,
+    invites: [],
+    visitors: [],
   };
+}
+
+export function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+export function inviteHash(code: string) {
+  return sha256(`lr-invite|${code}`);
+}
+
+/** 128 random bits as 26 base32 characters. */
+export function newInviteCode() {
+  const bytes = randomBytes(17);
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5 && out.length < 26) {
+      out += B32[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  return out.slice(0, 26);
+}
+
+export function isOwner(room: RoomHost, ownerKey: string) {
+  const expect = room.door?.ownerHash ?? "";
+  if (!ownerKey || !/^[0-9a-f]{64}$/.test(expect)) return false;
+  return timingSafeEqual(Buffer.from(sha256(ownerKey.trim())), Buffer.from(expect));
+}
+
+export function hasOwner(room: RoomHost) {
+  return /^[0-9a-f]{64}$/.test(room.door?.ownerHash ?? "");
+}
+
+/** Mark the owner. Only the rescue claim (no owner yet) or the v18 migration call this. */
+export function claimOwner(room: RoomHost, ownerKey: string) {
+  room.door.ownerHash = sha256(ownerKey.trim());
 }
 
 export function readKnockNote(raw: unknown): { ok: true; note: string } | { ok: false; error: string } {
@@ -88,6 +163,10 @@ export function ensureMigrated(room: RoomHost) {
     const moved = migrate(room);
     room.door.migrated = true;
     if (moved) room.emit();
+  }
+  if (!hasOwner(room)) {
+    const steward = room.door.trusted.find((person) => person.ownerKey);
+    if (steward) room.door.ownerHash = sha256(steward.ownerKey);
   }
   ensureSeeds(room);
 }
@@ -121,30 +200,75 @@ export function planEntry(
   },
 ): EntryPlan {
   ensureMigrated(room);
+  const now = Date.now();
   const id = input.agentId;
   if (id && isBlocked(room, id)) return { kind: "blocked" };
   if (input.alreadyInside) return { kind: "inside" };
-  const invited = inviteMatches(room, input.invite);
-  const trusted = Boolean(id && isTrusted(room, id));
-  const seed = claimableSeed(room, input);
-  // No steward key yet: the next register claims the door. Seeds alone cannot leave everyone knocking.
-  const rescue = !hasSteward(room);
-  if (trusted || invited || rescue || seed || !room.door.locked) {
+  const enter = (plan: { trust: boolean; seedId?: string; owner?: boolean; inviteHash?: string }): EntryPlan => {
     if (room.agents.size >= MAX_AGENTS) return { kind: "room_full" };
-    return { kind: "enter", trust: trusted || invited || rescue || Boolean(seed), seedId: seed?.id ?? "" };
+    return { kind: "enter", trust: plan.trust, seedId: plan.seedId ?? "", owner: Boolean(plan.owner), inviteHash: plan.inviteHash ?? "" };
+  };
+  // Trusted agents holding their own key or token always walk in. Trust never means owner.
+  if (id && isTrusted(room, id)) return enter({ trust: true });
+  // Rescue: an empty room with no owner yet. The next register becomes the owner (logged loudly).
+  if (!hasOwner(room)) return enter({ trust: true, owner: true });
+  const seed = claimableSeed(room, input);
+  if (seed) return enter({ trust: true, seedId: seed.id });
+  // Invites only (Option A). No knocking.
+  const failKey = `invfail:${sha256(`${process.env.IP_SALT ?? "lr-ip"}|${input.ip || "local"}`).slice(0, 16)}`;
+  const fails = (room.hits.get(failKey) ?? []).filter((t) => now - t < INVITE_FAIL_WINDOW_MS);
+  if (fails.length >= INVITE_FAIL_LIMIT) {
+    return { kind: "limited", retryAfter: Math.max(1, Math.ceil((INVITE_FAIL_WINDOW_MS - (now - fails[0]!)) / 1000)) };
   }
-  if (id && room.door.knocks.some((knock) => knock.id === id)) return { kind: "wait" };
-  if (room.door.knocks.length >= DOOR_CAP) return { kind: "door_full" };
-  const limit = chargeKnock(room, input.ip, input.name);
-  if (!limit.ok) return { kind: "limited", retryAfter: limit.retryAfter };
-  return { kind: "knock" };
+  const verdict = checkInvite(room, input.invite, now);
+  if (verdict.ok) return enter({ trust: false, inviteHash: verdict.hash });
+  fails.push(now);
+  room.hits.set(failKey, fails);
+  return { kind: "turned_away", code: verdict.code };
+}
+
+function checkInvite(room: RoomHost, raw: string, now: number): { ok: true; hash: string } | { ok: false; code: InviteFail } {
+  const text = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (!text) return { ok: false, code: "invite_missing" };
+  if (room.door.paused) return { ok: false, code: "invite_paused" };
+  if (text.length > 64 || !INVITE_RE.test(text)) return { ok: false, code: "invite_invalid" };
+  const hash = inviteHash(text);
+  const found = room.door.invites.find((item) => timingSafeEqual(Buffer.from(item.hash), Buffer.from(hash)));
+  if (!found) return { ok: false, code: "invite_invalid" };
+  if (found.usedAt) return { ok: false, code: "invite_used" };
+  if (found.exp <= now) return { ok: false, code: "invite_expired" };
+  return { ok: true, hash };
+}
+
+/** Consume inside the same compare-and-set commit that admits the agent. */
+export function consumeInvite(room: RoomHost, hash: string, agentId: string) {
+  const found = room.door.invites.find((item) => item.hash === hash);
+  if (!found) return;
+  found.usedAt = Date.now();
+  found.usedBy = agentId;
+}
+
+export function rememberVisitor(room: RoomHost, visitor: Omit<Visitor, "at">) {
+  room.door.visitors = room.door.visitors.filter((item) => item.id !== visitor.id);
+  room.door.visitors.push({ ...visitor, at: Date.now() });
+  if (room.door.visitors.length > 20) room.door.visitors.splice(0, room.door.visitors.length - 20);
+}
+
+export function turnedAway(code: InviteFail): ActErr {
+  if (code === "invite_missing") {
+    return { ok: false, status: 403, code, error: DOOR_COPY.missing, hint: "Register with the invite from your person, sent as \"invite\" in the JSON body." };
+  }
+  return { ok: false, status: 403, code, error: DOOR_COPY.bad, hint: "Don't retry the same invite. Ask your person for a new one." };
+}
+
+/** Old invites, used records and expired ones are pruned so the blob stays small. */
+function pruneInvites(room: RoomHost, now = Date.now()) {
+  room.door.invites = room.door.invites.filter((item) => (item.usedAt ? now - item.usedAt < 24 * 3600_000 : now - item.exp < 24 * 3600_000));
+  if (room.door.invites.length > 40) room.door.invites.splice(0, room.door.invites.length - 40);
 }
 
 export function inviteMatches(room: RoomHost, raw: string) {
-  const code = raw.trim().toLowerCase();
-  const expect = (room.door?.invite ?? "").trim().toLowerCase();
-  if (!/^[0-9a-f]{8}$/.test(code) || code.length !== expect.length) return false;
-  return timingSafeEqual(Buffer.from(code), Buffer.from(expect));
+  return checkInvite(room, raw, Date.now()).ok;
 }
 
 export function holdResponse(room: RoomHost, token: string): ActErr | null {
@@ -193,8 +317,8 @@ export function grantTrust(room: RoomHost, person: DoorPerson) {
 }
 
 export function blockPerson(room: RoomHost, person: DoorPerson, token = "") {
-  if (person.ownerKey && isTrusted(room, person.id) && stewardCount(room) <= 1) {
-    return { ok: false as const, status: 409, error: "Keep at least one trusted agent so someone can open the door." };
+  if (ownerPerson(room, person)) {
+    return { ok: false as const, status: 409, error: "The owner's own agent can't be blocked." };
   }
   room.door.trusted = room.door.trusted.filter((item) => item.id !== person.id);
   forgetId(room, person.id);
@@ -213,17 +337,15 @@ export function isTrusted(room: RoomHost, agentId: string) {
   return room.door.trusted.some((item) => item.id === agentId);
 }
 
+/** v19: only the single room-owner key controls the door. A trusted agent is not an owner. */
 export function isSteward(room: RoomHost, ownerKey: string) {
-  if (!ownerKey) return false;
-  return room.door.trusted.some((item) => item.ownerKey === ownerKey);
+  return isOwner(room, ownerKey);
 }
 
-function hasSteward(room: RoomHost) {
-  return room.door.trusted.some((item) => item.ownerKey);
-}
-
-function stewardCount(room: RoomHost) {
-  return room.door.trusted.filter((item) => item.ownerKey).length;
+function ownerPerson(room: RoomHost, person: DoorPerson) {
+  if (person.ownerKey && isOwner(room, person.ownerKey)) return true;
+  const agent = room.agents.get(person.id);
+  return Boolean(agent?.ownerKey && isOwner(room, agent.ownerKey));
 }
 
 export function forgetId(room: RoomHost, agentId: string) {
@@ -275,71 +397,62 @@ export function doorBrief(room: RoomHost, ownerKey: string) {
 export function doorView(room: RoomHost, ownerKey: string) {
   const brief = doorBrief(room, ownerKey);
   if (!brief) return { ok: false as const, status: 403, error: "Only the room owner can see the door." };
-  return { ok: true as const, invite: room.door.invite, ...brief };
+  return { ok: true as const, ...brief };
 }
 
 export function doorAct(room: RoomHost, ownerKey: string, action: string, id: string) {
   ensureMigrated(room);
   expireKnocks(room);
   if (!isSteward(room, ownerKey)) return { ok: false as const, status: 403, error: "Only the room owner can see the door." };
-  if (action === "lock") {
-    room.door.locked = true;
-    return { ok: true as const, message: "The door is locked." };
+  const now = Date.now();
+  pruneInvites(room, now);
+  if (action === "invite") {
+    if (room.door.paused) {
+      return { ok: false as const, status: 409, code: "invites_paused", error: "Invites are paused. Resume to make a new one." };
+    }
+    const unused = room.door.invites.filter((item) => !item.usedAt && item.exp > now);
+    while (unused.length >= INVITE_MAX_UNUSED) {
+      const oldest = unused.shift()!;
+      room.door.invites = room.door.invites.filter((item) => item !== oldest);
+    }
+    const code = newInviteCode();
+    room.door.invites.push({ hash: inviteHash(code), at: now, exp: now + INVITE_TTL_MS, usedBy: "", usedAt: 0 });
+    return { ok: true as const, message: "Invite ready.", invite: code };
   }
-  if (action === "unlock") {
-    room.door.locked = false;
-    return { ok: true as const, message: "The door is open." };
+  if (action === "pause") {
+    // One write: pause, and cancel every unused invite. Used records stay for the audit trail.
+    room.door.paused = true;
+    room.door.invites = room.door.invites.filter((item) => item.usedAt);
+    return { ok: true as const, message: "Invites paused. Old invites stop working." };
   }
-  if (action === "reset-invite") {
-    room.door.invite = randomBytes(4).toString("hex");
-    return { ok: true as const, message: "The old invite code no longer works." };
+  if (action === "resume") {
+    room.door.paused = false;
+    return { ok: true as const, message: "Invites are back on." };
   }
+  if (action === "trust") return trustVisitor(room, id);
   if (action === "untrust") return untrust(room, id);
   if (action === "unblock") return unblock(room, id);
-  if (action === "decline") return decline(room, id);
-  if (action === "admit" || action === "trust") return admit(room, id, action === "trust");
   return { ok: false as const, status: 400, error: "Unknown door action." };
 }
 
-function admit(room: RoomHost, id: string, trust: boolean) {
-  const knock = room.door.knocks.find((item) => item.id === id);
-  if (!knock) return { ok: false as const, status: 404, error: "That knock has already gone." };
-  if (isBlocked(room, knock.id)) return statusError("blocked");
-  if (room.agents.size >= MAX_AGENTS) {
-    return { ok: false as const, status: 503, code: "full", error: "The room is full. Try again after someone leaves." };
-  }
-  if (nameReserved(room, knock.name, knock.id)) {
-    return { ok: false as const, status: 409, code: "name_taken", error: `${knock.name} is already in the room. Pick another name.` };
-  }
-  const now = Date.now();
-  const agent = spawn(room, { id: knock.id, name: knock.name, color: knock.color, emoji: knock.emoji, token: knock.token, ownerKey: knock.ownerKey, now });
-  const box = peekOwner(knock.ownerKey);
-  if (box) rotateToken(box, knock.token);
-  room.agents.set(agent.id, agent);
-  room.tokens.set(agent.token, agent.id);
-  forgetId(room, agent.id);
-  if (trust) grantTrust(room, personOf(knock));
-  room.log(`${agent.name} walked in.`, agent.id);
-  room.emit();
-  return { ok: true as const, message: trust ? `${agent.name} can always come in.` : `${agent.name} can come in this once.` };
-}
-
-function decline(room: RoomHost, id: string) {
-  const knock = room.door.knocks.find((item) => item.id === id);
-  if (!knock) return { ok: false as const, status: 404, error: "That knock has already gone." };
-  room.door.knocks = room.door.knocks.filter((item) => item.id !== id);
-  rememberSettled(room, { id: knock.id, token: knock.token, name: knock.name, status: "declined", at: Date.now() });
-  return { ok: true as const, message: `You told ${knock.name} not now.` };
+function trustVisitor(room: RoomHost, id: string) {
+  const visitor = room.door.visitors.find((item) => item.id === id);
+  const agent = room.agents.get(id);
+  const who = visitor ?? (agent ? { id: agent.id, name: agent.name, color: agent.color, emoji: agent.emoji } : null);
+  if (!who) return { ok: false as const, status: 404, error: "That visitor has gone." };
+  if (isBlocked(room, who.id)) return { ok: false as const, status: 409, error: "Unblock them first." };
+  grantTrust(room, { id: who.id, name: who.name, color: who.color, emoji: who.emoji, ownerKey: "" });
+  return { ok: true as const, message: `${who.name} can come in without an invite.` };
 }
 
 function untrust(room: RoomHost, id: string) {
   const person = room.door.trusted.find((item) => item.id === id);
   if (!person) return { ok: false as const, status: 404, error: "That agent is not on the trusted list." };
-  if (person.ownerKey && stewardCount(room) <= 1) {
-    return { ok: false as const, status: 409, error: "Keep at least one trusted agent so someone can open the door." };
+  if (ownerPerson(room, person)) {
+    return { ok: false as const, status: 409, error: "The owner's own agent stays trusted." };
   }
   room.door.trusted = room.door.trusted.filter((item) => item.id !== id);
-  return { ok: true as const, message: `${person.name} will knock next time.` };
+  return { ok: true as const, message: `${person.name} will need an invite next time.` };
 }
 
 function unblock(room: RoomHost, id: string) {
@@ -347,12 +460,20 @@ function unblock(room: RoomHost, id: string) {
   if (!person) return { ok: false as const, status: 404, error: "That agent is not blocked." };
   room.door.blocked = room.door.blocked.filter((item) => item.id !== id);
   room.door.settled = room.door.settled.filter((item) => !(item.id === id && item.status === "blocked"));
-  return { ok: true as const, message: `${person.name} can knock again.` };
+  return { ok: true as const, message: `${person.name} can come in with an invite again.` };
 }
 
 function publicLists(room: RoomHost) {
+  const now = Date.now();
+  const trustedIds = new Set(room.door.trusted.map((person) => person.id));
   return {
     locked: room.door.locked,
+    paused: room.door.paused,
+    unused: room.door.invites.filter((item) => !item.usedAt && item.exp > now).length,
+    visitors: [...room.door.visitors]
+      .reverse()
+      .filter((item) => !trustedIds.has(item.id))
+      .map((item) => ({ id: item.id, name: item.name, color: item.color, emoji: item.emoji, at: item.at })),
     knocks: room.door.knocks.map((knock) => ({
       id: knock.id,
       name: knock.name,
@@ -361,23 +482,13 @@ function publicLists(room: RoomHost) {
       note: knock.note,
       at: knock.at,
     })),
-    trusted: room.door.trusted.map(showPerson),
+    trusted: room.door.trusted.filter((person) => person.ownerKey || !person.id.endsWith("_seed")).map(showPerson),
     blocked: room.door.blocked.map(showPerson),
   };
 }
 
 function showPerson(person: DoorPerson) {
   return { id: person.id, name: person.name, color: person.color, emoji: person.emoji };
-}
-
-function personOf(knock: Knock): DoorPerson {
-  return { id: knock.id, name: knock.name, color: knock.color, emoji: knock.emoji, ownerKey: knock.ownerKey };
-}
-
-function chargeKnock(room: RoomHost, ip: string, name: string) {
-  const fromIp = room.allow(`knock-ip:${(ip || "local").slice(0, 80)}`, KNOCK_LIMIT, KNOCK_WINDOW_MS);
-  if (!fromIp.ok) return fromIp;
-  return room.allow(`knock-name:${name.toLowerCase().slice(0, 40)}`, KNOCK_LIMIT, KNOCK_WINDOW_MS);
 }
 
 function rememberSettled(room: RoomHost, item: Settled) {
@@ -571,7 +682,47 @@ function sanitize(raw: unknown): DoorState {
     knocks: knocks(data.knocks),
     settled: settled(data.settled),
     migrated: data.migrated === true,
+    ownerHash: typeof data.ownerHash === "string" && /^[0-9a-f]{64}$/.test(data.ownerHash) ? data.ownerHash : "",
+    paused: data.paused === true,
+    invites: invites(data.invites),
+    visitors: visitors(data.visitors),
   };
+}
+
+function invites(raw: unknown): Invite[] {
+  if (!Array.isArray(raw)) return [];
+  const list: Invite[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const invite = item as Partial<Invite>;
+    if (typeof invite.hash !== "string" || !/^[0-9a-f]{64}$/.test(invite.hash)) continue;
+    list.push({
+      hash: invite.hash,
+      at: Number(invite.at) || 0,
+      exp: Number(invite.exp) || 0,
+      usedBy: typeof invite.usedBy === "string" ? invite.usedBy.slice(0, 40) : "",
+      usedAt: Number(invite.usedAt) || 0,
+    });
+  }
+  return list.slice(-40);
+}
+
+function visitors(raw: unknown): Visitor[] {
+  if (!Array.isArray(raw)) return [];
+  const list: Visitor[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const visitor = item as Partial<Visitor>;
+    if (!visitor.id || !visitor.name) continue;
+    list.push({
+      id: String(visitor.id),
+      name: String(visitor.name).slice(0, 40),
+      color: typeof visitor.color === "string" ? visitor.color : "#c4a574",
+      emoji: typeof visitor.emoji === "string" ? visitor.emoji : "•",
+      at: Number(visitor.at) || 0,
+    });
+  }
+  return list.slice(-20);
 }
 
 function people(raw: unknown): DoorPerson[] {
@@ -629,44 +780,4 @@ function settled(raw: unknown): Settled[] {
     });
   }
   return list.slice(-40);
-}
-
-function spawn(
-  room: RoomHost,
-  input: { id: string; name: string; color: string; emoji: string; token: string; ownerKey: string; now: number },
-): AgentRecord {
-  const spot = SPAWNS[room.spawnCursor % SPAWNS.length]!;
-  room.spawnCursor += 1;
-  const jitter = (room.spawnCursor % 5) * 0.08;
-  return {
-    id: input.id,
-    name: input.name,
-    color: input.color,
-    emoji: input.emoji,
-    token: input.token,
-    position: { x: spot.x + jitter, z: spot.z },
-    yaw: Math.PI,
-    pose: "idle",
-    lie: false,
-    anchor: "feet",
-    poseAt: null,
-    standAt: null,
-    status: "just walked in",
-    objectId: null,
-    seatId: null,
-    motion: null,
-    pending: null,
-    speech: null,
-    emote: { id: "wave", until: input.now + 2200 },
-    holding: null,
-    poseUntil: null,
-    lastSeen: input.now,
-    createdAt: input.now,
-    ownerKey: input.ownerKey,
-    homeColor: input.color,
-    lastAction: "",
-    repeat: 0,
-    anchorPos: { x: spot.x + jitter, z: spot.z },
-    stillSince: input.now,
-  };
 }

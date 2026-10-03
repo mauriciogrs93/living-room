@@ -9,6 +9,7 @@ import { RedisError, redisCommand, redisConfig, redisTimed } from "@/lib/room/re
 import { supabaseConfig } from "@/lib/room/store/config";
 import { SupabaseStore } from "@/lib/room/store/supabase-store";
 import { VersionedRoom } from "@/lib/room/store/versioned-room";
+import { MemoryPersist } from "@/lib/room/store/memory-persist";
 
 export { RoomBusy, RoomOffline, RoomUnavailable };
 
@@ -430,7 +431,8 @@ class SharedRoom {
   }
 
   /** Hold, rate limit, and act share the write's single state read. The door does not GET again. */
-  async actLocked(token: string, body: unknown) {
+  async actLocked(token: string, body: unknown, opts?: unknown) {
+    void opts;
     await loadToken(token);
     return this.write((engine) => {
       const held = engine.doorHold(token);
@@ -502,7 +504,7 @@ export async function allowFast(engine: RoomPort, key: string, limit: number, wi
 }
 
 /** Act path used by the route: one state read on Redis, door check included. */
-export async function actGuarded(engine: RoomPort, token: string, body: unknown) {
+export async function actGuarded(engine: RoomPort, token: string, body: unknown, opts: ActOpts = {}) {
   if (!engine.shared) {
     const held = await engine.doorHold(token);
     if (held) return { type: "held" as const, held };
@@ -510,8 +512,10 @@ export async function actGuarded(engine: RoomPort, token: string, body: unknown)
     if (!limit.ok) return { type: "limit" as const, retryAfter: limit.retryAfter };
     return { type: "act" as const, result: await engine.act(token, body) };
   }
-  return engine.actLocked(token, body);
+  return engine.actLocked(token, body, opts);
 }
+
+export type ActOpts = { idemKey?: string; deadlineAt?: number };
 
 let storeLogged = false;
 
@@ -527,6 +531,13 @@ function vercelDeploy() {
 }
 
 export function getEngine(): RoomPort {
+  // v19: ROOM_STORE=memory keeps a deploy (the private preview) off the shared live room row.
+  // Same compare-and-set engine as production, over an in-process store.
+  if (process.env.ROOM_STORE === "memory") {
+    logStore("memory");
+    versionedRoom ??= new VersionedRoom(new MemoryPersist());
+    return versionedRoom;
+  }
   if (supabaseConfig()) {
     logStore("supabase");
     if (!versionedRoom) {

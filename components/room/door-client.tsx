@@ -1,28 +1,23 @@
 "use client";
 
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { ownerSession } from "@/components/room/owner-session";
 
 export type DoorPerson = { id: string; name: string; color: string; emoji: string };
-export type DoorKnock = DoorPerson & { note: string; at: number };
+export type DoorVisitor = DoorPerson & { at: number };
 
+/** v19 Door (Option A): invites only. No knocks, no visible code. */
 export type DoorData = {
-  locked: boolean;
-  invite: string;
-  joinLine: string;
-  knocks: DoorKnock[];
+  paused: boolean;
+  unused: number;
+  visitors: DoorVisitor[];
   trusted: DoorPerson[];
   blocked: DoorPerson[];
 };
 
-type Brief = {
-  locked?: boolean;
-  knocks?: DoorKnock[];
-  trusted?: DoorPerson[];
-  blocked?: DoorPerson[];
-};
+type Brief = Partial<DoorData>;
 
 let data: DoorData | null = null;
-let knocks = 0;
 let access = false;
 const listeners = new Set<() => void>();
 
@@ -30,9 +25,18 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
+function shape(body: Brief): DoorData {
+  return {
+    paused: Boolean(body.paused),
+    unused: Number(body.unused) || 0,
+    visitors: Array.isArray(body.visitors) ? body.visitors : [],
+    trusted: Array.isArray(body.trusted) ? body.trusted : [],
+    blocked: Array.isArray(body.blocked) ? body.blocked : [],
+  };
+}
+
 function publish(next: DoorData | null, allowed: boolean) {
   data = next;
-  knocks = next?.knocks.length ?? 0;
   access = allowed;
   emit();
 }
@@ -46,79 +50,41 @@ export function useDoor() {
   return useSyncExternalStore(subscribe, () => data, () => null);
 }
 
+/** Kept for the HUD badge. Option A has no knocks, so this is always 0. */
 export function useKnockCount() {
-  return useSyncExternalStore(subscribe, () => knocks, () => 0);
+  return 0;
 }
 
 export function useDoorAccess() {
   return useSyncExternalStore(subscribe, () => access, () => false);
 }
 
-function readKey() {
-  const fromUrl = new URLSearchParams(window.location.search).get("owner") ?? "";
-  let stored = "";
-  try {
-    stored = localStorage.getItem("living-room-owner") ?? "";
-  } catch {
-    stored = "";
-  }
-  if (/^own_[0-9a-f]{36}$/.test(fromUrl)) return fromUrl;
-  if (/^own_[0-9a-f]{36}$/.test(stored)) return stored;
-  return "";
-}
-
 function applyBrief(brief: Brief) {
   if (!data) return;
-  data = {
-    ...data,
-    locked: typeof brief.locked === "boolean" ? brief.locked : data.locked,
-    knocks: Array.isArray(brief.knocks) ? brief.knocks : data.knocks,
-    trusted: Array.isArray(brief.trusted) ? brief.trusted : data.trusted,
-    blocked: Array.isArray(brief.blocked) ? brief.blocked : data.blocked,
-  };
-  knocks = data.knocks.length;
+  data = shape({ ...data, ...brief });
   emit();
 }
 
 export function DoorProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
-    const key = readKey();
-    if (!key) {
-      publish(null, false);
-      return;
-    }
     let stop = false;
+    let source: EventSource | null = null;
+    let timer: number | undefined;
+    let paused = document.hidden;
     const load = async () => {
       try {
-        const res = await fetch(`/api/door?ownerKey=${encodeURIComponent(key)}`, { cache: "no-store" });
+        const res = await fetch("/api/door", { cache: "no-store" });
         if (stop) return;
-        if (!res.ok) {
+        const body = (await res.json()) as Brief & { ok?: boolean };
+        if (!res.ok || !body.ok) {
           publish(null, false);
           return;
         }
-        const body = (await res.json()) as DoorData & { ok?: boolean };
-        if (!body.ok) {
-          publish(null, false);
-          return;
-        }
-        publish(
-          {
-            locked: body.locked,
-            invite: body.invite,
-            joinLine: body.joinLine,
-            knocks: body.knocks ?? [],
-            trusted: body.trusted ?? [],
-            blocked: body.blocked ?? [],
-          },
-          true,
-        );
+        publish(shape(body), true);
       } catch {
         if (!stop) publish(null, false);
       }
     };
-    let source: EventSource | null = null;
-    let timer: number | undefined;
-    let paused = document.hidden;
     const stopPoll = () => {
       if (timer) window.clearInterval(timer);
       timer = undefined;
@@ -132,12 +98,12 @@ export function DoorProvider({ children }: { children: ReactNode }) {
     };
     const startPoll = () => {
       if (paused || stop || timer) return;
-      timer = window.setInterval(() => void load(), 8_000);
+      timer = window.setInterval(() => void load(), 15_000);
     };
     const connect = () => {
       if (paused || stop) return;
       source?.close();
-      source = new EventSource(`/api/events?ownerKey=${encodeURIComponent(key)}`);
+      source = new EventSource("/api/events");
       source.onopen = () => stopPoll();
       source.onerror = () => {
         source?.close();
@@ -159,11 +125,18 @@ export function DoorProvider({ children }: { children: ReactNode }) {
       void load();
       connect();
     };
-    document.addEventListener("visibilitychange", onVis);
-    if (!paused) {
-      void load();
-      connect();
-    }
+    void ownerSession().then((session) => {
+      if (stop) return;
+      if (!session.door) {
+        publish(null, false);
+        return;
+      }
+      document.addEventListener("visibilitychange", onVis);
+      if (!paused) {
+        void load();
+        connect();
+      }
+    });
     return () => {
       stop = true;
       document.removeEventListener("visibilitychange", onVis);
@@ -174,26 +147,26 @@ export function DoorProvider({ children }: { children: ReactNode }) {
   return children;
 }
 
+type ActBody = Brief & { ok?: boolean; error?: string; code?: string; message?: string; line?: string };
+
 export async function doorAct(action: string, id = "") {
-  const key = readKey();
-  if (!key) return { ok: false as const, error: "Only the room owner can see the door." };
   const res = await fetch("/api/door", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ownerKey: key, action, id }),
+    body: JSON.stringify({ action, id }),
   });
-  const body = (await res.json()) as DoorData & { ok?: boolean; error?: string; message?: string };
-  if (!res.ok || !body.ok) return { ok: false as const, error: body.error ?? "The door didn't answer." };
-  publish(
-    {
-      locked: body.locked,
-      invite: body.invite,
-      joinLine: body.joinLine,
-      knocks: body.knocks ?? [],
-      trusted: body.trusted ?? [],
-      blocked: body.blocked ?? [],
-    },
-    true,
-  );
-  return { ok: true as const, message: body.message ?? "" };
+  const body = (await res.json()) as ActBody;
+  if (!res.ok || !body.ok) {
+    if (body.code === "invites_paused" && data) applyBrief({ paused: true });
+    return { ok: false as const, error: body.error ?? "The door didn't answer.", code: body.code ?? "" };
+  }
+  publish(shape(body), true);
+  return { ok: true as const, message: body.message ?? "", line: body.line ?? "" };
+}
+
+/** Create one invite and return the line to paste. Rejects if the server refuses. */
+export async function createInviteLine(): Promise<string> {
+  const result = await doorAct("invite");
+  if (!result.ok || !result.line) throw new Error(result.ok ? "No invite" : result.error);
+  return result.line;
 }

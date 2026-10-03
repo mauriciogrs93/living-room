@@ -25,6 +25,8 @@ export type RoomCommit = {
   agentIds: string[];
   /** False keeps the room version, blob, and broadcast unchanged. Mail still commits. */
   roomChanged: boolean;
+  /** v19: idempotency. Stored in the same transaction as the commit (room_commit p_idem_*). */
+  idem?: { key: string; response: unknown; status: number } | null;
 };
 
 export type RoomCommitResult =
@@ -40,6 +42,8 @@ export type RoomPersistence = {
   loadOwner(ownerKey: string): Promise<Mailbox | null>;
   loadToken(token: string): Promise<Mailbox | null>;
   kvGet?(key: string): Promise<unknown>;
+  /** v19: read a stored idempotent response without writing anything. */
+  idemGet?(key: string): Promise<{ response: unknown; status: number } | null>;
   kvPut?(key: string, value: unknown, ttlSeconds: number): Promise<void>;
   /** Test hook. Runs after the engine and before the compare-and-set. */
   beforeCommit?: () => Promise<void>;
@@ -49,7 +53,7 @@ export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** v19: full jitter, random(0, min(400, 50·2^attempt)) ms. */
 export function retryPause(attempt: number) {
-  const span = Math.min(80, 10 * 2 ** attempt);
-  return 10 + Math.floor(Math.random() * span);
+  return Math.floor(Math.random() * Math.min(400, 50 * 2 ** attempt));
 }

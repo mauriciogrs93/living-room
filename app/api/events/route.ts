@@ -1,4 +1,4 @@
-import { corsHeaders, preflight } from "@/lib/http";
+import { corsHeaders, ownerKeyFrom, preflight } from "@/lib/http";
 import { getEngine, roomFailure, stateCacheEtag } from "@/lib/room/access";
 import { diffSnapshot } from "@/lib/room/sse-diff";
 import type { Snapshot } from "@/lib/room/types";
@@ -39,7 +39,7 @@ export function OPTIONS() {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const since = url.searchParams.get("since") || req.headers.get("last-event-id") || "";
-  const ownerKey = url.searchParams.get("ownerKey")?.trim() ?? "";
+  const ownerKey = ownerKeyFrom(req);
   let engine: ReturnType<typeof getEngine>;
   try {
     engine = getEngine();
@@ -100,8 +100,8 @@ export async function GET(req: Request) {
           const brief = await engine.doorBrief(ownerKey);
           if (!brief) return;
           const body = {
-            locked: brief.locked,
-            knocks: brief.knocks,
+            paused: brief.paused,
+            visitors: brief.visitors,
             trusted: brief.trusted,
             blocked: brief.blocked,
           };

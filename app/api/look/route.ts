@@ -36,7 +36,7 @@ async function load(engine: ReturnType<typeof getEngine>, token: string, req: Re
   return json({
     ...rest,
     ownerKey,
-    ownerLink: `${baseUrl(req)}/room?owner=${encodeURIComponent(ownerKey)}`,
+    ownerLink: `${baseUrl(req)}/room#owner=${encodeURIComponent(ownerKey)}`,
     serverTime: snapshot.serverTime,
     room: snapshot.room,
     objects: snapshot.objects,

@@ -20,8 +20,47 @@ export function bearer(req: Request) {
   const header = req.headers.get("authorization") ?? "";
   const match = /^Bearer\s+(.+)$/i.exec(header);
   if (match?.[1]) return match[1].trim();
-  const token = new URL(req.url).searchParams.get("token");
-  return token?.trim() ?? "";
+  // v19: no ?token= fallback. Tokens travel only in the Authorization header.
+  return "";
+}
+
+/** v19: the owner key lives in an HttpOnly cookie, never in a URL. */
+export const OWNER_COOKIE = "__Host-lr_owner";
+export const OWNER_KEY_RE = /^own_[0-9a-f]{36}$/;
+
+export function cookieValue(req: Request, name: string) {
+  const header = req.headers.get("cookie") ?? "";
+  for (const part of header.split(";")) {
+    const index = part.indexOf("=");
+    if (index < 0) continue;
+    if (part.slice(0, index).trim() === name) return decodeURIComponent(part.slice(index + 1).trim());
+  }
+  return "";
+}
+
+/** Owner key from the session cookie, or (agents only) from a JSON body field. Never from the query string. */
+export function ownerKeyFrom(req: Request, bodyKey?: unknown) {
+  const fromBody = typeof bodyKey === "string" ? bodyKey.trim() : "";
+  if (OWNER_KEY_RE.test(fromBody)) return fromBody;
+  const fromCookie = cookieValue(req, OWNER_COOKIE);
+  return OWNER_KEY_RE.test(fromCookie) ? fromCookie : "";
+}
+
+/** Cookie-authenticated POSTs must come from this site. */
+export function sameOrigin(req: Request) {
+  const origin = req.headers.get("origin");
+  if (!origin) return true;
+  try {
+    const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "").split(",")[0]!.trim();
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
+/** Owner routes: no wildcard CORS. */
+export function ownerJson(body: unknown, status = 200, extra?: Record<string, string>) {
+  return Response.json(body, { status, headers: { "Cache-Control": "no-store", Vary: "Cookie", ...extra } });
 }
 
 export function clientIp(req: Request) {
@@ -50,7 +89,8 @@ function configuredOrigin(raw: string | undefined, assumeHttps: boolean) {
 export function baseUrlFrom(headers: HeaderSource) {
   const configured = configuredOrigin(process.env.PUBLIC_BASE_URL, false);
   if (configured) return configured;
-  const production = configuredOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL, true);
+  // v19: a preview must never point agents at the production room.
+  const production = process.env.VERCEL_ENV === "preview" ? "" : configuredOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL, true);
   if (production) return production;
   const host = (headers.get("x-forwarded-host") ?? headers.get("host") ?? "").split(",")[0]!.trim();
   if (!host) return "";

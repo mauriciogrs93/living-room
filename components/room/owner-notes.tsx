@@ -1,5 +1,7 @@
 "use client";
 
+import { forgetOwnerSession, ownerSession } from "@/components/room/owner-session";
+
 import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 
 type NoteStatus = "open" | "on_it" | "done" | "couldnt";
@@ -128,33 +130,8 @@ export function useOwnerChecked() {
   );
 }
 
-function rememberKey(ownerKey: string) {
-  try {
-    localStorage.setItem("living-room-owner", ownerKey);
-  } catch {
-    /* the link still works for this visit */
-  }
-}
-
 function forgetKey() {
-  try {
-    localStorage.removeItem("living-room-owner");
-  } catch {
-    /* the message still shows */
-  }
-}
-
-function readKey() {
-  const fromUrl = new URLSearchParams(window.location.search).get("owner") ?? "";
-  let stored = "";
-  try {
-    stored = localStorage.getItem("living-room-owner") ?? "";
-  } catch {
-    stored = "";
-  }
-  if (/^own_[0-9a-f]{36}$/.test(fromUrl)) return fromUrl;
-  if (/^own_[0-9a-f]{36}$/.test(stored)) return stored;
-  return "";
+  void forgetOwnerSession();
 }
 
 type Box = {
@@ -179,14 +156,20 @@ export function OwnerMailProvider({ children }: { children: ReactNode }) {
   const [missing, setMissing] = useState(false);
 
   useEffect(() => {
-    const key = readKey();
-    setOwnerKey(key);
-    setGate(Boolean(key), true);
+    let stop = false;
+    void ownerSession().then((session) => {
+      if (stop) return;
+      setOwnerKey(session.signedIn ? "session" : "");
+      setGate(session.signedIn, true);
+    });
+    return () => {
+      stop = true;
+    };
   }, []);
 
   const load = useCallback(async () => {
     if (!ownerKey) return;
-    const res = await fetch(`/api/note?ownerKey=${encodeURIComponent(ownerKey)}`, { cache: "no-store" });
+    const res = await fetch("/api/note", { cache: "no-store" });
     const data = (await res.json()) as Mail & { ok?: boolean; error?: string };
     if (res.status === 404 || res.status === 401) {
       forgetKey();
@@ -201,7 +184,6 @@ export function OwnerMailProvider({ children }: { children: ReactNode }) {
     }
     if (!res.ok || !data.name) return;
     const notes = Array.isArray(data.notes) ? data.notes : [];
-    rememberKey(ownerKey);
     publish({ name: data.name, notes });
     setMissing(false);
     setMail({
@@ -242,7 +224,7 @@ export function OwnerMailProvider({ children }: { children: ReactNode }) {
       const res = await fetch("/api/note", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ownerKey, message: text }),
+        body: JSON.stringify({ message: text }),
       });
       const data = (await res.json()) as { message?: string; error?: string };
       if (!res.ok) {
@@ -270,7 +252,7 @@ export function OwnerMailProvider({ children }: { children: ReactNode }) {
   return <BoxContext.Provider value={box}>{children}</BoxContext.Provider>;
 }
 
-function SendHome({ name, ownerKey }: { name: string; ownerKey: string }) {
+function SendHome({ name }: { name: string }) {
   const [step, setStep] = useState<"ask" | "confirm" | "done" | "error">("ask");
   const [note, setNote] = useState("");
 
@@ -280,7 +262,7 @@ function SendHome({ name, ownerKey }: { name: string; ownerKey: string }) {
       const res = await fetch("/api/owner/leave", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ownerKey, block }),
+        body: JSON.stringify({ block }),
       });
       const data = (await res.json()) as { message?: string; error?: string };
       if (!res.ok) {
@@ -336,7 +318,7 @@ export function OwnerThread() {
 
   return (
     <div className="hud-stack">
-      {name && box.ownerKey && mail?.present && <SendHome name={name} ownerKey={box.ownerKey} />}
+      {name && box.ownerKey && mail?.present && <SendHome name={name} />}
       <p className="hud-kicker">{heading}</p>
       <p className="hud-line">
         {missing

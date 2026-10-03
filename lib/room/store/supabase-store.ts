@@ -120,9 +120,9 @@ export class SupabaseStore implements RoomPersistence {
       p_mail: mail,
       p_agent_ids: input.agentIds,
       p_room_changed: input.roomChanged,
-      p_idem_key: null,
-      p_idem_response: null,
-      p_idem_status: null,
+      p_idem_key: input.idem?.key ?? null,
+      p_idem_response: input.idem ? input.idem.response : null,
+      p_idem_status: input.idem ? input.idem.status : null,
     })) as { conflict?: boolean; version?: number; idempotent?: boolean; response?: unknown; status?: number };
     if (raw?.conflict) return { conflict: true as const };
     return {
@@ -132,6 +132,27 @@ export class SupabaseStore implements RoomPersistence {
       response: raw?.response,
       status: raw?.status,
     };
+  }
+
+  /**
+   * Read-only probe of idempotency_keys through room_commit: a stored key returns early; otherwise the
+   * impossible expected version (-1) makes the mailbox-only path return a conflict with no writes.
+   * No schema change is needed.
+   */
+  async idemGet(key: string) {
+    const raw = (await this.rpc("room_commit", {
+      p_expected: -1,
+      p_state: "",
+      p_public_door: null,
+      p_mail: [],
+      p_agent_ids: [],
+      p_room_changed: false,
+      p_idem_key: key,
+      p_idem_response: null,
+      p_idem_status: null,
+    })) as { idempotent?: boolean; response?: unknown; status?: number };
+    if (raw?.idempotent) return { response: raw.response, status: Number(raw.status ?? 200) };
+    return null;
   }
 
   async rateHit(key: string, limit: number, windowMs: number) {

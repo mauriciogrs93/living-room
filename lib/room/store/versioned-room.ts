@@ -1,5 +1,6 @@
 import { RoomEngine, type PersistedRoom } from "@/lib/room/engine";
-import { RoomUnavailable } from "@/lib/room/errors";
+import { createHash } from "node:crypto";
+import { RoomBusy, RoomUnavailable } from "@/lib/room/errors";
 import {
   ackMail,
   dirtyMailChanges,
@@ -33,6 +34,21 @@ type MailChange = { ownerKey: string; data: Mailbox; dropTokens: string[] };
 
 const CACHE_MS = 1000;
 const ATTEMPTS = 4;
+/** v19: don't start a compare-and-set attempt with less than this left before the route deadline. */
+const MIN_ATTEMPT_MS = 900;
+/** v19: presence is only re-stamped when the stored stamp is older than this. */
+const PRESENCE_FRESH_MS = 20_000;
+/** v19: per-agent burst limit on acts, checked before any state read. */
+const BURST_LIMIT = 2;
+const BURST_WINDOW_MS = 1500;
+const IDEM_MAX_BYTES = 8 * 1024;
+
+type Idem = { key: string; bodyHash: string };
+type MutateOpts<T> = { deadlineAt?: number; idem?: Idem | null; idemOf?: (value: T) => { response: unknown; status: number } | null };
+
+function sha(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 type Cache = { version: number; raw: string | null; seen: RoomRead["seen"]; at: number };
 
@@ -143,7 +159,8 @@ export class VersionedRoom {
     seen: RoomRead["seen"],
     sent: MailChange[],
     roomChanged: boolean,
-  ) {
+    idem: { key: string; response: unknown; status: number } | null = null,
+  ): Promise<boolean | { replay: unknown; status: number }> {
     const stateJson = JSON.stringify(engine.serialize());
     const result = await this.store.commit({
       expectedVersion,
@@ -152,8 +169,10 @@ export class VersionedRoom {
       mail: sent.map(mailWrite),
       agentIds: agentIds(stateJson),
       roomChanged,
+      idem,
     });
     if (result.conflict) return false;
+    if (result.idempotent) return { replay: result.response, status: Number(result.status ?? 200) };
     ackMail(sent.map((change) => change.ownerKey));
     const raw = roomChanged ? stateJson : (this.cache?.raw ?? stateJson);
     this.remember(raw, result.version, seen);
@@ -178,8 +197,13 @@ export class VersionedRoom {
     return fn(next);
   }
 
-  private async mutate<T>(fn: (engine: RoomEngine) => T, prepare?: () => Promise<void>): Promise<T> {
+  private async mutate<T>(fn: (engine: RoomEngine) => T, prepare?: () => Promise<void>, opts: MutateOpts<T> = {}): Promise<T> {
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      // v19: deadline-aware. Answer 503 before committing rather than commit after the caller gave up.
+      if (opts.deadlineAt && Date.now() > opts.deadlineAt - MIN_ATTEMPT_MS) {
+        resetMailStore();
+        throw new RoomBusy();
+      }
       if (attempt > 0) resetMailStore();
       if (prepare) await prepare();
       const snap = await this.readFresh();
@@ -197,7 +221,19 @@ export class VersionedRoom {
       const sent = dirtyMailChanges();
       if (after === before && sent.length === 0) return value;
       try {
-        const ok = await this.commitEngine(engine, snap.version, snap.seen, sent, after !== before);
+        let idem: { key: string; response: unknown; status: number } | null = null;
+        if (opts.idem && opts.idemOf) {
+          const stored = opts.idemOf(value);
+          if (stored) {
+            const response = { bodyHash: opts.idem.bodyHash, result: stored.response };
+            if (JSON.stringify(response).length <= IDEM_MAX_BYTES) idem = { key: opts.idem.key, response, status: stored.status };
+          }
+        }
+        const ok = await this.commitEngine(engine, snap.version, snap.seen, sent, after !== before, idem);
+        if (ok && typeof ok === "object") {
+          const replay = ok.replay as { result?: unknown } | null;
+          return (replay?.result ?? value) as T;
+        }
         if (ok) return value;
       } catch (error) {
         resetMailStore();
@@ -253,13 +289,19 @@ export class VersionedRoom {
     return this.inMail(() => this.mutate((engine) => engine.register(input), prepare));
   }
 
+  /** v19: skip the presence write when this instance already saw a stamp under 20 s old. */
+  private seenFresh(agentId: string) {
+    const stamp = this.cache?.seen.find(([id]) => id === agentId)?.[1] ?? 0;
+    return Date.now() - stamp < PRESENCE_FRESH_MS;
+  }
+
   async look(token: string) {
     return this.inMail(async () => {
       const box = await this.pullToken(token);
-      if (box?.agentId) await this.touch(box.agentId);
+      if (box?.agentId && !this.seenFresh(box.agentId)) await this.touch(box.agentId);
       const result = await this.peek((engine) => engine.look(token));
       const id = result.ok && "you" in result ? result.you.id : "";
-      if (id && id !== box?.agentId) await this.touch(id);
+      if (id && id !== box?.agentId && !this.seenFresh(id)) await this.touch(id);
       if (dirtyMailChanges().length) await this.mutate((engine) => engine);
       return result;
     });
@@ -324,19 +366,41 @@ export class VersionedRoom {
     });
   }
 
-  act(token: string, body: unknown): Promise<ActResult> {
-    return this.inMail(() => this.mutate((engine) => engine.act(token, body), () => this.pullToken(token).then(() => undefined)));
+  act(token: string, body: unknown, opts: { deadlineAt?: number; idem?: Idem | null } = {}): Promise<ActResult> {
+    return this.inMail(() =>
+      this.mutate((engine) => engine.act(token, body), () => this.pullToken(token).then(() => undefined), {
+        deadlineAt: opts.deadlineAt,
+        idem: opts.idem,
+        idemOf: (value) => ({ response: value, status: value.ok ? 200 : value.status }),
+      }),
+    );
   }
 
-  /** Hold, then the rate table, then one compare-and-set. The door is not a second state read. */
-  async actLocked(token: string, body: unknown) {
+  /**
+   * v19: replay a stored Idempotency-Key first, then a cheap per-agent burst limit (no state read),
+   * then hold, the minute limit, and one deadline-aware compare-and-set.
+   */
+  async actLocked(token: string, body: unknown, opts: { idemKey?: string; deadlineAt?: number } = {}) {
     return this.inMail(async () => {
+      const tokenHash = sha(token);
+      let idem: Idem | null = null;
+      if (opts.idemKey) {
+        idem = { key: sha(`${tokenHash}:${opts.idemKey}`), bodyHash: sha(JSON.stringify(body ?? null)) };
+        const hit = this.store.idemGet ? await this.store.idemGet(idem.key) : null;
+        if (hit) {
+          const stored = hit.response as { bodyHash?: string; result?: ActResult } | null;
+          if (stored?.bodyHash && stored.bodyHash !== idem.bodyHash) return { type: "idem_mismatch" as const };
+          if (stored?.result) return { type: "act" as const, result: stored.result, replayed: true };
+        }
+      }
+      const burst = await this.fastAllow(`act-burst:${tokenHash.slice(0, 24)}`, BURST_LIMIT, BURST_WINDOW_MS);
+      if (!burst.ok) return { type: "slow_down" as const, retryAfter: 1 };
       await this.pullToken(token);
       const held = await this.peek((engine) => engine.doorHold(token));
       if (held) return { type: "held" as const, held };
       const limit = await this.fastAllow(`act:${token.slice(0, 12)}`, 30, 60_000);
       if (!limit.ok) return { type: "limit" as const, retryAfter: limit.retryAfter };
-      const result = await this.act(token, body);
+      const result = await this.act(token, body, { deadlineAt: opts.deadlineAt, idem });
       return { type: "act" as const, result };
     });
   }

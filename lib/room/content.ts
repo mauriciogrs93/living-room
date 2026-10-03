@@ -1,3 +1,4 @@
+import { houseTime } from "@/lib/house-clock";
 export type Channel = { id: number; name: string; color: string; accent: string };
 
 export const CHANNELS: Channel[] = [
@@ -45,8 +46,9 @@ export const PALETTE = [
 
 export const EMOJIS = ["🐱", "🌱", "🍊", "🌙", "📚", "☕", "🦊", "🐻", "🍋", "🌸"];
 
+/** v19: the window runs on the house clock (owner's time zone), not the server's UTC. */
 export function outsideView(date = new Date()): string {
-  const h = date.getHours();
+  const h = houseTime(date).hour;
   if (h < 5) return "Night. A streetlamp, and a few lit windows across the way.";
   if (h < 8) return "Early morning. Pale light and a quiet street.";
   if (h < 11) return "Morning. Sun on the maple, someone walking a dog.";

@@ -29,7 +29,7 @@ export function GlobalTape() {
   const [shown, setShown] = useState(true);
   const [fitted, setFitted] = useState(QUIET.title);
   const line = useRef<HTMLButtonElement>(null);
-  const { label, clock: hourLabel, place } = useAtmosphere();
+  void useAtmosphere;
 
   // the camera reframes around the Tonight card (phone: below it), and phone notes yield to it
   useEffect(() => {
@@ -98,14 +98,15 @@ export function GlobalTape() {
   }, [item.title, shown]);
 
   const openIndex = open ? Math.max(0, items.indexOf(open)) : 0;
-  const meta = [place, label, hourLabel].filter(Boolean).join(" · ").toUpperCase();
+  // v19: no tag on the bar (the source shows in the card). The corner clock lives in the HUD.
+  const meta = "";
 
   return (
     <>
-      <div className="global-tape" role="region" aria-label="Tonight">
+      <div className="global-tape" role="region" aria-label="Today">
         <div className="global-tape-flag">
           <i aria-hidden />
-          TONIGHT
+          TODAY
         </div>
         <div className="global-tape-window">
           <button
@@ -125,11 +126,10 @@ export function GlobalTape() {
             <div className="tc-kicker">
               <b>
                 <i aria-hidden />
-                TONIGHT
+                TODAY
               </b>
               <span>
-                {(open.region || "WORLD").toUpperCase()}
-                {items.length > 1 ? ` · ${openIndex + 1} OF ${items.length}` : ""}
+                {items.length > 1 ? `${openIndex + 1} OF ${items.length}` : ""}
               </span>
             </div>
             <h2 className="tc-title">{open.title}</h2>

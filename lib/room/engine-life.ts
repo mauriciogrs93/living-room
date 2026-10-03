@@ -22,7 +22,6 @@ import {
   forgetId,
   grantTrust,
   holdResponse,
-  inviteMatches,
   isBlocked,
   isTrusted,
   knockPayload,
@@ -32,6 +31,11 @@ import {
   rememberKnock,
   stepAway,
   waitingKnock,
+  DOOR_COPY,
+  turnedAway,
+  claimOwner,
+  consumeInvite,
+  rememberVisitor,
 } from "./door";
 import { claimIdentity, ensureBox, openBox, peekOwner, pendingNotes, queueNote, rotateToken, touchBox, type Mailbox } from "./mailbox";
 import { SPAWNS } from "./layout";
@@ -144,29 +148,40 @@ export function register(room: RoomHost, input: {
     if (plan.kind === "room_full") {
       return { ok: false, status: 503, code: "full", error: "The room is full. Try again after someone leaves." };
     }
-    if (plan.kind === "door_full") {
-      return { ok: false, status: 429, code: "door_full", error: "The doorstep is full. Try again in a few minutes." };
-    }
     if (plan.kind === "limited") {
       return {
         ok: false,
         status: 429,
-        code: "knock_limit",
-        error: "You knocked too many times. Wait and do not re-knock repeatedly.",
+        code: "invite_rate_limited",
+        error: DOOR_COPY.tries,
+        hint: "Wait a minute, then try again.",
+        retryAfter: plan.retryAfter,
       };
     }
-    if (plan.kind === "wait" || plan.kind === "knock") {
-      return queueAtDoor(room, { claimed: claimed.box, returningId, name, color, emoji, note: noted.note, waiting: plan.kind === "wait" });
+    if (plan.kind === "turned_away") {
+      console.log(`[door] register turned_away code=${plan.code}`);
+      return turnedAway(plan.code);
     }
     const trust =
       (plan.kind === "enter" && plan.trust) ||
-      inviteMatches(room, invite) ||
       Boolean(returningId && isTrusted(room, returningId));
     const claimedSeed = plan.kind === "enter" ? plan.seedId : "";
+    const usedInvite = plan.kind === "enter" ? plan.inviteHash : "";
+    const makeOwner = plan.kind === "enter" && plan.owner;
     const seal = (id: string, ownerKey: string) => {
       if (claimedSeed && claimedSeed !== id) room.door.trusted = room.door.trusted.filter((person) => person.id !== claimedSeed);
       forgetId(room, id);
-      if (trust) grantTrust(room, { id, name, color, emoji, ownerKey });
+      // Trusted entries keep no raw owner key (v19 stores hashes only; trust is by agent id).
+      if (trust) grantTrust(room, { id, name, color, emoji, ownerKey: "" });
+      if (makeOwner) {
+        claimOwner(room, ownerKey);
+        console.warn(`[door] rescue: room owner claimed by ${id}`);
+      }
+      if (usedInvite) {
+        consumeInvite(room, usedInvite, id);
+        rememberVisitor(room, { id, name, color, emoji });
+        console.log(`[door] register enter invite=valid`);
+      }
     };
 
     const now = Date.now();

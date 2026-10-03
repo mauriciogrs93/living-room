@@ -1,5 +1,5 @@
 import { bearer, json, preflight, readJson } from "@/lib/http";
-import { actGuarded, getEngine, roomFailure } from "@/lib/room/access";
+import { actGuarded, getEngine, roomFailure, type ActOpts } from "@/lib/room/access";
 import { guarded } from "@/lib/room/guard";
 import { deadline } from "@/lib/room/deadline";
 
@@ -19,7 +19,9 @@ async function post(req: Request) {
     if (!token) return json({ ok: false, error: "Send Authorization: Bearer YOUR_TOKEN." }, 401);
     const body = await readJson(req);
     if (!body.ok) return body.response;
-    return await deadline(run(engine, token, body.value), 5000);
+    const raw = req.headers.get("idempotency-key") ?? (body.value && typeof body.value === "object" ? (body.value as { requestId?: unknown }).requestId : "");
+    const idemKey = typeof raw === "string" && /^[A-Za-z0-9._:-]{1,64}$/.test(raw.trim()) ? raw.trim() : "";
+    return await deadline(run(engine, token, body.value, { idemKey, deadlineAt: Date.now() + 4800 }), 5000);
   } catch (error) {
     const failure = roomFailure(error);
     if (failure) return failure;
@@ -27,8 +29,14 @@ async function post(req: Request) {
   }
 }
 
-async function run(engine: ReturnType<typeof getEngine>, token: string, value: unknown) {
-  const outcome = await actGuarded(engine, token, value);
+async function run(engine: ReturnType<typeof getEngine>, token: string, value: unknown, opts: ActOpts) {
+  const outcome = await actGuarded(engine, token, value, opts);
+  if (outcome.type === "slow_down") {
+    return json({ ok: false, code: "slow_down", error: "Slow down. Wait for busyUntil, then act again." }, 429, { "Retry-After": "1" });
+  }
+  if (outcome.type === "idem_mismatch") {
+    return json({ ok: false, code: "idempotency_mismatch", error: "That Idempotency-Key was used with a different body." }, 422);
+  }
   if (outcome.type === "held") {
     const held = outcome.held;
     return json({ ok: false, error: held.error, code: held.code, hint: held.hint }, held.status);

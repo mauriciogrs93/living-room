@@ -35,13 +35,16 @@ async function post(req: Request) {
       seedId: raw.seedId,
       seedSecret: raw.seedSecret,
     });
-    if (!result.ok) return json({ ok: false, error: result.error, code: result.code, hint: result.hint }, result.status);
+    if (!result.ok) {
+      const retry = result.retryAfter ? { "Retry-After": String(result.retryAfter) } : undefined;
+      return json({ ok: false, error: result.error, code: result.code, hint: result.hint }, result.status, retry);
+    }
     const ownerKey = "ownerKey" in result ? result.ownerKey : "";
     const waiting = "waiting" in result && result.waiting;
     return json(
       {
         ...result,
-        ownerLink: ownerKey ? `${baseUrl(req)}/room?owner=${encodeURIComponent(ownerKey)}` : undefined,
+        ownerLink: ownerKey ? `${baseUrl(req)}/room#owner=${encodeURIComponent(ownerKey)}` : undefined,
       },
       waiting ? 202 : 201,
     );

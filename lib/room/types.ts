@@ -226,6 +226,7 @@ export type ActErr = {
   code?: string;
   status: number;
   hint?: string;
+  retryAfter?: number;
 };
 
 export type ActResult = ActOk | ActErr;
