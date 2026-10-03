@@ -7,6 +7,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // v19 Door (Option A): invite, pause, resume, trust, untrust, unblock. No knock actions.
+// v20: "invite" is the ONLY way to mint (owner cookie, same-origin, 40 door actions/min, 10 mints/min, no-store).
+// The code is returned once in the JSON body (invite + line) and is never logged or put in a URL.
 const ACTIONS = new Set(["invite", "pause", "resume", "trust", "untrust", "remove", "unblock"]);
 
 export function OPTIONS() {
@@ -50,7 +52,12 @@ export const POST = guarded(async (req) => {
     const result = await engine.doorAct(ownerKey, action, id);
     if (!result.ok) {
       const code = "code" in result ? result.code : undefined;
-      return ownerJson({ ok: false, error: result.error, code }, result.status);
+      const retryAfter = "retryAfter" in result ? Number(result.retryAfter) || 0 : 0;
+      return ownerJson(
+        { ok: false, error: result.error, code, ...(retryAfter ? { retryAfter } : {}) },
+        result.status,
+        retryAfter ? { "Retry-After": String(retryAfter) } : undefined,
+      );
     }
     const view = await engine.doorView(ownerKey);
     const invite = "invite" in result && typeof result.invite === "string" ? result.invite : "";

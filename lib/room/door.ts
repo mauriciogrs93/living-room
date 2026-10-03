@@ -67,13 +67,17 @@ export type DoorState = {
   ownerHash: string;
   /** v19: Pause invites. While true the server refuses to create invites and no invite enters. */
   paused: boolean;
-  /** v19: single-use invites (hashes only). Unused ones expire after INVITE_TTL_MS. */
+  /** v19: single-use invites (hashes only). Unused ones expire after INVITE_TTL_MS (lib/room/invite-ttl.ts). */
   invites: Invite[];
   visitors: Visitor[];
   passes: GuestPass[];
 };
 
-export const INVITE_TTL_MS = Math.max(5_000, Number(process.env.INVITE_TTL_MS) || 10 * 60 * 1000);
+export { INVITE_TTL_MS } from "./invite-ttl";
+import { INVITE_TTL_MS } from "./invite-ttl";
+/** v20: invite mints per owner per minute (owner-only, inside the door write). INVITE_MINT_LIMIT env is for local tests only (floor 3). */
+export const INVITE_MINT_LIMIT = Math.max(3, Number(process.env.INVITE_MINT_LIMIT) || 10);
+export const INVITE_MINT_WINDOW_MS = 60_000;
 export const INVITE_MAX_UNUSED = 10;
 /** Guest pass length. GUEST_PASS_MS env is for test previews only (floor 5 s). */
 export const GUEST_PASS_MS = Math.max(5_000, Number(process.env.GUEST_PASS_MS) || 24 * 3600_000);
@@ -455,6 +459,11 @@ export function doorAct(room: RoomHost, ownerKey: string, action: string, id: st
   if (action === "invite") {
     if (room.door.paused) {
       return { ok: false as const, status: 409, code: "invites_paused", error: "Invites are paused. Resume to make a new one." };
+    }
+    // v20: at most INVITE_MINT_LIMIT mints a minute per owner, counted in this same committed write.
+    const minted = room.allow(`mint:${sha256(ownerKey.trim()).slice(0, 16)}`, INVITE_MINT_LIMIT, INVITE_MINT_WINDOW_MS);
+    if (!minted.ok) {
+      return { ok: false as const, status: 429, code: "invite_mint_limited", error: "Too many invites. Wait a minute.", retryAfter: minted.retryAfter };
     }
     const unused = room.door.invites.filter((item) => !item.usedAt && !item.cancelledAt && item.exp > now);
     while (unused.length >= INVITE_MAX_UNUSED) unused.shift()!.cancelledAt = now;

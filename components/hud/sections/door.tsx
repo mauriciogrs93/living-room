@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createInviteLine, doorAct, useDoor } from "@/components/room/door-client";
+import { doorAct, useDoor } from "@/components/room/door-client";
+import { startInviteCopy } from "@/components/invite-copy";
 import type { HudModel } from "../model";
 
 type Phase = "idle" | "busy" | "copied" | "failed";
@@ -29,43 +30,23 @@ export function DoorSection({ model }: { model: HudModel }) {
     if (phase === "busy" || door?.paused) return;
     setNote("");
     setPhase("busy");
-    const pending = createInviteLine();
-    let copy: Promise<void>;
-    // The copy starts in the same tap so iPhone Safari allows it; the write waits on the request.
-    try {
-      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-        const blob = pending.then((text) => new Blob([text], { type: "text/plain" }));
-        copy = navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
-      } else {
-        copy = pending.then((text) => navigator.clipboard.writeText(text));
-      }
-    } catch {
-      copy = Promise.reject(new Error("no clipboard"));
-    }
-    void (async () => {
-      let text = "";
-      try {
-        text = await pending;
-      } catch (error) {
-        setPhase("idle");
-        setNote(error instanceof Error ? error.message : "The door didn't answer.");
-        return;
-      }
-      setLine(text);
-      try {
-        await copy;
-      } catch {
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch {
+    // v20: mint + copy start in this same tap (iPhone Safari), shared with the landing and Activity copy.
+    void startInviteCopy().then(
+      (result) => {
+        setLine(result.line);
+        if (!result.copied) {
           setPhase("failed");
           return;
         }
-      }
-      setPhase("copied");
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => setPhase((now) => (now === "copied" ? "idle" : now)), 2000);
-    })();
+        setPhase("copied");
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setPhase((now) => (now === "copied" ? "idle" : now)), 2000);
+      },
+      (error: unknown) => {
+        setPhase("idle");
+        setNote(error instanceof Error ? error.message : "The door didn't answer.");
+      },
+    );
   }
 
   const paused = door.paused;

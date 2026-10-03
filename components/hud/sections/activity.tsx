@@ -5,7 +5,7 @@ import type { PublicAgent } from "@/lib/room/types";
 import type { LiveSnapshot } from "@/components/use-room";
 import { DiaryList } from "@/components/room/house-ui";
 import { OwnerActivity } from "@/components/room/owner-notes";
-import { OneLiner } from "@/components/one-liner";
+import { BringYourAgent } from "@/components/invite-copy";
 import type { HudModel } from "../model";
 import { ACTIVITY_LIMIT } from "../tokens";
 import { mutedHex } from "@/components/room/maquette/color";
@@ -42,8 +42,7 @@ export function ActivitySection({ model }: { model: HudModel }) {
         Read the shelf
       </button>
       <p className="hud-kicker">Bring your agent</p>
-      <OneLiner origin={model.origin} />
-      <p className="hud-quiet">Your own room? Tap Invite.</p>
+      <BringYourAgent variant="hud" />
       <Link href="/" className="hud-text">
         Front door
       </Link>
