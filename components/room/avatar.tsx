@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { useFrame, useThree } from "@react-three/fiber";
 import { BoxGeometry, BufferAttribute, MeshBasicMaterial, SRGBColorSpace, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, LatheGeometry, MeshPhysicalMaterial, MeshStandardMaterial, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, type BufferGeometry, type Group, type Material, type Mesh } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { FLOORS, stagePose } from "@/lib/room/layout";
+import { FLOORS, kettleSpot, stagePose } from "@/lib/room/layout";
 import { motionPoint } from "@/lib/room/paths";
 import type { PublicAgent } from "@/lib/room/types";
 import { DeckContext } from "./interact";
@@ -169,6 +169,11 @@ function ringMat(night: boolean) {
   }
   return m;
 }
+const PORTRAIT = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "agent";
+/** Where a figure waiting at the kettle is drawn (layout units): clear of the stair flight, at the worktop. */
+// x: left of the stair flight on a portrait phone; z: far enough forward that the landing above never hides the head;
+// yaw: turned to the room, the face-on view then has plain wall behind it (not the utensil rail)
+const KETTLE_STAND = { x: kettleSpot.position.x - 0.22, z: 0.56, yaw: -0.3 };
 export const SHOULDER = { x: 0.168, y: 0.455 };
 const UPPER = 0.215;
 const FORE = 0.19;
@@ -339,6 +344,15 @@ export function AgentAvatar({
     let z = agent.position.z;
     let yaw = agent.yaw;
     let feet = agent.anchor === "feet" && !agent.lie;
+    // kettle stand: the shared approach spot sits behind the stair flight, so on a portrait phone the flight crossed
+    // in front of whoever waited there. Draw them a step to the left, clear of the flight and of the landing above,
+    // turned to face the room while the kettle boils (face readable on the phone, open floor for the hero camera).
+    const waiting = !agent.motion && Math.hypot(x - kettleSpot.approach.x, z - kettleSpot.approach.z) < 0.12;
+    if (waiting) {
+      x = KETTLE_STAND.x;
+      z = KETTLE_STAND.z;
+      yaw = KETTLE_STAND.yaw;
+    }
     if (agent.motion) {
       const at = motionPoint(agent.motion.path, agent.motion.from, agent.motion.to, agent.motion.startedAt, agent.motion.arriveAt, now);
       x = at.x;
@@ -460,7 +474,7 @@ export function AgentAvatar({
     const swing = Math.sin(phase.current);
     // natural poses with an elbow: hands rest on the thighs on the sofa, reach forward to type or to the kettle
     const typing = sitting && agent.objectId === "computer";
-    const atCounter = !sitting && !walking && (/^(kettle|stove|sink|counter)/.test(agent.objectId ?? "") || /kettle|stove|sink|counter|cooking/.test(agent.status ?? ""));
+    const atCounter = !sitting && !walking && !waiting && (/^(kettle|stove|sink|counter)/.test(agent.objectId ?? "") || /kettle|stove|sink|counter|cooking/.test(agent.status ?? ""));
     if (leftArm.current) {
       leftArm.current.rotation.x = walking ? swing * 0.5 : agent.pose === "reading" ? -0.7 : typing ? -0.42 : atCounter ? -0.38 : sitting ? -0.16 : 0.04;
       leftArm.current.rotation.z = sitting ? -0.06 : -0.1;
@@ -496,7 +510,8 @@ export function AgentAvatar({
       head.current.rotation.y = walking || talking ? Math.sin(phase.current * 0.6) * 0.08 : Math.sin(phase.current * 0.35) * 0.22;
       head.current.rotation.x = talking ? -0.08 + Math.sin(phase.current * 5) * 0.06 : agent.pose === "reading" ? 0.25 : 0.06;
     }
-    const blink = agent.pose === "sleeping" ? 0.16 : phase.current % 4.6 > 4.42 ? 0.12 : 1;
+    // the face-on portrait (?view=agent) holds the eyes open, so a still never catches a blink
+    const blink = agent.pose === "sleeping" ? 0.16 : !PORTRAIT && phase.current % 4.6 > 4.42 ? 0.12 : 1;
     if (eyeL.current) eyeL.current.scale.y = 0.9 * blink;
     if (eyeR.current) eyeR.current.scale.y = 0.9 * blink;
     // legs: one thigh pivot at the hip, a knee, and a shin that stretches on low seats so feet reach the floor

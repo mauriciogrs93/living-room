@@ -19,6 +19,7 @@ import { FLOORS, HOUSE, stagePose } from "@/lib/room/layout";
 import { HudAnchors } from "@/components/hud/anchors-bridge";
 import { DeckContext, FidgetNote, FidgetProvider } from "./interact";
 import { tightDevice } from "./furniture-kit";
+import { SHADOW_LAYER } from "./maquette/kit";
 import { GEO, MAQUETTE } from "./maquette/config";
 import { FRONT } from "./maquette/shell";
 
@@ -206,6 +207,22 @@ function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number, floor:
       oy -= d;
       camera.setViewOffset(r.w, r.h, ox, oy, W, H);
       camera.updateProjectionMatrix();
+    }
+    // the ground floor has nothing under it: centre it (walls + plinth) in the free area instead of leaving the
+    // bottom half of the screen empty
+    if (box.min.y < 0.5) {
+      const ground = [...pts];
+      for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) ground.push(new THREE.Vector3(x, -0.36, z));
+      const ys = ground.map((p) => {
+        _q.copy(p).project(camera);
+        return ((1 - _q.y) / 2) * H;
+      });
+      const c = r.y + r.h / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
+      if (c > 1) {
+        oy -= c;
+        camera.setViewOffset(r.w, r.h, ox, oy, W, H);
+        camera.updateProjectionMatrix();
+      }
     }
   }
   if (floor && W < 800 && false) {
@@ -563,6 +580,10 @@ function LightRig({ night, phone, mapSize }: { night: boolean; phone: boolean; m
     light.shadow.blurSamples = 16;
     light.shadow.needsUpdate = true;
   }, [night]);
+  // the shadow camera also sees the shadow proxies (casting parts only; tiny props stay out of the map)
+  useEffect(() => {
+    sun.current?.shadow.camera.layers.enable(SHADOW_LAYER);
+  });
   const L = Math.PI; // spec intensities are legacy units (three r155+ dropped the implicit x PI)
   return (
     <>
@@ -597,7 +618,6 @@ function heroTarget() {
 }
 const _ray = new THREE.Raycaster();
 const _hd = new THREE.Vector3();
-const _hb = new THREE.Box3();
 function HeroCamera({ who, agents }: { who: string; agents: LiveSnapshot["agents"] }) {
   const camera = useThree((state) => state.camera) as THREE.PerspectiveCamera;
   const scene = useThree((state) => state.scene);
@@ -664,15 +684,16 @@ function HeroCamera({ who, agents }: { who: string; agents: LiveSnapshot["agents
     }
     const a = yaw + pick.current.angle;
     eye.set(head.x + Math.sin(a) * dist, head.y + 0.1, head.z + Math.cos(a) * dist);
-    camera.fov = 26;
+    // head-and-shoulders portrait: a tighter lens keeps desk clutter, lamps and screens out of the frame edges
+    camera.fov = 18;
     // cutaway: anything between the lens and ~0.32 m in front of the face is clipped, so posts and stair stringers never block
-    // ...but never into the agent itself (a hand reaching towards the lens stays whole)
-    _hb.setFromObject(group);
-    camera.near = Math.max(0.05, Math.min(dist - 0.32, _hb.distanceToPoint(eye) - 0.03));
+    // ...but never into the head and shoulders in frame (hands reaching towards the lens sit below this tight crop;
+    // clipping at the box of the whole figure left desk pens half-cut in front of the chest)
+    camera.near = Math.max(0.05, dist - 0.3);
     camera.clearViewOffset();
     camera.aspect = size.width / size.height;
     camera.position.copy(eye);
-    camera.lookAt(head.x, head.y - 0.17, head.z);
+    camera.lookAt(head.x, head.y - 0.11, head.z);
     camera.updateProjectionMatrix();
     // portrait key: a soft, warm, shadowless light from upper camera-left, so brow, sockets and nose read on the face
     const l = key.current;

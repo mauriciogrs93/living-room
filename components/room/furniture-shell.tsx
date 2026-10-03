@@ -126,7 +126,7 @@ function DaylightPatches({ lift }: { lift: number | null }) {
 
 function KitchenPendant({ on }: { on: boolean }) {
   const { M } = useMats();
-  const built = useBuilt(() => pendant(M, on, HOUSE.roomH), [M, on]);
+  const built = useBuilt(() => pendant(M, on, HOUSE.roomH), [M, on], { noCast: true });
   // hangs over the kitchen table
   const z = -0.35 + ((0.9 - FLOORS[0].z0) / (FLOORS[0].z1 - FLOORS[0].z0)) * (HOUSE.zFront - HOUSE.zBack);
   return (

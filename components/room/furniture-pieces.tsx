@@ -194,7 +194,7 @@ function ShelfModel() {
 
 function SinkModel({ running: serverOn }: { running: boolean }) {
   const { M } = useMats();
-  const built = useBuilt(() => P.sink(M), [M]);
+  const built = useBuilt(() => P.sink(M), [M], { noCast: true });
   const { say } = useFidgets();
   const [running, setRunning] = useOptimistic(serverOn);
   const flow = useRef<THREE.Mesh>(null);
@@ -224,7 +224,7 @@ function StoveModel({ hot: serverOn }: { hot: boolean }) {
   const { M } = useMats();
   const { say } = useFidgets();
   const [hot, setHot] = useOptimistic(serverOn);
-  const built = useBuilt(() => P.stove(M, hot), [M, hot]);
+  const built = useBuilt(() => P.stove(M, hot), [M, hot], { noCast: true });
   return (
     <Tap
       onTap={() => {
@@ -243,7 +243,7 @@ function StoveModel({ hot: serverOn }: { hot: boolean }) {
 function RadioModel({ on }: { on: boolean }) {
   const { M } = useMats();
   const { onTapRadio, station } = useScene();
-  const built = useBuilt(() => P.radio(M, on), [M, on]);
+  const built = useBuilt(() => P.radio(M, on), [M, on], { noCast: true });
   return (
     <Tap onTap={() => onTapRadio()}>
       <primitive object={built.group} name={station} />
@@ -304,7 +304,7 @@ export function SwayPlant({ position, scale = 1, onTap }: { position: [number, n
 
 function KettleModel({ heating: serverOn }: { heating: boolean }) {
   const { M } = useMats();
-  const built = useBuilt(() => P.kettle(M), [M]);
+  const built = useBuilt(() => P.kettle(M), [M], { noCast: true });
   const { say } = useFidgets();
   const live = useScene();
   const [heating, setHeating] = useOptimistic(serverOn);
@@ -357,7 +357,7 @@ function SwitchTap({ id, on: serverOn, wallDz }: { id: string; on: boolean; wall
   useEffect(() => {
     setLightOn(id, serverOn);
   }, [id, serverOn, setLightOn]);
-  const built = useBuilt(() => P.wallSwitch(M, on, wallDz), [M, on, wallDz]);
+  const built = useBuilt(() => P.wallSwitch(M, on, wallDz), [M, on, wallDz], { noCast: true });
   const name = id === "kitchen-light" ? "Kitchen light" : "Light";
   return (
     <Tap
@@ -406,7 +406,7 @@ function WardrobeTap({ open: serverOn }: { open: boolean }) {
 
 function DogBedTap() {
   const { M } = useMats();
-  const built = useBuilt(() => P.dogbed(M), [M]);
+  const built = useBuilt(() => P.dogbed(M), [M], { noCast: true });
   const { say } = useFidgets();
   return (
     <Tap

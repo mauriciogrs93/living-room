@@ -477,13 +477,21 @@ export function plane(parent: THREE.Object3D, mat: THREE.Material, w: number, h:
   return m;
 }
 
+/** Parts smaller than this (largest side, metres) never cast into the shadow map. */
+const TINY = 0.16;
+/** Layer seen only by the shadow camera (shadow proxies). */
+export const SHADOW_LAYER = 5;
+
 // ---------------------------------------------------------------- static merge
 /**
  * One mesh per (material, cast, receive) for everything static in `group`. Uvs are dropped (nothing is textured).
  * Meshes flagged `userData.keep`, shader materials, instanced meshes and hidden sub-groups are left alone.
  */
-export function mergeStatic(group: THREE.Object3D, opts: { floorY?: number } = { floorY: 0 }) {
-  type Bucket = { mat: THREE.Material; family: boolean; cast: boolean; recv: boolean; noContact: boolean; geos: THREE.BufferGeometry[] };
+export function mergeStatic(group: THREE.Object3D, opts: { floorY?: number; noCast?: boolean } = { floorY: 0 }) {
+  type Bucket = { mat: THREE.Material; family: boolean; cast: boolean; recv: boolean; noContact: boolean; geos: THREE.BufferGeometry[]; shadow: THREE.BufferGeometry[]; partial: boolean };
+  // position-only shadow geometry from proxies of already-merged children (a batch of pieces)
+  const inShadow: THREE.BufferGeometry[] = [];
+  let proxyMat: THREE.Material | null = null;
   const buckets = new Map<string, Bucket>();
   const kill: THREE.Mesh[] = [];
   const keepGroups: THREE.Object3D[] = [];
@@ -497,6 +505,20 @@ export function mergeStatic(group: THREE.Object3D, opts: { floorY?: number } = {
       let nested = false;
       for (let p = obj.parent; p && p !== group; p = p.parent) if (p.userData.keep) nested = true;
       if (!nested && obj.visible) keepGroups.push(obj);
+    }
+    if (o.isMesh && o.userData.shadowProxy) {
+      for (let p = o.parent; p && p !== group; p = p.parent) if (!p.visible || p.userData.keep) return;
+      if (opts.noCast) {
+        kill.push(o);
+        return;
+      }
+      const pg = o.geometry.clone();
+      rel.multiplyMatrices(inv, o.matrixWorld);
+      pg.applyMatrix4(rel);
+      inShadow.push(pg);
+      proxyMat ??= o.material as THREE.Material;
+      kill.push(o);
+      return;
     }
     if (!o.isMesh || (o as unknown as THREE.InstancedMesh).isInstancedMesh || o.userData.keep || Array.isArray(o.material)) return;
     if ((o.material as THREE.Material & { isShaderMaterial?: boolean }).isShaderMaterial || (o.material as THREE.Material).transparent) return;
@@ -577,33 +599,76 @@ export function mergeStatic(group: THREE.Object3D, opts: { floorY?: number } = {
         recv: o.receiveShadow,
         noContact,
         geos: [],
+        shadow: [],
+        partial: false,
       };
       buckets.set(key, bucket);
     }
-    if (o.castShadow) bucket.cast = true;
+    // shadow budget: tiny props (mugs, books lying flat, remotes, knobs, handles, small decor) and parts flagged
+    // `noCast` draw in the main pass but are left out of the shadow map; see the shadow proxy below
+    const casts = o.castShadow && !opts.noCast;
+    if (casts) bucket.cast = true;
     if (o.receiveShadow) bucket.recv = true;
     bucket.geos.push(g);
+    // parts flagged cast:false still went into the shadow map whenever they shared a casting batch (the stair treads,
+    // for one), so they keep doing so: the proxy only drops tiny parts and explicit `userData.noCast` ones
+    let shadowed = Boolean(o.userData.proxied); // an already-merged child: its own proxy (collected above) covers it
+    if (!shadowed && !opts.noCast && !o.userData.noCast) {
+      g.computeBoundingBox();
+      const sz = g.boundingBox!.getSize(wp);
+      if (Math.max(sz.x, sz.y, sz.z) >= TINY) {
+        const pg = new THREE.BufferGeometry();
+        pg.setAttribute("position", g.attributes.position);
+        bucket.shadow.push(pg);
+        shadowed = true;
+      }
+    }
+    if (!shadowed) bucket.partial = true;
     kill.push(o);
   });
   for (const o of kill) {
     o.parent?.remove(o);
     if (!o.geometry.userData.cached) o.geometry.dispose();
   }
+  // one shadow proxy per piece as soon as any casting part is left out (or a merged child brought its own proxy)
+  const useProxy = inShadow.length > 0 || [...buckets.values()].some((b) => b.cast && b.partial);
   for (const b of buckets.values()) {
     const merged = mergeGeometries(b.geos);
     for (const g of b.geos) g.dispose();
     if (!merged) continue;
     const m = new THREE.Mesh(merged, b.mat);
-    m.castShadow = b.cast;
+    m.castShadow = b.cast && !useProxy;
     m.receiveShadow = b.recv;
     m.userData.merged = true;
     if (b.noContact) m.userData.noContact = true;
     group.add(m);
+    // shadow proxy: when some parts are left out of the shadow map, the casting parts get their own position-only
+    // mesh on layer SHADOW_LAYER. Only the shadow camera sees that layer, so the main pass keeps ONE draw call per
+    // piece while the shadow pass draws fewer triangles. Raycasts and the contact-shadow bakes ignore it too.
+    if (b.cast && useProxy) {
+      m.userData.proxied = true;
+      inShadow.push(...b.shadow);
+      proxyMat ??= b.mat;
+    }
+  }
+  if (inShadow.length) {
+    const pm = mergeGeometries(inShadow);
+    if (pm && proxyMat) {
+      const proxy = new THREE.Mesh(pm, proxyMat);
+      proxy.name = "shadow-proxy";
+      proxy.castShadow = true;
+      proxy.receiveShadow = false;
+      proxy.layers.set(SHADOW_LAYER);
+      proxy.userData.shadowProxy = true;
+      proxy.userData.noContact = true;
+      proxy.raycast = () => null;
+      group.add(proxy);
+    }
   }
   // moving parts (doors, the sliding book, flights) merge their own children in their local frame
   for (const k of keepGroups) {
     k.userData.keep = false;
-    mergeStatic(k, {});
+    mergeStatic(k, { noCast: Boolean(k.userData.noCast) || opts.noCast });
     k.userData.keep = true;
   }
   return group;

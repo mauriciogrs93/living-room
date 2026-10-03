@@ -299,6 +299,7 @@ export function fridge(M: Mats): Built {
   bar(g, M.graphite, 0.36, 0.012, 0.004, 0.15, 0.012, fz + 0.272);
   // upper door, hinged on the right edge
   const door = part(g, 0.45, 0.97, fz + 0.27);
+  door.userData.noCast = true; // a door or loose book: the carcass already casts this silhouette
   blk(door, M.enamel, 0.6, 0.6, 0.024, -0.3, 0, 0, { r: 0.01 });
   blk(door, M.steel, 0.02, 0.3, 0.025, -0.55, 0.08, 0.025, { r: 0.008 });
   return { group: g, parts: { door } };
@@ -333,6 +334,7 @@ export function bookshelf(M: Mats): Built {
   for (let i = 0; i < 3; i += 1) x += 0.03 + ((i * 37) % 5) * 0.007 + 0.003;
   const w = 0.03 + ((3 * 37) % 5) * 0.007;
   const book = part(g, 0, 0, 0);
+  book.userData.noCast = true; // a door or loose book: the carcass already casts this silhouette
   blk(book, M.terracotta, w, 0.26 - ((3 * 53) % 5) * 0.016, 0.2, x + w / 2, 0.07, 0, { r: 0.005 });
   return { group: g, parts: { book } };
 }
@@ -492,9 +494,11 @@ export function wardrobe(M: Mats): Built {
   blk(g, M.oak, 0.5, 0.04, 0.34, 0, 0, 0, { r: 0.008, cast: false });
   blk(g, M.linenDeep, 0.5, 1.4, 0.01, 0, 0.12, 0.19, { r: 0.004, cast: false });
   const left = part(g, -0.274, 0.09, 0.205);
+  left.userData.noCast = true; // a door or loose book: the carcass already casts this silhouette
   blk(left, M.birch, 0.27, 1.5, 0.02, 0.137, 0, 0, { r: 0.008 });
   cyl(left, M.brass, 0.007, 0.007, 0.14, 0.254, 0.76, 0.02, { bevel: 0.002, seg: 10 });
   const right = part(g, 0.274, 0.09, 0.205);
+  right.userData.noCast = true; // a door or loose book: the carcass already casts this silhouette
   blk(right, M.birch, 0.27, 1.5, 0.02, -0.137, 0, 0, { r: 0.008 });
   cyl(right, M.brass, 0.007, 0.007, 0.14, -0.254, 0.76, 0.02, { bevel: 0.002, seg: 10 });
   return { group: g, parts: { left, right } };
@@ -528,6 +532,7 @@ export function counter(M: Mats): Built {
     if (i === 0 || i === 3) {
       const hingeX = i === 0 ? cx - dw / 2 + 0.006 : cx + dw / 2 - 0.006;
       const door = part(g, hingeX, 0.095, c.d / 2 - 0.01);
+      door.userData.noCast = true; // a door or loose book: the carcass already casts this silhouette
       blk(door, M.birch, dw - 0.012, 0.58, 0.016, cx - hingeX, 0, 0, { r: 0.006 });
       cyl(door, M.brass, 0.006, 0.006, 0.08, kx - hingeX, 0.455, 0.015, { bevel: 0.002, seg: 8 });
       parts[i === 0 ? "left" : "right"] = door;
