@@ -63,7 +63,7 @@ export type DoorState = {
   visitors: Visitor[];
 };
 
-export const INVITE_TTL_MS = Math.max(60_000, Number(process.env.INVITE_TTL_MS) || 10 * 60 * 1000);
+export const INVITE_TTL_MS = Math.max(5_000, Number(process.env.INVITE_TTL_MS) || 10 * 60 * 1000);
 export const INVITE_MAX_UNUSED = 10;
 export const INVITE_FAIL_LIMIT = 5;
 export const INVITE_FAIL_WINDOW_MS = 10 * 60 * 1000;
