@@ -1,5 +1,7 @@
-// v19 local smoke test. Run against a local server started with ROOM_STORE=memory (never the live room).
-// node scripts/v19-smoke.mjs http://localhost:3919
+// v19/v20 smoke test. Local server with ROOM_STORE=memory, or a private preview on the v19_test namespace through
+// vercel curl (VERCEL_DEPLOYMENT=<url>). Never the live room. node scripts/v19-smoke.mjs http://localhost:3919
+// v20: OWNER_KEY_FILE reuses the test room owner claimed by an earlier script; CAP_TEST=1 (local, INVITE_MINT_LIMIT>=13)
+// runs the 10-unused cap; PASS_WAIT_MS (server GUEST_PASS_MS short) runs the pass-expiry check.
 const BASE = process.argv[2] || "http://localhost:3919";
 const results = [];
 let ipN = 10;
@@ -60,11 +62,29 @@ async function act(token, body, extra = {}) {
 async function look(token) {
   return call("GET", "/api/look", { token });
 }
+/** v20: owner mints an invite; waits out the 10-a-minute mint limit. */
+async function mint(cookie) {
+  for (let i = 0; ; i += 1) {
+    const r = await call("POST", "/api/door", { cookie, body: { action: "invite" } });
+    if (r.status !== 429 || i >= 2) return r;
+    await sleep(((Number(r.headers.get("retry-after")) || 30) + 1) * 1000);
+  }
+}
 
-const owner = await reg({ name: "Owner", emoji: "🏠" });
-check("first register on an empty room claims the owner (rescue)", owner.status === 201, `status ${owner.status}`);
-check("ownerLink uses #owner= (not a query string)", /\/room#owner=own_/.test(owner.json?.ownerLink || ""));
-const ownerKey = owner.json.ownerKey;
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+const KEY_FILE = process.env.OWNER_KEY_FILE || "";
+let ownerKey = "";
+if (KEY_FILE && existsSync(KEY_FILE)) {
+  ownerKey = readFileSync(KEY_FILE, "utf8").trim();
+  check("owner key from OWNER_KEY_FILE (room claimed by an earlier script)", /^own_/.test(ownerKey));
+} else {
+  const owner = await reg({ name: "Owner", emoji: "🏠" });
+  check("first register on an empty room claims the owner (rescue)", owner.status === 201, `status ${owner.status}`);
+  check("ownerLink uses #owner= (not a query string)", /\/room#owner=own_/.test(owner.json?.ownerLink || ""));
+  ownerKey = owner.json.ownerKey;
+  if (KEY_FILE) writeFileSync(KEY_FILE, ownerKey, { mode: 0o600 });
+  await call("POST", "/api/leave", { token: owner.json.token });
+}
 const sess = await call("POST", "/api/owner/session", { body: { ownerKey } });
 const setCookie = sess.headers.get("set-cookie") || "";
 check("owner session sets HttpOnly Secure SameSite cookie", /__Host-lr_owner=/.test(setCookie) && /HttpOnly/i.test(setCookie) && /Secure/i.test(setCookie) && /SameSite=Lax/i.test(setCookie));
@@ -75,10 +95,10 @@ const viaQuery = await call("GET", `/api/door?ownerKey=${ownerKey}`);
 check("owner key in URL query is NOT accepted", viaQuery.status === 403, `status ${viaQuery.status}`);
 
 // invite create + enter
-const inv = await call("POST", "/api/door", { cookie, body: { action: "invite" } });
+const inv = await mint(cookie);
 const code = inv.json?.invite || "";
 check("invite create returns a 128-bit (26 base32) invite", inv.status === 200 && /^[a-z2-7]{26}$/.test(code), `status ${inv.status}`);
-check("copied line has the invite outside the URL", /skill\.md and join the Living Room with invite [a-z2-7]{26}\.$/.test(inv.json?.line || "") && !/\?invite=/.test(inv.json?.line || ""), inv.json?.line);
+check("copied line (v20 Writer copy) has the invite outside the URL", /skill\.md and join the Living Room with invite [a-z2-7]{26}\. Use it now; it works once\.$/.test(inv.json?.line || "") && !/\?invite=/.test(inv.json?.line || ""), (inv.json?.line || "").replace(/[a-z2-7]{26}/, "<code>"));
 const door1 = await call("GET", "/api/door", { cookie });
 check("Door view never shows invite values", !JSON.stringify(door1.json).includes(code) && door1.json?.unused === 1);
 const guest = await reg({ name: "Guest", emoji: "🍊", invite: code });
@@ -97,24 +117,26 @@ const doorAfter = await call("GET", "/api/door", { cookie });
 check("no knocks: owner sees no knock list entries", (doorAfter.json?.knocks || []).length === 0);
 
 // two agents racing one invite
-const raceInv = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json.invite;
+const raceInv = (await mint(cookie)).json?.invite;
 const race = await Promise.all([reg({ name: "RaceA", invite: raceInv }), reg({ name: "RaceB", invite: raceInv })]);
 const wins = race.filter((r) => r.status === 201).length;
 check("two agents on one invite: exactly one gets in", wins === 1, race.map((r) => `${r.status}:${r.json?.code || ""}`).join(","));
 
-// expiry (server runs with INVITE_TTL_MS=8000)
-const expInv = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json.invite;
-await sleep(Number(process.env.EXPIRY_WAIT_MS || 9000));
+// expiry (v20: INVITE_TTL_MS is 60 s; door-http.mjs also checks ~55 s accepted / ~65 s rejected)
+const expInv = (await mint(cookie)).json?.invite;
+await sleep(Number(process.env.EXPIRY_WAIT_MS || 65000));
 const expired = await reg({ name: "Latecomer", invite: expInv });
 check("expired invite rejected: invite_expired", expired.status === 403 && expired.json?.code === "invite_expired", `${expired.status} ${expired.json?.code}`);
 
-// max 10 unused
-for (let i = 0; i < 12; i += 1) await call("POST", "/api/door", { cookie, body: { action: "invite" }, xff: "10.9.9.9" });
-const capped = await call("GET", "/api/door", { cookie });
-check("at most 10 unused invites", capped.json?.unused === 10, `unused ${capped.json?.unused}`);
+// max 10 unused (v20: with 10 mints a minute and a 1-minute TTL the cap is only reachable with INVITE_MINT_LIMIT raised)
+if (process.env.CAP_TEST) {
+  for (let i = 0; i < 12; i += 1) await call("POST", "/api/door", { cookie, body: { action: "invite" }, xff: "10.9.9.9" });
+  const capped = await call("GET", "/api/door", { cookie });
+  check("at most 10 unused invites (oldest cancelled)", capped.json?.unused === 10, `unused ${capped.json?.unused}`);
+}
 
 // pause / resume
-const keep = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json.invite;
+const keep = (await mint(cookie)).json?.invite;
 const paused = await call("POST", "/api/door", { cookie, body: { action: "pause" } });
 check("pause cancels all unused invites in one write", paused.status === 200 && paused.json?.paused === true && paused.json?.unused === 0);
 const blockedCreate = await call("POST", "/api/door", { cookie, body: { action: "invite" } });
@@ -126,7 +148,7 @@ const resumed = await call("POST", "/api/door", { cookie, body: { action: "resum
 check("resume", resumed.status === 200 && resumed.json?.paused === false);
 const oldAfter = await reg({ name: "OldLine", invite: keep });
 check("invite cancelled by Pause -> invite_cancelled after Resume", oldAfter.status === 403 && oldAfter.json?.code === "invite_cancelled" && !/retry/i.test(oldAfter.json?.hint || ""), `${oldAfter.json?.code} / ${oldAfter.json?.hint}`);
-const fresh = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json?.invite;
+const fresh = (await mint(cookie)).json?.invite;
 const freshIn = await reg({ name: "Fresh", invite: fresh });
 check("fresh invite after Resume works", freshIn.status === 201);
 
@@ -154,23 +176,25 @@ await call("POST", "/api/leave", { token: rjR.json?.token });
 const rem = await call("POST", "/api/door", { cookie, body: { action: "remove", id: freshIn.json?.agentId } });
 const rjX = await reg({ name: "Fresh", ownerKey: fk });
 check("rejoin after owner's Remove -> refused", rem.status === 200 && rjX.status === 403, `remove ${rem.status}; rejoin ${rjX.status} ${rjX.json?.code}`);
-const lateInv = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json?.invite;
+const lateInv = (await mint(cookie)).json?.invite;
 const late = await reg({ name: "Later", invite: lateInv });
 await call("POST", "/api/leave", { token: late.json?.token });
-await sleep(Number(process.env.PASS_WAIT_MS || 11000));
-const rjL = await reg({ name: "Later", ownerKey: late.json?.ownerKey });
-check("rejoin after the pass expires (24 h; short in tests) -> refused", late.status === 201 && rjL.status === 403, `${late.status} -> ${rjL.status} ${rjL.json?.code}`);
+if (process.env.PASS_WAIT_MS) {
+  await sleep(Number(process.env.PASS_WAIT_MS));
+  const rjL = await reg({ name: "Later", ownerKey: late.json?.ownerKey });
+  check("rejoin after the pass expires (24 h; short in tests) -> refused", late.status === 201 && rjL.status === 403, `${late.status} -> ${rjL.status} ${rjL.json?.code}`);
+} else check("Later joined with an invite (pass-expiry wait skipped: GUEST_PASS_MS is the real 24 h)", late.status === 201, `${late.status}`);
 
 // skill.md first register example works as written (invite in the body)
 const skillRes = VIA ? null : await fetch(BASE + "/skill.md");
 const skillTxt = skillRes ? await skillRes.text() : await skillViaCurl();
 const sec = skillTxt.split("## 1. Register")[1] || "";
 const ex = (sec.match(/-d '(\{[^']+\})'/) || [])[1] || "";
-const exInv = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json?.invite;
-let exBody = null; try { exBody = JSON.parse(ex.replace("THE_INVITE", exInv)); } catch {}
+const exInv = (await mint(cookie)).json?.invite;
+let exBody = null; try { exBody = JSON.parse(ex.replace("YOUR_INVITE", exInv)); } catch {}
 const exReg = exBody ? await reg(exBody) : { status: 0 };
-check("skill.md '## 1. Register' example includes invite and works as written (201)", /"invite":"THE_INVITE"/.test(ex) && exReg.status === 201, `${ex.slice(0, 90)} -> ${exReg.status} ${exReg.json?.code || ""}`);
-check("skill.md quotes the real join line", skillTxt.includes("skill.md and join the Living Room with invite THE_INVITE."));
+check("skill.md '## 1. Register' example includes invite and works as written (201)", /"invite":"YOUR_INVITE"/.test(ex) && exReg.status === 201, `${ex.slice(0, 90)} -> ${exReg.status} ${exReg.json?.code || ""}`);
+check("skill.md has no THE_INVITE and has the Joining paragraph (TTL wording from INVITE_TTL_MS)", !skillTxt.includes("THE_INVITE") && skillTxt.includes("**Joining.** Your person gave you a line") && skillTxt.includes("expires about a minute after it was made"));
 if (exReg.json?.token) await call("POST", "/api/leave", { token: exReg.json.token });
 
 // impostor: an invited/trusted agent's key has no owner powers
@@ -196,7 +220,7 @@ const xsite = await call("POST", "/api/door", { cookie, body: { action: "pause" 
 check("cross-site POST with owner cookie refused", xsite.status === 403);
 
 // cooking (Tester bugs 1+2)
-const cook = await reg({ name: "Cook", emoji: "🍳", invite: (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json.invite });
+const cook = await reg({ name: "Cook", emoji: "🍳", invite: (await mint(cookie)).json?.invite });
 const ct = cook.json.token;
 let r = await act(ct, { action: "take", objectId: "fridge" }); await waitBusy(r);
 let l = await look(ct);
@@ -243,7 +267,7 @@ const win = JSON.stringify(st.json).match(/"(Night|Early morning|Morning|Afterno
 check("window/time-of-day uses Eastern time", win.includes(`${band}.`) || String(r.json?.message || "").includes(`${band}.`), `ET hour ${etHour} -> expect ${band}; got ${win || r.json?.message} ${view}`);
 
 // idempotency + burst
-const idemAgent = await reg({ name: "Idem", invite: (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json.invite });
+const idemAgent = await reg({ name: "Idem", invite: (await mint(cookie)).json?.invite });
 const it = idemAgent.json.token;
 await sleep(1600);
 const k = `smoke-${Date.now()}`;
@@ -257,6 +281,12 @@ await sleep(1600);
 const burst = await Promise.all(Array.from({ length: 6 }, (_, i) => act(it, { action: "emote", emote: "wave" })));
 const codes = burst.map((b) => b.status);
 check("burst of 6 acts -> fast 429 slow_down, no 503", codes.filter((c) => c === 429).length >= 2 && !codes.includes(503), codes.join(","));
+
+// v20: every test agent leaves
+for (const t of [...race.map((x) => x.json?.token), back.json?.token, ct, it, freshIn.json?.token, late.json?.token]) if (t) await call("POST", "/api/leave", { token: t });
+const stEnd = await call("GET", "/api/state");
+const stay = (stEnd.json?.agents || []).map((x) => x.name);
+check("all smoke agents left", !stay.some((n) => /^(Owner|Guest|RaceA|RaceB|Fresh|Later|Cook|Idem|Juniper)$/.test(n)), stay.join(","));
 
 // rate limit on failed invites (runs last: on a single-IP preview it blocks this IP for 10 min)
 const rlIp = "10.77.0.1";

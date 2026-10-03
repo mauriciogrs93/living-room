@@ -1,4 +1,4 @@
-// v19 scripted playtest: an agent following skill.md on a protected preview (via vercel curl) or a local server.
+// v19/v20 scripted playtest: an agent following skill.md on a protected preview (via vercel curl) or a local server.
 // VERCEL_DEPLOYMENT=<url> VERCEL_BIN=<vercel> node scripts/v19-playtest.mjs <url>
 const BASE = process.argv[2];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -30,7 +30,7 @@ async function call(method, path, { body, cookie, token } = {}) {
   return { status: res.status, json, headers: res.headers };
 }
 const rows = [];
-const redact = (o) => JSON.stringify(o ?? null).replace(/(own|tok|lr)_[A-Za-z0-9_-]{8,}/g, "$1_…").replace(/"invite":"[a-z2-7]{26}"/g, '"invite":"…"').slice(0, 300);
+const redact = (o) => JSON.stringify(o ?? null).replace(/(own|tok|lr)_[A-Za-z0-9_-]{8,}/g, "$1_…").replace(/\b[a-z2-7]{26}\b/g, "<code>").slice(0, 300);
 function rec(step, ok, r) { rows.push({ step, ok }); console.log(`${ok ? "PASS" : "FAIL"}  ${step}${ok ? "" : `  -> ${r?.status} ${redact(r?.json)}`}`); }
 let T = "";
 async function act(step, body, okIf) {
@@ -48,16 +48,21 @@ const skill = await call("GET", "/skill.md");
 const skillText = typeof skill.json === "string" ? skill.json : "";
 // skill.md is text; fetch raw for the check
 rec("skill.md served", skill.status === 200 || skill.status === 0, skill);
-const owner = await call("POST", "/api/register", { body: { name: "Owner", emoji: "🏠" } });
-rec("owner registers (fresh test room: rescue owner)", owner.status === 201 && Boolean(owner.json?.ownerKey), owner);
+import { existsSync, readFileSync } from "node:fs";
+const KEY_FILE = process.env.OWNER_KEY_FILE || "";
+const fromFile = KEY_FILE && existsSync(KEY_FILE) ? readFileSync(KEY_FILE, "utf8").trim() : "";
+const owner = fromFile ? { status: 201, json: { ownerKey: fromFile, token: "" } } : await call("POST", "/api/register", { body: { name: "Owner", emoji: "🏠" } });
+rec(fromFile ? "owner key from OWNER_KEY_FILE (test room owner)" : "owner registers (fresh test room: rescue owner)", owner.status === 201 && Boolean(owner.json?.ownerKey), owner);
 const ownerKey = owner.json?.ownerKey || "";
 const sess = await call("POST", "/api/owner/session", { body: { ownerKey } });
 rec("owner session cookie set", sess.status === 200 && /__Host-lr_owner=/.test(sess.headers.get("set-cookie") || ""), { status: sess.status, json: sess.json });
 const cookie = `__Host-lr_owner=${encodeURIComponent(ownerKey)}`;
 const inv = await call("POST", "/api/door", { cookie, body: { action: "invite" } });
-rec("owner taps Invite an agent", inv.status === 200 && /^[a-z2-7]{26}$/.test(inv.json?.invite || ""), inv);
-const oleave = await call("POST", "/api/leave", { token: owner.json?.token });
-rec("owner agent leaves; owner key still runs the Door", oleave.status === 200, oleave);
+rec("owner taps Copy: fresh invite in the v20 line, no placeholder", inv.status === 200 && /^[a-z2-7]{26}$/.test(inv.json?.invite || "") && (inv.json?.line || "").endsWith(`with invite ${inv.json?.invite}. Use it now; it works once.`), inv);
+if (owner.json?.token) {
+  const oleave = await call("POST", "/api/leave", { token: owner.json?.token });
+  rec("owner agent leaves; owner key still runs the Door", oleave.status === 200, oleave);
+}
 const agent = await call("POST", "/api/register", { body: { name: "Tester", emoji: "🧪", invite: inv.json?.invite } });
 rec("agent joins with the invite in the body (201)", agent.status === 201 && Boolean(agent.json?.token), agent);
 T = agent.json?.token || "";
@@ -85,12 +90,12 @@ await act("tv_off", { action: "tv_off", objectId: "tv" });
 await act("radio_on", { action: "radio_on", objectId: "radio" });
 await act("radio_next", { action: "radio_next", objectId: "radio" });
 await act("radio_off", { action: "radio_off", objectId: "radio" });
-await act("book_write (bookshelf)", { action: "book_write", objectId: "bookshelf", title: "House journal", text: "v19 playtest: kettle, stove, plant, radio, tv." });
+await act("book_write (bookshelf)", { action: "book_write", objectId: "bookshelf", title: "House journal", text: "v20 playtest: kettle, stove, plant, radio, tv." });
 await act("sit in reading chair", { action: "sit", objectId: "reading-chair" });
 await act("pet the dog", { action: "pet" });
 await act("lie on bed (stairs up again)", { action: "lie", objectId: "bed" });
 await act("computer_sit", { action: "computer_sit", objectId: "computer" });
-await act("computer_type", { action: "computer_type", objectId: "computer", text: "hello from v19" });
+await act("computer_type", { action: "computer_type", objectId: "computer", text: "hello from v20" });
 await act("computer_off clears the screen", { action: "computer_off", objectId: "computer" }, (l) => { const c = (l?.objects || []).find((o) => o.id === "computer"); return c && !c.state?.user && !c.state?.line; });
 await act("wardrobe_open", { action: "wardrobe_open", objectId: "wardrobe" });
 await act("wardrobe_close", { action: "wardrobe_close", objectId: "wardrobe" });
