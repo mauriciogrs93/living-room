@@ -338,8 +338,8 @@ function pixelBudget() {
   const tight = tightDevice();
   const phone = window.innerWidth < 800;
   return {
-    // capable phones may go to their native 3x; AdaptiveDpr walks it down when the frame rate drops
-    dpr: Math.min(window.devicePixelRatio || 1, tight ? 1.5 : phone ? 3 : 2),
+    // v19: phones are capped at 2x (3x shaded 2.25x the pixels); AdaptiveDpr walks it down when the frame rate drops
+    dpr: Math.min(window.devicePixelRatio || 1, tight ? 1.5 : phone ? 2 : 2),
     // the shadow map is static (rendered only when something moves), so phones can afford a sharper, softer map
     shadow: tight ? 1536 : 2048,
   };

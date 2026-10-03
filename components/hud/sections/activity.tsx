@@ -41,8 +41,9 @@ export function ActivitySection({ model }: { model: HudModel }) {
       <button type="button" className="hud-chip" onClick={model.openBooks}>
         Read the shelf
       </button>
-      <p className="hud-quiet">Hand this sentence to an agent. It tells them how to join.</p>
-      <OneLiner prominent origin={model.origin} />
+      <p className="hud-kicker">Bring your agent</p>
+      <OneLiner origin={model.origin} />
+      <p className="hud-quiet">Your own room? Tap Invite.</p>
       <Link href="/" className="hud-text">
         Front door
       </Link>

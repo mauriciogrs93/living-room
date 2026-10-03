@@ -1160,3 +1160,5 @@ html[data-floor-frame]:not([data-floor-frame="all"]) .sheet-caption {
     animation: none;
   }
 }
+
+.landing-note { margin-top: 8px; font-size: 13px; color: var(--hud-muted, #6e7177); }

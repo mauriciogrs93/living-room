@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Box3, BoxGeometry, BufferAttribute, type Camera, type Object3D, MeshBasicMaterial, SRGBColorSpace, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, LatheGeometry, MeshPhysicalMaterial, MeshStandardMaterial, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, type BufferGeometry, type Group, type Material, type Mesh } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { FLOORS, kettleSpot, stagePose } from "@/lib/room/layout";
+import { FLOORS, HOUSE, kettleSpot, stagePose } from "@/lib/room/layout";
 import { motionPoint } from "@/lib/room/paths";
 import type { PublicAgent } from "@/lib/room/types";
 import { DeckContext } from "./interact";
@@ -227,6 +227,7 @@ const PORTRAIT = typeof window !== "undefined" && new URLSearchParams(window.loc
 const PORTRAIT_WHO = PORTRAIT ? (new URLSearchParams(window.location.search).get("who") ?? "").toLowerCase() : "";
 const _lens = new Vector3();
 const _feet = new Vector3();
+const _band = new Vector3();
 /** Where a figure waiting at the kettle is drawn (layout units): clear of the stair flight, at the worktop. */
 // x: left of the stair flight on a portrait phone; z: far enough forward that the landing above never hides the head;
 // yaw: turned to the room, the face-on view then has plain wall behind it (not the utensil rail)
@@ -536,8 +537,22 @@ export function AgentAvatar({
           ];
           const minX = bounds.left + margin;
           const maxX = bounds.right - margin - bw;
-          const minY = bounds.top + top;
-          const maxY = bounds.bottom - bottom - bh;
+          let minY = bounds.top + top;
+          let maxY = bounds.bottom - bottom - bh;
+          // v19: a note stays inside its speaker's own floor band (ceiling to floor on screen), so on a phone
+          // Basil's note can't float over the bed in the room above.
+          let floorIdx = 0;
+          for (let f = 0; f < FLOORS.length; f += 1) if (lift + 0.2 >= FLOORS[f]!.y) floorIdx = f;
+          const floorY = FLOORS[floorIdx]!.y;
+          _band.set(group.position.x, floorY + HOUSE.roomH, group.position.z).project(camera);
+          const ceilY = bounds.top + (-_band.y * 0.5 + 0.5) * size.height;
+          _band.set(group.position.x, floorY, group.position.z).project(camera);
+          const groundY = bounds.top + (-_band.y * 0.5 + 0.5) * size.height;
+          if (groundY - ceilY >= bh + 4) {
+            minY = Math.max(minY, ceilY + 2);
+            maxY = Math.min(maxY, groundY - bh - 2);
+            if (maxY < minY) maxY = minY;
+          }
           let best = { x: cands[0][0], y: cands[0][1], score: Infinity };
           cands.forEach(([cx, cy], k) => {
             const x = Math.max(minX, Math.min(maxX, cx));

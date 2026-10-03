@@ -10,8 +10,8 @@ export function OPTIONS() {
 }
 
 export const GET = guarded(async (req) => {
-  const invite = new URL(req.url).searchParams.get("invite") ?? "";
-  const markdown = skillMarkdown(baseUrl(req), invite);
+  // v19: invites never travel in a URL; ?invite= is ignored.
+  const markdown = skillMarkdown(baseUrl(req));
   return new Response(markdown, {
     headers: {
       ...corsHeaders,
