@@ -133,7 +133,7 @@ export class VersionedRoom {
       this.cache = { ...this.cache, at: Date.now() };
       return this.cache;
     }
-    if (snap.unchanged && this.cache) {
+    if (snap.unchanged && this.cache && this.cache.version === snap.version) {
       this.cache = { ...this.cache, version: snap.version, seen: snap.seen, at: Date.now() };
       return this.cache;
     }
@@ -143,11 +143,26 @@ export class VersionedRoom {
 
   private async readCached(): Promise<Cache> {
     if (this.cache && Date.now() - this.cache.at < CACHE_MS) return this.cache;
-    return this.take(await this.store.read(this.cache?.version ?? null));
+    return this.readFresh();
   }
 
+  /**
+   * v19 fix: concurrent requests share this.cache. If another request cleared it (after a conflict)
+   * while this read was in flight, an "unchanged" answer has no blob behind it. Never treat that as an
+   * empty room (that committed a fresh room over the real one). Use the cache captured at call time,
+   * or do a full read.
+   */
   private async readFresh(): Promise<Cache> {
-    return this.take(await this.store.read(this.cache?.version ?? null));
+    const known = this.cache;
+    const snap = await this.store.read(known?.version ?? null);
+    if (snap.unchanged) {
+      if (known && known.version === snap.version && known.raw !== null) {
+        this.cache = { ...known, seen: snap.seen, at: Date.now() };
+        return this.cache;
+      }
+      return this.take(await this.store.read(null));
+    }
+    return this.take(snap);
   }
 
   private remember(raw: string, version: number, seen: RoomRead["seen"]) {
@@ -191,9 +206,13 @@ export class VersionedRoom {
 
   /** Settle locally. Commit only the first door migration, not idle timers. */
   private async peek<T>(fn: (engine: RoomEngine) => T): Promise<T> {
-    const snap = await this.readCached();
+    let snap = await this.readCached();
+    if (snap.version > 0 && !snap.raw) {
+      this.cache = null;
+      snap = await this.readFresh();
+    }
     const engine = this.open(snap);
-    const migrated = stateAlreadyMigrated(snap.raw);
+    const migrated = snap.version > 0 && !snap.raw ? true : stateAlreadyMigrated(snap.raw);
     engine.settle();
     const value = fn(engine);
     if (migrated) return value;
@@ -217,6 +236,11 @@ export class VersionedRoom {
       if (attempt > 0) resetMailStore();
       if (prepare) await prepare();
       const snap = await this.readFresh();
+      if (snap.version > 0 && !snap.raw) {
+        // A row exists but no blob came back: retry with a full read rather than overwrite it.
+        this.cache = null;
+        continue;
+      }
       const engine = this.open(snap);
       engine.settle();
       const before = JSON.stringify(engine.serialize());
