@@ -13,3 +13,15 @@ export function supabasePublicConfig(): { url: string; publishable: string } | n
   if (!url || !publishable) return null;
   return { url, publishable };
 }
+
+/**
+ * v19: optional RPC name prefix for an isolated test namespace (e.g. "v19t_" -> public.v19t_room_read,
+ * backed by schema v19_test). Empty (the default) keeps the live functions, so production is unchanged.
+ * A malformed value throws rather than silently falling back to the live room.
+ */
+export function roomRpcPrefix(): string {
+  const raw = (process.env.ROOM_RPC_PREFIX || "").trim();
+  if (!raw) return "";
+  if (!/^[a-z][a-z0-9]{0,15}_$/.test(raw)) throw new Error("ROOM_RPC_PREFIX must look like v19t_");
+  return raw;
+}

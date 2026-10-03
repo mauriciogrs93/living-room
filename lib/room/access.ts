@@ -6,7 +6,7 @@ import type { ActResult, Book, RadioStation, Snapshot } from "@/lib/room/types";
 import { flushMail, loadOwner, loadToken } from "@/lib/room/mailbox";
 import { RoomBusy, RoomOffline, RoomUnavailable } from "@/lib/room/errors";
 import { RedisError, redisCommand, redisConfig, redisTimed } from "@/lib/room/redis";
-import { supabaseConfig } from "@/lib/room/store/config";
+import { roomRpcPrefix, supabaseConfig } from "@/lib/room/store/config";
 import { SupabaseStore } from "@/lib/room/store/supabase-store";
 import { VersionedRoom } from "@/lib/room/store/versioned-room";
 import { MemoryPersist } from "@/lib/room/store/memory-persist";
@@ -533,7 +533,11 @@ function vercelDeploy() {
 export function getEngine(): RoomPort {
   // v19: ROOM_STORE=memory keeps a deploy (the private preview) off the shared live room row.
   // Same compare-and-set engine as production, over an in-process store.
-  if (process.env.ROOM_STORE === "memory") {
+  // v19: a preview never touches the live room unless it names a test namespace
+  // (ROOM_RPC_PREFIX) or explicitly opts in with ROOM_STORE=live. Production is unaffected.
+  const previewOffLive =
+    process.env.VERCEL_ENV === "preview" && !roomRpcPrefix() && process.env.ROOM_STORE !== "live";
+  if (process.env.ROOM_STORE === "memory" || previewOffLive) {
     logStore("memory");
     versionedRoom ??= new VersionedRoom(new MemoryPersist());
     return versionedRoom;

@@ -2,7 +2,7 @@ import type { Mailbox } from "@/lib/room/mailbox";
 import { RoomUnavailable } from "@/lib/room/errors";
 import { currentSignal } from "@/lib/room/request-signal";
 import { decodeState, encodeState, hashToken } from "@/lib/room/store/codec";
-import { supabaseConfig } from "@/lib/room/store/config";
+import { roomRpcPrefix, supabaseConfig } from "@/lib/room/store/config";
 import type { MailWrite, RoomCommit, RoomPersistence, RoomRead, SeenStamp } from "@/lib/room/store/persist";
 
 type Rpc = (fn: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -36,12 +36,13 @@ function rpcHeaders(secret: string): Record<string, string> {
 
 export function supabaseRpc(url: string, secret: string): Rpc {
   const headers = rpcHeaders(secret);
+  const prefix = roomRpcPrefix();
   return async (fn, args) => {
     const timeout = AbortSignal.timeout(RPC_MS);
     const parent = currentSignal();
     const signal = parent ? AbortSignal.any([parent, timeout]) : timeout;
     try {
-      const response = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+      const response = await fetch(`${url}/rest/v1/rpc/${prefix}${fn}`, {
         method: "POST",
         headers,
         body: JSON.stringify(args),
