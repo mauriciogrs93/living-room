@@ -65,7 +65,15 @@ export function sofa(M: Mats, cushion: boolean): Built {
   blk(g, M.linen, w - 0.04, 0.36, 0.1, 0, 0.3, -d / 2 + 0.05, { r: 0.03 });
   const by = 0.33;
   for (const cx of [-0.42, 0, 0.42]) {
-    blk(g, M.linen, 0.4, 0.3, 0.1, cx, by, -d / 2 + 0.135, { r: 0.04, rx: -0.08 });
+    blk(g, M.linen, 0.4, 0.3, 0.1, cx, by, -d / 2 + 0.135, { r: 0.045, rx: -0.08 });
+    // draft 5: a soft loft on the face of each back cushion, and a welt seam around its edge
+    const loft = sph(g, M.linen, 0.1, cx, by + 0.15, -d / 2 + 0.18, [1.85, 1.3, 0.32], [36, 18]);
+    loft.rotation.x = -0.08;
+    for (const [px, py, len, rz] of [[0, 0.297, 0.33, Math.PI / 2], [0, 0.003, 0.33, Math.PI / 2], [-0.197, 0.15, 0.23, 0], [0.197, 0.15, 0.23, 0]] as const) {
+      const w = cap(g, M.linenDeep, 0.005, len, cx + px, by + py, -d / 2 + 0.186 - (py - 0.15) * 0.08, { rz });
+      w.castShadow = false;
+      w.userData.noCast = true;
+    }
     for (const [bx, byy] of [[-0.11, 0.1], [0, 0.1], [0.11, 0.1], [-0.055, 0.2], [0.055, 0.2]] as const) {
       const b = sph(g, M.linenDeep, 0.011, cx + bx, by + byy, -d / 2 + 0.187 - (byy - 0.15) * 0.08, [1, 1, 0.55], [10, 8]);
       b.rotation.x = -0.08;
@@ -78,17 +86,29 @@ export function sofa(M: Mats, cushion: boolean): Built {
     for (const ex of [-1, 1]) {
       const pp = cap(g, M.linenDeep, 0.0055, d - 0.06, sx * (w / 2 - 0.075) + ex * 0.068, 0.535, 0, { rx: Math.PI / 2 });
       pp.castShadow = false;
+      pp.userData.noCast = true;
     }
   }
   // seat cushions: split three ways, piped along the front and top edges
   for (const cx of [-0.42, 0, 0.42]) {
     const y = cx < 0 && cushion ? 0.37 : 0.33;
-    blk(g, M.linen, 0.41, 0.1, d - 0.2, cx, y, 0.07, { r: 0.03 });
+    blk(g, M.linen, 0.41, 0.1, d - 0.2, cx, y, 0.07, { r: 0.045 });
+    // draft 5: a domed crown (softer volume, the cushion sags towards its edges) and welt seams on all four top edges
+    sph(g, M.linen, 0.1, cx, y + 0.088, 0.07, [1.9, 0.26, 2.4], [40, 20]);
     const front = 0.07 + (d - 0.2) / 2;
     for (const py of [y + 0.092, y + 0.008]) {
       const pp = cap(g, M.linenDeep, 0.0055, 0.35, cx, py, front - 0.008, { rz: Math.PI / 2 });
       pp.castShadow = false;
+      pp.userData.noCast = true;
     }
+    for (const sx2 of [-1, 1]) {
+      const ps = cap(g, M.linenDeep, 0.0055, d - 0.28, cx + sx2 * 0.197, y + 0.092, 0.07, { rx: Math.PI / 2 });
+      ps.castShadow = false;
+      ps.userData.noCast = true;
+    }
+    const pb = cap(g, M.linenDeep, 0.0055, 0.35, cx, y + 0.092, 0.07 - (d - 0.2) / 2 + 0.008, { rz: Math.PI / 2 });
+    pb.castShadow = false;
+    pb.userData.noCast = true;
   }
   blk(g, M.terracotta, 0.28, 0.24, 0.09, 0.45, 0.42, -0.2, { r: 0.03, rx: -0.25, rz: -0.08 });
   blk(g, M.linenDeep, 0.27, 0.22, 0.09, -0.48, 0.42, -0.2, { r: 0.03, rx: -0.2, rz: 0.1 });

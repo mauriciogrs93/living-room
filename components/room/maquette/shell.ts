@@ -278,6 +278,8 @@ export function buildShell(M: Mats, night: boolean): ShellParts {
   blk(base, M.screed, edgeR - wallOutX, 0.06, FRONT - wallOutZ, (edgeR + wallOutX) / 2, -0.06, (FRONT + wallOutZ) / 2, { r: 0.015 });
   storeys.forEach((g, i) => storeyShell(g, M, i));
   const flights = [flight(M, 0), flight(M, 1)];
+  // named so the speech-note placer can keep notes off the top of each flight
+  flights.forEach((f) => (f.name = "stair-flight"));
   storeys[0].add(flights[0]);
   storeys[1].add(flights[1]);
   // edge rail along the upper floors' shaft edge

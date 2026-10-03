@@ -3,7 +3,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useFrame, useThree } from "@react-three/fiber";
-import { BoxGeometry, BufferAttribute, MeshBasicMaterial, SRGBColorSpace, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, LatheGeometry, MeshPhysicalMaterial, MeshStandardMaterial, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, type BufferGeometry, type Group, type Material, type Mesh } from "three";
+import { Box3, BoxGeometry, BufferAttribute, type Camera, type Object3D, MeshBasicMaterial, SRGBColorSpace, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, LatheGeometry, MeshPhysicalMaterial, MeshStandardMaterial, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, type BufferGeometry, type Group, type Material, type Mesh } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FLOORS, kettleSpot, stagePose } from "@/lib/room/layout";
 import { motionPoint } from "@/lib/room/paths";
@@ -143,7 +143,8 @@ function shirtTone(hex: string) {
   const hsl = { h: 0, s: 0, l: 0 };
   c.getHSL(hsl, SRGBColorSpace);
   // blues lean to slate (a touch greener, greyer) so they never read lavender
-  if (hsl.h > 0.55 && hsl.h < 0.75) return new Color().setHSL(0.575 + (hsl.h - 0.575) * 0.3, 0.22, 0.56, SRGBColorSpace);
+  // draft 5: a deeper, richer slate (s 0.22 -> 0.40, l 0.56 -> 0.42) so it holds its colour in daylight and against plaster
+  if (hsl.h > 0.55 && hsl.h < 0.75) return new Color().setHSL(0.585 + (hsl.h - 0.585) * 0.3, 0.4, 0.42, SRGBColorSpace);
   return new Color().setHSL(hsl.h, Math.min(0.3, Math.max(0.18, hsl.s * 0.45)), 0.6, SRGBColorSpace);
 }
 /** The shirt is baked into the torso's vertex colours, so every figure (plaster, shirt, shoes) draws with ONE material. */
@@ -169,7 +170,63 @@ function ringMat(night: boolean) {
   }
   return m;
 }
+type Obstacle = { l: number; t: number; r: number; b: number; w: number };
+/** Screen rects (client px) of each figure, written every frame by its own Avatar; read by the speech-note placer. */
+const FIGURE_RECTS = new Map<string, { l: number; t: number; r: number; b: number }>();
+const AVOID = { at: -1, rects: [] as Obstacle[] };
+const _box = new Box3();
+const _pt = new Vector3();
+function projectBox(box: Box3, camera: Camera, bounds: DOMRect) {
+  let l = Infinity;
+  let t = Infinity;
+  let r = -Infinity;
+  let b = -Infinity;
+  for (let i = 0; i < 8; i += 1) {
+    _pt.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).project(camera);
+    const x = bounds.left + (_pt.x * 0.5 + 0.5) * bounds.width;
+    const y = bounds.top + (-_pt.y * 0.5 + 0.5) * bounds.height;
+    l = Math.min(l, x);
+    r = Math.max(r, x);
+    t = Math.min(t, y);
+    b = Math.max(b, y);
+  }
+  return { l, t, r, b };
+}
+function overlap(x: number, y: number, w: number, h: number, o: { l: number; t: number; r: number; b: number }) {
+  const ox = Math.min(x + w, o.r) - Math.max(x, o.l);
+  const oy = Math.min(y + h, o.b) - Math.max(y, o.t);
+  return ox > 0 && oy > 0 ? ox * oy : 0;
+}
+/** What a speech note must not cover: other tags, every figure, the TV and the top of each stair flight. */
+function noteObstacles(host: HTMLElement, label: HTMLElement, selfId: string, scene: Object3D, camera: Camera, bounds: DOMRect): Obstacle[] {
+  const out: Obstacle[] = [];
+  for (const tag of host.querySelectorAll<HTMLElement>(".agent-tag")) {
+    if (label.contains(tag)) continue;
+    const t = tag.getBoundingClientRect();
+    out.push({ l: t.left - 6, t: t.top - 6, r: t.right + 6, b: t.bottom + 6, w: 30 });
+  }
+  for (const [id, f] of FIGURE_RECTS) out.push({ ...f, w: id === selfId ? 6 : 12 });
+  // scene obstacles are re-projected a few times a second (the camera only moves on fit changes or follow)
+  const now = performance.now();
+  if (now - AVOID.at > 250) {
+    AVOID.at = now;
+    AVOID.rects = [];
+    const tv = scene.getObjectByName("obj:tv");
+    if (tv) AVOID.rects.push({ ...projectBox(_box.setFromObject(tv), camera, bounds), w: 4 });
+    scene.traverse((o) => {
+      if (o.name !== "stair-flight" || !o.visible) return;
+      _box.setFromObject(o);
+      // the top ~0.9 m of the flight: where it meets the floor above
+      _box.min.y = Math.max(_box.min.y, _box.max.y - 0.9);
+      AVOID.rects.push({ ...projectBox(_box, camera, bounds), w: 4 });
+    });
+  }
+  return out.concat(AVOID.rects);
+}
 const PORTRAIT = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "agent";
+const PORTRAIT_WHO = PORTRAIT ? (new URLSearchParams(window.location.search).get("who") ?? "").toLowerCase() : "";
+const _lens = new Vector3();
+const _feet = new Vector3();
 /** Where a figure waiting at the kettle is drawn (layout units): clear of the stair flight, at the worktop. */
 // x: left of the stair flight on a portrait phone; z: far enough forward that the landing above never hides the head;
 // yaw: turned to the room, the face-on view then has plain wall behind it (not the utensil rail)
@@ -210,9 +267,18 @@ function figureGeo() {
     // arm: upper arm in plaster below the cap sleeve; forearm + simple hand (mitten with a thumb) from the elbow
     FIGURE_GEO.arm = paint(merge([at(new CapsuleGeometry(0.036, UPPER - 0.05, 3, 8), 0, -UPPER / 2, 0), at(new SphereGeometry(0.034, 8, 5), 0, -UPPER, 0)]), plaster);
     const fore = at(new CapsuleGeometry(0.031, FORE - 0.05, 3, 8), 0, -FORE / 2, 0);
-    const palm = at(new SphereGeometry(0.03, 8, 5).scale(0.75, 1.25, 0.5), 0, -FORE - 0.03, 0.004);
-    const thumb = at(new CapsuleGeometry(0.009, 0.022, 1, 5).rotateZ(0.5), 0.016, -FORE - 0.016, 0.016);
-    FIGURE_GEO.fore = merge([paint(fore, plaster), paint(palm, plaster), paint(thumb, plaster)]);
+    // draft 5 hands: a shaped palm, four slightly curled fingers of graded length and an opposed thumb (was a mitten)
+    const palm = at(new SphereGeometry(0.03, 9, 6).scale(0.78, 0.95, 0.46), 0, -FORE - 0.022, 0.004);
+    const fingers = [-0.0135, -0.0045, 0.0045, 0.0135].map((fx, i) => {
+      const len = [0.02, 0.025, 0.024, 0.018][i];
+      const f = new CapsuleGeometry(0.0058, len, 2, 6);
+      f.translate(0, -len / 2 - 0.004, 0);
+      f.rotateX(-0.32); // a relaxed curl towards the palm
+      return at(f, fx, -FORE - 0.044, 0.006);
+    });
+    const knuckles = at(new CapsuleGeometry(0.008, 0.026, 2, 6).rotateZ(Math.PI / 2), 0, -FORE - 0.042, 0.005);
+    const thumb = at(new CapsuleGeometry(0.0072, 0.024, 2, 6).rotateZ(0.62).rotateY(-0.5), 0.019, -FORE - 0.02, 0.014);
+    FIGURE_GEO.fore = merge([paint(fore, plaster), paint(palm, plaster), paint(knuckles, plaster), ...fingers.map((f) => paint(f, plaster)), paint(thumb, plaster)]);
     // trousers: tapered thigh and shin with a turned-up hem; shoes with a darker sole and a toe cap
     FIGURE_GEO.thigh = paint(merge([new CylinderGeometry(0.064, 0.052, THIGH, 10, 1, true), at(new SphereGeometry(0.064, 10, 5), 0, THIGH / 2, 0)]), PAL.figureShade);
     const shin = new CylinderGeometry(0.05, 0.043, SHIN - 0.02, 10, 1, true);
@@ -308,7 +374,7 @@ export function AgentAvatar({
   const stack = useRef<HTMLDivElement>(null);
   const labelRoot = useRef<Root | null>(null);
   const labelPoint = useRef(new Vector3());
-  const { camera, size, gl } = useThree();
+  const { camera, size, gl, scene } = useThree();
   const deck = useContext(DeckContext);
   const leftArm = useRef<Group>(null);
   const rightArm = useRef<Group>(null);
@@ -334,6 +400,7 @@ export function AgentAvatar({
 
   // one muted accent per agent (torso), plaster for the rest. Per-agent materials so "away" ghosting stays local.
   const mats = useMemo(() => figureMats(agent.color), [agent.color]);
+  useEffect(() => () => void FIGURE_RECTS.delete(agent.id), [agent.id]);
   const blob = useMemo(() => sharedBlob(night), [night]);
 
   useFrame((_, delta) => {
@@ -407,6 +474,13 @@ export function AgentAvatar({
         const rect = label.getBoundingClientRect();
         const bounds = host.getBoundingClientRect();
         const narrow = bounds.width < 800;
+        // this figure's screen rect (head anchor down to the feet), for the speech-note placer
+        _feet.set(group.position.x, lift, group.position.z).project(camera);
+        const feetY = bounds.top + (-_feet.y * 0.5 + 0.5) * size.height;
+        const headY = bounds.top + py;
+        const half = Math.max(10, (feetY - headY) * 0.24);
+        if (agent.lie || agent.away) FIGURE_RECTS.delete(agent.id);
+        else FIGURE_RECTS.set(agent.id, { l: bounds.left + px - half, t: headY, r: bounds.left + px + half, b: feetY });
         const margin = 8;
         // tags and notes stay at least 8 px under the ticker bar in every fit (portrait, landscape, desktop)
         const tape = document.querySelector<HTMLElement>(".room-root .global-tape");
@@ -420,50 +494,55 @@ export function AgentAvatar({
         if (rect.top < bounds.top + top) dy = bounds.top + top - rect.top;
         if (rect.bottom > bounds.bottom - bottom) dy = bounds.bottom - bottom - rect.bottom;
         if (dx !== 0 || dy !== 0) label.style.transform = `translate(calc(-50% + ${dx}px), calc(-100% + ${dy}px))`;
-        // speech note: beside the speaker's own head (never stacked up into the room above), on the side with
-        // more open screen, at most ~60% of the screen wide, clamped inside the free area
+        // speech note (draft 5): score a few placements and take the clearest. Order of preference: beside the
+        // head on the open side, the other side, a little lower, hanging upwards, above the tag, then pinned to the
+        // screen margin. Each candidate is clamped inside the free area and charged for what it would cover: other
+        // name tags, any figure (the speaker's too), the TV and the top of each stair flight.
         const bubble = label.querySelector<HTMLElement>(".agent-bubble");
         if (bubble) {
           const tagRect = label.getBoundingClientRect();
-          const spaceL = tagRect.left - bounds.left - margin - 10;
-          const spaceR = bounds.right - margin - 10 - tagRect.right;
-          const leftSide = spaceL > spaceR;
           const cap = Math.min(bounds.width * (narrow ? 0.6 : 0.34), 300);
-          const maxW = Math.round(Math.max(120, Math.min(cap, leftSide ? spaceL : spaceR)));
           bubble.style.position = "absolute";
-          // top-aligned with the name tag: the note hangs down beside the speaker, inside their own room band
           bubble.style.top = "0px";
           bubble.style.bottom = "auto";
-          bubble.style.maxWidth = `${maxW}px`;
+          bubble.style.left = "0px";
+          bubble.style.right = "auto";
+          bubble.style.maxWidth = `${Math.round(cap)}px`;
           bubble.style.width = "max-content";
-          bubble.style.left = leftSide ? "auto" : "calc(100% + 10px)";
-          bubble.style.right = leftSide ? "calc(100% + 10px)" : "auto";
           bubble.style.transform = "";
-          const b = bubble.getBoundingClientRect();
-          let bx = 0;
-          let by = 0;
-          if (b.left < bounds.left + margin) bx = bounds.left + margin - b.left;
-          if (b.right > bounds.right - margin) bx = bounds.right - margin - b.right;
-          if (b.top < bounds.top + top) by = bounds.top + top - b.top;
-          if (b.bottom > bounds.bottom - bottom) by = bounds.bottom - bottom - b.bottom;
-          // collision pass: a note never sits on another figure's name tag; nudge it below (or above) that tag,
-          // at most ~70 px so it stays in the speaker's floor band
-          const nb = { l: b.left + bx, r: b.right + bx, t: b.top + by, b: b.bottom + by };
-          for (const tag of host.querySelectorAll<HTMLElement>(".agent-tag")) {
-            if (label.contains(tag)) continue;
-            const t = tag.getBoundingClientRect();
-            const hit = t.right > nb.l - 4 && t.left < nb.r + 4 && t.bottom > nb.t - 4 && t.top < nb.b + 4;
-            if (!hit) continue;
-            const down = t.bottom + 6 - nb.t;
-            const up = nb.b - (t.top - 6);
-            const d = down <= up && nb.b + down < bounds.bottom - bottom ? down : -up;
-            if (Math.abs(d) <= 70) {
-              by += d;
-              nb.t += d;
-              nb.b += d;
-            }
-          }
-          if (bx || by) bubble.style.transform = `translate(${bx}px, ${by}px)`;
+          const b0 = bubble.getBoundingClientRect();
+          const bw = b0.width;
+          const bh = b0.height;
+          const obstacles = noteObstacles(host, label, agent.id, scene, camera, bounds);
+          const L = tagRect.left;
+          const R = tagRect.right;
+          const T = tagRect.top;
+          const B = tagRect.bottom;
+          const gap = 10;
+          const openRight = bounds.right - R > L - bounds.left;
+          const sideA = openRight ? R + gap : L - gap - bw;
+          const sideB = openRight ? L - gap - bw : R + gap;
+          const cands: [number, number][] = [
+            [sideA, T], [sideB, T], [sideA, B + 8], [sideB, B + 8], [sideA, B - bh], [sideB, B - bh],
+            [(L + R) / 2 - bw / 2, T - 8 - bh],
+            [bounds.left + margin, T], [bounds.right - margin - bw, T], [bounds.left + margin, B + 8], [bounds.right - margin - bw, B + 8],
+            [bounds.left + margin, T - 8 - bh], [bounds.right - margin - bw, T - 8 - bh],
+          ];
+          const minX = bounds.left + margin;
+          const maxX = bounds.right - margin - bw;
+          const minY = bounds.top + top;
+          const maxY = bounds.bottom - bottom - bh;
+          let best = { x: cands[0][0], y: cands[0][1], score: Infinity };
+          cands.forEach(([cx, cy], k) => {
+            const x = Math.max(minX, Math.min(maxX, cx));
+            const y = Math.max(minY, Math.min(maxY, cy));
+            let score = k * 40 + Math.hypot(x + bw / 2 - (L + R) / 2, y - T) * 0.6;
+            // never on the speaker's own tag
+            score += overlap(x, y, bw, bh, { l: L - 4, t: T - 4, r: R + 4, b: B + 4 }) * 50;
+            for (const o of obstacles) score += overlap(x, y, bw, bh, o) * o.w;
+            if (score < best.score) best = { x, y, score };
+          });
+          bubble.style.transform = `translate(${Math.round(best.x - b0.left)}px, ${Math.round(best.y - b0.top)}px)`;
           // tags always above notes: the speaking figure's stack drops one layer
           label.style.zIndex = "11";
         } else {
@@ -508,6 +587,12 @@ export function AgentAvatar({
     }
     if (head.current) {
       head.current.rotation.y = walking || talking ? Math.sin(phase.current * 0.6) * 0.08 : Math.sin(phase.current * 0.35) * 0.22;
+      // portrait subject (?view=agent&who=me): the head turns to the lens (clamped to a natural neck turn)
+      if (PORTRAIT_WHO && PORTRAIT_WHO === agent.name.toLowerCase()) {
+        _lens.copy(camera.position);
+        group.worldToLocal(_lens);
+        head.current.rotation.y = Math.max(-0.9, Math.min(0.9, Math.atan2(_lens.x, _lens.z)));
+      }
       head.current.rotation.x = talking ? -0.08 + Math.sin(phase.current * 5) * 0.06 : agent.pose === "reading" ? 0.25 : 0.06;
     }
     // the face-on portrait (?view=agent) holds the eyes open, so a still never catches a blink

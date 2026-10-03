@@ -627,6 +627,8 @@ function HeroCamera({ who, agents }: { who: string; agents: LiveSnapshot["agents
   const eye = useMemo(() => new THREE.Vector3(), []);
   const n = useRef(0);
   const key = useRef<THREE.DirectionalLight>(null);
+  const sunlit = useRef(false);
+  const gl = useThree((state) => state.gl);
   const yawS = useRef<number | null>(null);
   useFrame(() => {
     const agent = agents.find((a) => a.name.toLowerCase() === who || a.id.toLowerCase() === who) ?? agents[0];
@@ -636,12 +638,13 @@ function HeroCamera({ who, agents }: { who: string; agents: LiveSnapshot["agents
     (camera as THREE.PerspectiveCamera & { manual?: boolean }).manual = true;
     // figure: hip at the group origin; head centre ~0.635 * figureScale above it
     head.set(group.position.x, group.position.y + 0.635 * MAQUETTE.figureScale, group.position.z);
-    // face-on: aim along the head's own facing (it turns towards the TV, the screen, the kettle), smoothed
+    // face-on: aim along the BODY's facing (draft 5: in a portrait the subject's head turns to the lens, see
+    // avatar.tsx PORTRAIT_WHO), smoothed
     const h = group.getObjectByName("head");
     let target = group.rotation.y;
     if (h) {
       h.getWorldPosition(head);
-      h.getWorldDirection(_hd);
+      group.getWorldDirection(_hd);
       target = Math.atan2(_hd.x, _hd.z);
     }
     if (yawS.current === null) yawS.current = target;
@@ -681,6 +684,18 @@ function HeroCamera({ who, agents }: { who: string; agents: LiveSnapshot["agents
         }
       }
       if (pick.current.at < 0) pick.current = { angle: 0, at: n.current };
+      // draft 5: is the subject standing in direct sun? (a ray from the chest towards the sun clears the house)
+      let sun: THREE.DirectionalLight | null = null;
+      scene.traverse((o) => {
+        if ((o as THREE.DirectionalLight).isDirectionalLight && o.castShadow) sun = o as THREE.DirectionalLight;
+      });
+      if (sun) {
+        const from = head.clone().add(new THREE.Vector3(0, -0.2, 0));
+        const dir = (sun as THREE.DirectionalLight).position.clone().sub((sun as THREE.DirectionalLight).target.position).normalize();
+        _ray.set(from.addScaledVector(dir, 0.12), dir);
+        _ray.far = 30;
+        sunlit.current = !_ray.intersectObjects(blockers, false).length;
+      }
     }
     const a = yaw + pick.current.angle;
     eye.set(head.x + Math.sin(a) * dist, head.y + 0.1, head.z + Math.cos(a) * dist);
@@ -698,6 +713,10 @@ function HeroCamera({ who, agents }: { who: string; agents: LiveSnapshot["agents
     // portrait key: a soft, warm, shadowless light from upper camera-left, so brow, sockets and nose read on the face
     const l = key.current;
     if (l) {
+      // a sunlit subject already has a strong key: the portrait light drops to a fill so the face and the shirt
+      // colour don't wash out under ACES (Juniper by the kettle stands in the window light)
+      l.intensity = sunlit.current ? 0.35 : 1.5;
+      gl.toneMappingExposure = sunlit.current ? 0.86 : 1.0;
       const side = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
       l.position.copy(eye).addScaledVector(side, -0.9).add(new THREE.Vector3(0, 0.75, 0));
       l.target.position.copy(head);
