@@ -279,7 +279,7 @@ export function MinimalHud({
                   <span>NEXT</span>
                 </button>
               </div>
-              {(news.length ? news : [{ title: "The wire is quiet tonight.", source: "Living Room" }]).map((n, i) => (
+              {(news.length ? news : [{ title: "No headlines yet. They'll be here soon.", source: "Living Room" }]).map((n, i) => (
                 <div className="mini-row" key={i} style={{ alignItems: "flex-start", padding: "9px 0" }}>
                   <div className="mini-grow">
                     <div className="mini-kicker">{n.source}</div>

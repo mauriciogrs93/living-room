@@ -34,7 +34,7 @@ const RULES: [Region, RegExp][] = [
 export function quietWire(): Headline[] {
   return [
     {
-      title: "The wire is quiet. The tape will fill when the feeds answer.",
+      title: "No headlines yet. They'll be here soon.",
       source: "Living Room",
       region: "WORLD",
       summary: "",

@@ -59,7 +59,7 @@ function AgentList({
   selectedId: string | null;
   onFocus: (id: string | null) => void;
 }) {
-  if (agents.length === 0) return <p className="hud-quiet">The sofa is empty.</p>;
+  if (agents.length === 0) return <p className="hud-quiet">No one's home right now.</p>;
   return (
     <ul className="hud-people">
       {agents.map((agent) => (

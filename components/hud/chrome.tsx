@@ -126,7 +126,7 @@ export function HudChrome({
           <div className="hud-tb-row is-muted">
             <span>{[place, label, clock].filter(Boolean).join(" · ").toUpperCase()}</span>
             <span>
-              {count} {count === 1 ? "AGENT" : "AGENTS"}
+              {count} HERE
             </span>
           </div>
           <div className="hud-tabs" role="tablist">

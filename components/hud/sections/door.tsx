@@ -32,16 +32,16 @@ export function DoorSection({ model }: { model: HudModel }) {
       setCopied(true);
     } catch {
       setCopied(false);
-      setNote("Copy the line by hand.");
+      setNote("Couldn't copy. Select the line and copy it.");
     }
   }
 
   return (
     <div className="hud-stack" data-door-section="">
       <div className="hud-row">
-        <p className="hud-kicker">Door</p>
+        <p className="hud-kicker">Door · {door.locked ? "locked" : "open"}</p>
         <button type="button" className="hud-chip" onClick={() => void run(door.locked ? "unlock" : "lock")}>
-          Door: {door.locked ? "Locked" : "Open"}
+          {door.locked ? "Unlock" : "Lock"}
         </button>
       </div>
       <p className="hud-line" data-invite-line="">
@@ -52,7 +52,7 @@ export function DoorSection({ model }: { model: HudModel }) {
           {copied ? "Copied" : "Copy"}
         </button>
         <button type="button" className="hud-chip" onClick={() => void run("reset-invite")}>
-          Reset code
+          New invite
         </button>
       </div>
       <p className="hud-kicker">Knocking</p>

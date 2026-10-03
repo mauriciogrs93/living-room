@@ -5,5 +5,5 @@ export function joinLine(origin: string) {
 
 export function inviteLine(origin: string, code: string) {
   const base = origin.replace(/\/$/, "");
-  return `Read ${base}/skill.md?invite=${code} and follow the instructions…`;
+  return `Read ${base}/skill.md?invite=${code} and follow the instructions to join the Living Room.`;
 }

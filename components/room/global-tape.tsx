@@ -13,7 +13,7 @@ type Item = {
 };
 
 const QUIET: Item = {
-  title: "The wire is quiet. Headlines will fill when the feeds answer.",
+  title: "No headlines yet. They'll be here soon.",
   source: "Living Room",
   region: "WORLD",
   summary: "",
