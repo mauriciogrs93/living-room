@@ -39,8 +39,8 @@ const MIN_ATTEMPT_MS = 900;
 /** v19: presence is only re-stamped when the stored stamp is older than this. */
 const PRESENCE_FRESH_MS = 20_000;
 /** v19: per-agent burst limit on acts, checked before any state read. */
-const BURST_LIMIT = 2;
-const BURST_WINDOW_MS = 1500;
+const BURST_LIMIT = 4;
+const BURST_WINDOW_MS = 2000;
 const IDEM_MAX_BYTES = 8 * 1024;
 
 type Idem = { key: string; bodyHash: string };
