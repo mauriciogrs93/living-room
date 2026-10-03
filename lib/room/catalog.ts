@@ -1,0 +1,422 @@
+import { BOOKS, CHANNELS, channelById } from "./content";
+import {
+  bed,
+  bookshelf,
+  fridge,
+  kettleSpot,
+  kitchenLight,
+  lamp,
+  livingLight,
+  plantSpot,
+  radioSpot,
+  ROOM,
+  sinkSpot,
+  sofa,
+  stoveSpot,
+  armchairSpot,
+  desk,
+  dogBedSpot,
+  readingSpot,
+  tableSpot,
+  tv,
+  wallSpot,
+  wardrobeSpot,
+  windowSpot,
+  worldXZ,
+} from "./layout";
+import { approachOnFloor, onFloor } from "./paths";
+import type { RoomObject, Seat } from "./types";
+
+function seat(
+  id: string,
+  standAt: { x: number; z: number },
+  poseAt: { x: number; y: number; z: number },
+  yaw: number,
+  lie = false,
+): Seat {
+  return { id, standAt, poseAt, yaw, lie, occupiedBy: null };
+}
+
+function sofaSeat(id: string, localX: number): Seat {
+  const at = worldXZ(sofa.position, sofa.rotation, localX, 0);
+  return seat(id, { x: at.x, z: sofa.position.z - 0.65 }, { x: at.x, y: sofa.seatY, z: at.z }, Math.PI);
+}
+
+const meadow = channelById(1)!;
+
+export function createObjects(): RoomObject[] {
+  const left = sofaSeat("left", 0.5);
+  const middle = sofaSeat("middle", 0);
+  const right = sofaSeat("right", -0.5);
+
+  const objects = [
+    {
+      id: "sofa",
+      kind: "sofa",
+      name: "Sofa",
+      description: "A sage three-seat sofa on the middle floor, facing the television.",
+      position: sofa.position,
+      rotation: sofa.rotation,
+      approach: { x: sofa.position.x, z: sofa.position.z - 0.65 },
+      state: {},
+      seats: [left, middle, right],
+      actions: [
+        { id: "sit", description: "Sit on a free cushion. Three seats." },
+        { id: "lie", description: "Lie down across the sofa if every cushion is free." },
+        { id: "place", description: 'Move the sofa to spot "center", "window", or "wall".' },
+      ],
+    },
+    {
+      id: "bed",
+      kind: "bed",
+      name: "Bed",
+      description: "A low bed with a rust blanket, on the top floor.",
+      position: bed.position,
+      rotation: bed.rotation,
+      approach: bed.approach,
+      state: {},
+      seats: [
+        seat(
+          "bed",
+          bed.approach,
+          { x: bed.position.x + 0.05, y: 0.48, z: bed.position.z },
+          -Math.PI / 2,
+          true,
+        ),
+      ],
+      actions: [
+        { id: "lie", description: "Lie down on the bed." },
+        { id: "sleep", description: "Fall asleep. Stand or wake when you want to get up." },
+      ],
+    },
+    {
+      id: "tv",
+      kind: "tv",
+      name: "Television",
+      description: "A chunky set on the middle floor. Channels 1–5. A live headline tape runs across the top while it is on.",
+      position: tv.position,
+      rotation: tv.rotation,
+      approach: tv.approach,
+      state: {
+        power: false,
+        channel: meadow.id,
+        channelName: meadow.name,
+        channelColor: meadow.color,
+        channelAccent: meadow.accent,
+        channels: CHANNELS,
+      },
+      seats: [],
+      actions: [
+        { id: "tv_on", description: "Turn the television on." },
+        { id: "tv_off", description: "Turn the television off." },
+        {
+          id: "tv_channel",
+          description: "Show a channel (1 Meadow, 2 Midnight News, 3 Cartoon Hour, 4 Rain, 5 Supper Club). Omit channel to advance.",
+        },
+      ],
+    },
+    {
+      id: "computer",
+      kind: "computer",
+      name: "Computer",
+      description: "A shared desk on the left of the bedroom. Two chairs, one monitor.",
+      position: desk.position,
+      rotation: desk.rotation,
+      approach: desk.approach,
+      state: { power: false, mode: "off", line: "", source: "", user: "" },
+      seats: [
+        seat("left", { x: -1.42, z: desk.approach.z }, { x: -1.42, y: 0.5, z: desk.approach.z }, 0),
+        seat("right", { x: -0.88, z: desk.approach.z }, { x: -0.88, y: 0.5, z: desk.approach.z }, 0),
+      ],
+      actions: [
+        { id: "computer_sit", description: "Sit in a free chair." },
+        { id: "computer_type", description: 'Type a short line onto the monitor. Pass "text" (max 72).' },
+        { id: "computer_browse", description: 'Open Living Room Home, or pass "text" as a page title.' },
+        { id: "computer_off", description: "Turn the monitor off." },
+      ],
+    },
+    {
+      id: "lamp",
+      kind: "lamp",
+      name: "Bedside lamp",
+      description: "A bedside lamp by the bed on the top floor. It starts on.",
+      position: lamp.position,
+      rotation: lamp.rotation,
+      approach: lamp.approach,
+      state: { on: true },
+      seats: [],
+      actions: [
+        { id: "lamp_toggle", description: "Turn the lamp on or off." },
+        { id: "light_on", description: "Turn this room's light on." },
+        { id: "light_off", description: "Turn this room's light off." },
+      ],
+    },
+    {
+      id: "fridge",
+      kind: "fridge",
+      name: "Fridge",
+      description: "A small fridge in the ground-floor kitchen, with a bowl of fruit.",
+      position: fridge.position,
+      rotation: fridge.rotation,
+      approach: fridge.approach,
+      state: { open: false, openUntil: 0, lastSnack: null, food: ["eggs", "an orange", "milk", "bread", "a cookie"], restockAt: 0 },
+      seats: [],
+      actions: [
+        { id: "snack", description: "Open the fridge and take a snack." },
+        { id: "fridge_open", description: "Open the fridge." },
+        { id: "fridge_close", description: "Close the fridge." },
+        { id: "take", description: "Take one food item. It leaves the fridge." },
+        { id: "eat", description: "Eat what you are holding." },
+      ],
+    },
+    {
+      id: "bookshelf",
+      kind: "bookshelf",
+      name: "Bookshelf",
+      description: "A shelf of paperbacks on the middle floor.",
+      position: bookshelf.position,
+      rotation: bookshelf.rotation,
+      approach: bookshelf.approach,
+      state: { books: BOOKS, lastRead: null },
+      seats: [],
+      actions: [
+        { id: "read", description: "Take down a book and read for a while." },
+        { id: "book_list", description: "List the journals on the shelf." },
+        { id: "book_read", description: 'Read a page. Pass "title" and optional "page" (1-based).' },
+        { id: "book_write", description: 'Append a page. Pass "title" and "text".' },
+        { id: "book_create", description: 'Start a journal. Pass "title" (max 60) and optional "text".' },
+        { id: "place", description: 'Move the shelf to spot "right" or "left".' },
+      ],
+    },
+    {
+      id: "window",
+      kind: "window",
+      name: "Window",
+      description: "A window above the bed on the top floor, looking onto a maple and the street.",
+      position: windowSpot.position,
+      rotation: windowSpot.rotation,
+      approach: windowSpot.approach,
+      state: {},
+      seats: [],
+      actions: [{ id: "look_outside", description: "Stand at the window and look outside." }],
+    },
+    {
+      id: "sink",
+      kind: "sink",
+      name: "Sink",
+      description: "The kitchen sink.",
+      position: sinkSpot.position,
+      rotation: 0,
+      approach: sinkSpot.approach,
+      state: { running: false, until: 0 },
+      seats: [],
+      actions: [
+        { id: "water_on", description: "Run the tap." },
+        { id: "water_off", description: "Turn the tap off." },
+      ],
+    },
+    {
+      id: "stove",
+      kind: "stove",
+      name: "Stove",
+      description: "A small stove in the kitchen.",
+      position: stoveSpot.position,
+      rotation: 0,
+      approach: stoveSpot.approach,
+      state: { hot: false, until: 0 },
+      seats: [],
+      actions: [
+        { id: "stove_on", description: "Heat the stove." },
+        { id: "stove_off", description: "Turn the stove off." },
+      ],
+    },
+    {
+      id: "kettle",
+      kind: "kettle",
+      name: "Kettle",
+      description: "A kettle on the kitchen counter.",
+      position: kettleSpot.position,
+      rotation: 0,
+      approach: kettleSpot.approach,
+      state: { heating: false, until: 0 },
+      seats: [],
+      actions: [
+        { id: "kettle_on", description: "Put the kettle on." },
+        { id: "kettle_off", description: "Take the kettle off." },
+      ],
+    },
+    {
+      id: "radio",
+      kind: "radio",
+      name: "Radio",
+      description: "A kitchen-living radio. The station is shared. Each viewer hears it only after they tap.",
+      position: radioSpot.position,
+      rotation: 0,
+      approach: radioSpot.approach,
+      state: { on: false },
+      seats: [],
+      actions: [
+        { id: "radio_on", description: "Turn the radio on." },
+        { id: "radio_off", description: "Turn the radio off." },
+        { id: "radio_next", description: "Play the next station." },
+        { id: "place", description: 'Move the radio to spot "sideboard" or "shelf".' },
+      ],
+    },
+    {
+      id: "living-light",
+      kind: "light",
+      name: "Living room light",
+      description: "A floor lamp by the sofa on the middle floor.",
+      position: livingLight.position,
+      rotation: 0,
+      approach: livingLight.approach,
+      state: { on: true },
+      seats: [],
+      actions: [
+        { id: "light_on", description: "Turn the living room light on." },
+        { id: "light_off", description: "Turn the living room light off." },
+      ],
+    },
+    {
+      id: "kitchen-light",
+      kind: "light",
+      name: "Kitchen light",
+      description: "A wall switch on the kitchen's back wall.",
+      position: kitchenLight.position,
+      rotation: 0,
+      approach: kitchenLight.approach,
+      state: { on: true },
+      seats: [],
+      actions: [
+        { id: "light_on", description: "Turn the kitchen light on." },
+        { id: "light_off", description: "Turn the kitchen light off." },
+      ],
+    },
+    {
+      id: "plant",
+      kind: "plant",
+      name: "Plant",
+      description: "A potted plant that grows after it is watered.",
+      position: plantSpot.position,
+      rotation: 0,
+      approach: plantSpot.approach,
+      state: {},
+      seats: [],
+      actions: [
+        { id: "water", description: "Water the plant." },
+        { id: "place", description: 'Move the plant to spot "corner" or "window".' },
+      ],
+    },
+    {
+      id: "wall",
+      kind: "wall",
+      name: "Gallery wall",
+      description: "The left wall of the living room, clear of the television, where drawings can hang.",
+      position: wallSpot.position,
+      rotation: 0,
+      approach: wallSpot.approach,
+      state: {},
+      seats: [],
+      actions: [
+        {
+          id: "hang",
+          description: 'Hang an 8×8 drawing. Pass "pixels": 64 hex digits, each 0–f is a palette color.',
+        },
+      ],
+    },
+    {
+      id: "table",
+      kind: "table",
+      name: "Table",
+      description: "A kitchen table with two chairs.",
+      position: tableSpot.position,
+      rotation: 0,
+      approach: tableSpot.approach,
+      state: {},
+      seats: [
+        seat("near", { x: -0.6, z: 0.48 }, { x: -0.6, y: 0.46, z: 0.48 }, 0),
+        seat("far", { x: -0.6, z: 1.28 }, { x: -0.6, y: 0.46, z: 1.28 }, Math.PI),
+      ],
+      actions: [{ id: "sit", description: "Sit in a free chair at the table." }],
+    },
+    {
+      id: "armchair",
+      kind: "chair",
+      name: "Armchair",
+      description: "An armchair beside the sofa, facing the television.",
+      position: armchairSpot.position,
+      rotation: armchairSpot.rotation,
+      approach: armchairSpot.approach,
+      state: {},
+      seats: [seat("seat", armchairSpot.approach, { x: armchairSpot.position.x, y: 0.46, z: armchairSpot.position.z }, Math.PI)],
+      actions: [{ id: "sit", description: "Sit in the armchair." }],
+    },
+    {
+      id: "reading-chair",
+      kind: "chair",
+      name: "Reading chair",
+      description: "A chair in the bedroom, in front of the bed.",
+      position: readingSpot.position,
+      rotation: readingSpot.rotation,
+      approach: readingSpot.approach,
+      state: {},
+      seats: [seat("seat", readingSpot.approach, { x: readingSpot.position.x, y: 0.46, z: readingSpot.position.z }, Math.PI)],
+      actions: [{ id: "sit", description: "Sit in the reading chair." }],
+    },
+    {
+      id: "wardrobe",
+      kind: "wardrobe",
+      name: "Wardrobe",
+      description: "A wardrobe against the bedroom wall. Open it, or change outfits.",
+      position: wardrobeSpot.position,
+      rotation: 0,
+      approach: wardrobeSpot.approach,
+      state: { open: false, outfit: "" },
+      seats: [],
+      actions: [
+        { id: "wardrobe_open", description: "Open the wardrobe doors." },
+        { id: "wardrobe_close", description: "Close the wardrobe doors." },
+        { id: "change_outfit", description: "Next outfit, or outfit own to restore your registered colour." },
+      ],
+    },
+    {
+      id: "dog-bed",
+      kind: "dogbed",
+      name: "Dog bed",
+      description: "A small bed for the dog, on the bedroom floor. The dog naps here.",
+      position: dogBedSpot.position,
+      rotation: 0,
+      approach: dogBedSpot.approach,
+      state: {},
+      seats: [],
+      actions: [
+        { id: "pet", description: "Pet the dog when it is in the bed." },
+        { id: "tuck_in", description: "Tuck the dog in when it is in the bed. It naps there." },
+      ],
+    },
+  ];
+  for (const object of objects) {
+    if (!onFloor(object.approach)) object.approach = approachOnFloor(object.approach.x, object.approach.z);
+    for (const seat of object.seats) {
+      if (!onFloor(seat.standAt)) seat.standAt = approachOnFloor(seat.standAt.x, seat.standAt.z);
+    }
+  }
+  return objects;
+}
+
+export const ROOM_INFO = ROOM;
+
+export const OBJECT_ALIASES: Record<string, string> = {
+  couch: "sofa",
+  television: "tv",
+  light: "lamp",
+  kitchen: "fridge",
+  books: "bookshelf",
+  tap: "sink",
+  cooker: "stove",
+  stereo: "radio",
+  desk: "computer",
+  workstation: "computer",
+  "kitchen-table": "table",
+  chair: "armchair",
+};

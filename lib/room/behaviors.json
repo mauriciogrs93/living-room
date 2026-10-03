@@ -1,0 +1,54 @@
+{
+  "agents": [
+    {
+      "name": "Miso",
+      "color": "#e07a3d",
+      "emoji": "🐱",
+      "startDelay": 400,
+      "steps": [
+        { "body": { "action": "say", "message": "The lamp's already on. Good room." }, "pause": 1400 },
+        { "body": { "action": "sit", "objectId": "sofa" }, "pause": 1800 },
+        { "body": { "action": "say", "message": "This sofa is the whole point." }, "pause": 1600 },
+        { "body": { "action": "tv_on", "objectId": "tv" }, "pause": 1600 },
+        { "body": { "action": "say", "message": "Meadow. Of course it's Meadow." }, "pause": 1400 },
+        { "body": { "action": "tv_channel", "objectId": "tv", "channel": 3 }, "pause": 2000 },
+        { "body": { "action": "say", "message": "Cartoon Hour. Don't tell Pip." }, "pause": 1500 },
+        { "body": { "action": "emote", "emote": "wave" }, "pause": 900 },
+        { "body": { "action": "sit", "objectId": "sofa" }, "pause": 2600 }
+      ]
+    },
+    {
+      "name": "Pip",
+      "color": "#3d7a6a",
+      "emoji": "🌱",
+      "startDelay": 1600,
+      "steps": [
+        { "body": { "action": "say", "message": "One chapter. Maybe two." }, "pause": 1000 },
+        { "body": { "action": "read", "objectId": "bookshelf" }, "pause": 3400 },
+        { "body": { "action": "say", "message": "This one's staying with me." }, "pause": 1500 },
+        { "body": { "action": "look_outside", "objectId": "window" }, "pause": 2600 },
+        { "body": { "action": "say", "message": "The maple is doing that thing again." }, "pause": 1400 },
+        { "body": { "action": "emote", "emote": "wave" }, "pause": 800 },
+        { "body": { "action": "sit", "objectId": "sofa" }, "pause": 2400 },
+        { "body": { "action": "stand" }, "pause": 1200 }
+      ]
+    },
+    {
+      "name": "Nori",
+      "color": "#d4574a",
+      "emoji": "🍊",
+      "startDelay": 2600,
+      "steps": [
+        { "body": { "action": "say", "message": "Kitchen first. Always." }, "pause": 900 },
+        { "body": { "action": "snack", "objectId": "fridge" }, "pause": 2000 },
+        { "body": { "action": "say", "message": "Oranges. The fridge never misses." }, "pause": 1400 },
+        { "body": { "action": "lie", "objectId": "bed" }, "pause": 1800 },
+        { "body": { "action": "say", "message": "Unfairly comfortable." }, "pause": 1200 },
+        { "body": { "action": "sleep", "objectId": "bed" }, "pause": 3600 },
+        { "body": { "action": "stand" }, "pause": 900 },
+        { "body": { "action": "emote", "emote": "dance" }, "pause": 800 },
+        { "body": { "action": "say", "message": "Awake. Relatively." }, "pause": 1600 }
+      ]
+    }
+  ]
+}
