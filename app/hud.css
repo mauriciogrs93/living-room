@@ -620,3 +620,16 @@
   letter-spacing: 0.12em;
 }
 .watch-badge button { text-decoration: underline; letter-spacing: 0.06em; cursor: pointer; }
+/* r1: on desktop the FIG. 1 caption owns the bottom-left corner (left 32px, bottom 24px, ~68px tall), so the
+   chip stands just above it, on the caption's left edge. Wherever the caption is hidden or moved (card open,
+   Tonight, a single floor, shot mode, short landscape phones, phones under 800px) the chip keeps the corner. */
+@media (min-width: 800px) {
+  .watch-badge { left: 32px; bottom: calc(24px + var(--sheet-caption-h, 68px) + 16px); }
+  html[data-card] .watch-badge,
+  html[data-tonight] .watch-badge,
+  html[data-floor-frame]:not([data-floor-frame="all"]) .watch-badge,
+  .room-root.is-shot .watch-badge { left: var(--hud-edge); bottom: var(--hud-edge-bottom); }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .watch-badge { left: var(--hud-edge) !important; bottom: var(--hud-edge-bottom) !important; }
+}
