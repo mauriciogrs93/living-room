@@ -1,3 +1,4 @@
+import { cookable } from "@/lib/room/engine-appliances";
 import { channelById, CHANNELS } from "./content";
 import type { RoomHost } from "./engine-host";
 import { dogNearBed } from "./engine-dog";
@@ -81,7 +82,9 @@ export function checkBefore(room: RoomHost, agent: AgentRecord, action: string, 
     return stop(agent, action, 400, "The dog isn't in its bed.");
   }
   if (action === "computer_sit" && agent.objectId === object.id && agent.pose === "sitting") return already(room, agent, "You are already sitting.");
-  const quiet = quietAlready(room, object, action);
+  // A hot stove still cooks what you hold (Tester bug: stove did nothing).
+  const cooksHeld = action === "stove_on" && agent.holding?.kind === "snack" && cookable(agent.holding.label);
+  const quiet = cooksHeld ? null : quietAlready(room, object, action);
   if (quiet) return already(room, agent, quiet);
   return null;
 }
