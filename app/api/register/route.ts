@@ -1,6 +1,7 @@
 import { getEngine, roomFailure } from "@/lib/room/access";
 import { guarded } from "@/lib/room/guard";
 import { baseUrl, clientIp, json, preflight, readJson } from "@/lib/http";
+import { DOOR_COPY, INVITE_FAIL_LIMIT, INVITE_FAIL_WINDOW_MS, sha256 } from "@/lib/room/door";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,18 @@ async function post(req: Request) {
       seedId: raw.seedId,
       seedSecret: raw.seedSecret,
     });
+    if (!result.ok && typeof result.code === "string" && result.code.startsWith("invite_")) {
+      // v19: count failed invites per hashed IP in the store; the 6th in 10 minutes gets a 429.
+      const ipKey = sha256(`${process.env.IP_SALT ?? "lr-ip"}|${clientIp(req) || "local"}`).slice(0, 16);
+      const fails = await engine.allow(`invfail:${ipKey}`, INVITE_FAIL_LIMIT, INVITE_FAIL_WINDOW_MS);
+      if (!fails.ok) {
+        return json(
+          { ok: false, code: "invite_rate_limited", error: DOOR_COPY.tries, hint: "Wait a minute, then try again." },
+          429,
+          { "Retry-After": String(fails.retryAfter) },
+        );
+      }
+    }
     if (!result.ok) {
       const retry = result.retryAfter ? { "Retry-After": String(result.retryAfter) } : undefined;
       return json({ ok: false, error: result.error, code: result.code, hint: result.hint }, result.status, retry);

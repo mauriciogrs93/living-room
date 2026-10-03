@@ -44,6 +44,15 @@ const BURST_WINDOW_MS = 2000;
 const IDEM_MAX_BYTES = 8 * 1024;
 
 type Idem = { key: string; bodyHash: string };
+
+/** Stored idempotent result: resultJson (exact bytes) or the older parsed result. */
+function idemResult(raw: unknown): unknown {
+  const r = raw as { resultJson?: unknown; result?: unknown } | null;
+  if (typeof r?.resultJson === "string") {
+    try { return JSON.parse(r.resultJson); } catch { return null; }
+  }
+  return r?.result ?? null;
+}
 type MutateOpts<T> = { deadlineAt?: number; idem?: Idem | null; idemOf?: (value: T) => { response: unknown; status: number } | null };
 
 function sha(value: string) {
@@ -225,14 +234,14 @@ export class VersionedRoom {
         if (opts.idem && opts.idemOf) {
           const stored = opts.idemOf(value);
           if (stored) {
-            const response = { bodyHash: opts.idem.bodyHash, result: stored.response };
+            // Stored as a JSON string: jsonb reorders keys, and a replay must be byte-identical.
+            const response = { bodyHash: opts.idem.bodyHash, resultJson: JSON.stringify(stored.response) };
             if (JSON.stringify(response).length <= IDEM_MAX_BYTES) idem = { key: opts.idem.key, response, status: stored.status };
           }
         }
         const ok = await this.commitEngine(engine, snap.version, snap.seen, sent, after !== before, idem);
         if (ok && typeof ok === "object") {
-          const replay = ok.replay as { result?: unknown } | null;
-          return (replay?.result ?? value) as T;
+          return (idemResult(ok.replay) ?? value) as T;
         }
         if (ok) return value;
       } catch (error) {
@@ -388,9 +397,10 @@ export class VersionedRoom {
         idem = { key: sha(`${tokenHash}:${opts.idemKey}`), bodyHash: sha(JSON.stringify(body ?? null)) };
         const hit = this.store.idemGet ? await this.store.idemGet(idem.key) : null;
         if (hit) {
-          const stored = hit.response as { bodyHash?: string; result?: ActResult } | null;
+          const stored = hit.response as { bodyHash?: string } | null;
           if (stored?.bodyHash && stored.bodyHash !== idem.bodyHash) return { type: "idem_mismatch" as const };
-          if (stored?.result) return { type: "act" as const, result: stored.result, replayed: true };
+          const replayed = idemResult(hit.response) as ActResult | null;
+          if (replayed) return { type: "act" as const, result: replayed, replayed: true };
         }
       }
       const burst = await this.fastAllow(`act-burst:${tokenHash.slice(0, 24)}`, BURST_LIMIT, BURST_WINDOW_MS);

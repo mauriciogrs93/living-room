@@ -216,15 +216,10 @@ export function planEntry(
   const seed = claimableSeed(room, input);
   if (seed) return enter({ trust: true, seedId: seed.id });
   // Invites only (Option A). No knocking.
-  const failKey = `invfail:${sha256(`${process.env.IP_SALT ?? "lr-ip"}|${input.ip || "local"}`).slice(0, 16)}`;
-  const fails = (room.hits.get(failKey) ?? []).filter((t) => now - t < INVITE_FAIL_WINDOW_MS);
-  if (fails.length >= INVITE_FAIL_LIMIT) {
-    return { kind: "limited", retryAfter: Math.max(1, Math.ceil((INVITE_FAIL_WINDOW_MS - (now - fails[0]!)) / 1000)) };
-  }
+  // Failed-invite limiting lives in the register route (store rate_hit), so it is committed even
+  // though a turned-away register writes nothing to the room.
   const verdict = checkInvite(room, input.invite, now);
   if (verdict.ok) return enter({ trust: false, inviteHash: verdict.hash });
-  fails.push(now);
-  room.hits.set(failKey, fails);
   return { kind: "turned_away", code: verdict.code };
 }
 

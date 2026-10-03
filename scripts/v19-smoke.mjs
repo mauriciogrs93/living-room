@@ -99,7 +99,7 @@ check("two agents on one invite: exactly one gets in", wins === 1, race.map((r) 
 
 // expiry (server runs with INVITE_TTL_MS=8000)
 const expInv = (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json.invite;
-await sleep(9000);
+await sleep(Number(process.env.EXPIRY_WAIT_MS || 9000));
 const expired = await reg({ name: "Latecomer", invite: expInv });
 check("expired invite rejected: invite_expired", expired.status === 403 && expired.json?.code === "invite_expired", `${expired.status} ${expired.json?.code}`);
 
@@ -202,7 +202,7 @@ await sleep(1600);
 const a2 = await act(it, { action: "say", message: "hello once" }, { headers: { "idempotency-key": k } });
 const st2 = await call("GET", "/api/state");
 const said = (st2.json?.events || []).filter((e) => /hello once/.test(e.text || "")).length;
-check("same Idempotency-Key twice -> one action, same response", a1.status === 200 && a2.status === 200 && JSON.stringify(a1.json) === JSON.stringify(a2.json) && said <= 1, `events ${said}`);
+check("same Idempotency-Key twice -> one action, same response", a1.status === 200 && a2.status === 200 && JSON.stringify(a1.json) === JSON.stringify(a2.json) && said <= 1, `events ${said} a1 ${a1.status} a2 ${a2.status} same ${JSON.stringify(a1.json) === JSON.stringify(a2.json)}`);
 await sleep(1600);
 const burst = await Promise.all(Array.from({ length: 6 }, (_, i) => act(it, { action: "emote", emote: "wave" })));
 const codes = burst.map((b) => b.status);
