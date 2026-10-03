@@ -65,7 +65,8 @@ export type DoorState = {
 
 export const INVITE_TTL_MS = Math.max(5_000, Number(process.env.INVITE_TTL_MS) || 10 * 60 * 1000);
 export const INVITE_MAX_UNUSED = 10;
-export const INVITE_FAIL_LIMIT = 5;
+/** Failed invite attempts per hashed IP per 10 min. INVITE_FAIL_LIMIT env is for test previews only (floor 3). */
+export const INVITE_FAIL_LIMIT = Math.max(3, Number(process.env.INVITE_FAIL_LIMIT) || 5);
 export const INVITE_FAIL_WINDOW_MS = 10 * 60 * 1000;
 const INVITE_RE = /^[a-z2-7]{26}$/;
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";

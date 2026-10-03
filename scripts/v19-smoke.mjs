@@ -9,17 +9,42 @@ function check(name, ok, detail = "") {
   results.push({ name, ok: Boolean(ok), detail });
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
 }
+import { execFile } from "node:child_process";
+const VIA = process.env.VERCEL_DEPLOYMENT || "";
+const VERCEL_BIN = process.env.VERCEL_BIN || "vercel";
+function viaCurl(method, path, h, body) {
+  const args = ["curl", path, "--deployment", VIA, "--scope", "mauriciogrs93s-projects", "--", "-s", "-i", "-X", method];
+  for (const [k, v] of Object.entries(h)) if (k !== "x-forwarded-for") args.push("-H", `${k}: ${v}`);
+  if (body) args.push("--data-raw", JSON.stringify(body));
+  return new Promise((resolve) => execFile(VERCEL_BIN, args, { maxBuffer: 8 << 20 }, (err, out) => {
+    const text = String(out || "").replace(/\r/g, "");
+    const blocks = text.split("\n\n");
+    let i = 0; while (i < blocks.length - 1 && /^HTTP\/[\d.]+ (1\d\d|30\d)/.test(blocks[i]) ) i += 1;
+    const head = blocks[i] || ""; const rest = blocks.slice(i + 1).join("\n\n");
+    const status = Number((head.match(/^HTTP\/[\d.]+ (\d+)/) || [])[1] || 0);
+    const hdrs = new Map(); for (const line of head.split("\n").slice(1)) { const c = line.indexOf(":"); if (c > 0) { const k = line.slice(0, c).trim().toLowerCase(); hdrs.set(k, hdrs.has(k) ? hdrs.get(k) + ", " + line.slice(c + 1).trim() : line.slice(c + 1).trim()); } }
+    let json = null; try { json = JSON.parse(rest); } catch {}
+    resolve({ status, json, headers: { get: (k) => hdrs.get(k.toLowerCase()) ?? null } });
+  }));
+}
 async function call(method, path, { body, cookie, token, xff, headers = {} } = {}) {
   const h = { "content-type": "application/json", origin: BASE, ...headers };
   if (cookie) h.cookie = cookie;
   if (token) h.authorization = `Bearer ${token}`;
   h["x-forwarded-for"] = xff || ip();
+  if (VIA) return viaCurl(method, path, h, body);
   const res = await fetch(BASE + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
   let json = null;
   try { json = await res.json(); } catch {}
   return { status: res.status, json, headers: res.headers };
 }
-const reg = (body, xff) => call("POST", "/api/register", { body, xff });
+async function reg(body, xff) {
+  for (let i = 0; ; i += 1) {
+    const r = await call("POST", "/api/register", { body, xff });
+    if (r.status !== 429 || r.json?.code === "invite_rate_limited" || i >= 3) return r;
+    await sleep((Number(r.json?.retryAfter) || 20) * 1000 + 500);
+  }
+}
 async function waitBusy(r) {
   const until = r?.json?.busyUntil ?? 0;
   const ms = until - Date.now();
@@ -120,12 +145,6 @@ check("impostor cannot untrust", ownerLeaveImpostor.status === 403);
 const xsite = await call("POST", "/api/door", { cookie, body: { action: "pause" }, headers: { origin: "https://evil.example" } });
 check("cross-site POST with owner cookie refused", xsite.status === 403);
 
-// rate limit: 5 failures per IP / 10 min
-const rlIp = "10.77.0.1";
-const fails = [];
-for (let i = 0; i < 6; i += 1) fails.push((await reg({ name: `Guess${i}`, invite: "bbbbbbbbbbbbbbbbbbbbbbbbbb" }, rlIp)).status);
-check("too many wrong invites: 429 on the 6th with Writer copy", fails[5] === 429, fails.join(","));
-
 // cooking (Tester bugs 1+2)
 const cook = await reg({ name: "Cook", emoji: "🍳", invite: (await call("POST", "/api/door", { cookie, body: { action: "invite" } })).json.invite });
 const ct = cook.json.token;
@@ -188,6 +207,15 @@ await sleep(1600);
 const burst = await Promise.all(Array.from({ length: 6 }, (_, i) => act(it, { action: "emote", emote: "wave" })));
 const codes = burst.map((b) => b.status);
 check("burst of 6 acts -> fast 429 slow_down, no 503", codes.filter((c) => c === 429).length >= 2 && !codes.includes(503), codes.join(","));
+
+// rate limit on failed invites (runs last: on a single-IP preview it blocks this IP for 10 min)
+const rlIp = "10.77.0.1";
+const fails = [];
+for (let i = 0; i < Number(process.env.FAIL_LIMIT || 5) + 1; i += 1) {
+  const f = await reg({ name: `Guess${i}`, invite: "bbbbbbbbbbbbbbbbbbbbbbbbbb" }, rlIp);
+  fails.push(f.status); if (f.status === 429) { check("too many wrong invites: 429 invite_rate_limited", f.json?.code === "invite_rate_limited", fails.join(",")); break; }
+}
+if (!fails.includes(429)) check("too many wrong invites: 429 invite_rate_limited", false, fails.join(","));
 
 const failed = results.filter((x) => !x.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
