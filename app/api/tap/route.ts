@@ -1,6 +1,6 @@
 import { clientIp, json, preflight } from "@/lib/http";
 import { roomFailure } from "@/lib/room/access";
-import { forbiddenViewer, viewerContext } from "@/lib/apartments/resolve";
+import { forbiddenViewer, viewerContext, watchWriteBlock } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
 
 export const runtime = "nodejs";
@@ -14,6 +14,8 @@ export const POST = guarded(post);
 
 async function post(req: Request) {
   try {
+    const readOnly = await watchWriteBlock(req);
+    if (readOnly) return readOnly;
     const viewer = await viewerContext(req);
     if (viewer instanceof Response) return viewer;
     if (!viewer) return forbiddenViewer();

@@ -1,6 +1,6 @@
 import { json, ownerKeyFrom, preflight, readJson, sameOrigin } from "@/lib/http";
 import { roomFailure } from "@/lib/room/access";
-import { agentRoom } from "@/lib/apartments/resolve";
+import { agentRoom, watchWriteBlock } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
 
 export const runtime = "nodejs";
@@ -14,6 +14,8 @@ export const POST = guarded(post);
 
 async function post(req: Request) {
   try {
+    const readOnly = await watchWriteBlock(req);
+    if (readOnly) return readOnly;
     const body = await readJson(req);
     if (!body.ok) return body.response;
     const value = body.value && typeof body.value === "object" ? (body.value as { ownerKey?: unknown; block?: unknown }) : {};

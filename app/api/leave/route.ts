@@ -1,6 +1,6 @@
 import { bearer, json, preflight } from "@/lib/http";
 import { roomFailure } from "@/lib/room/access";
-import { agentRoom } from "@/lib/apartments/resolve";
+import { agentRoom, watchWriteBlock } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
 
 export const runtime = "nodejs";
@@ -14,6 +14,8 @@ export const POST = guarded(post);
 
 async function post(req: Request) {
   try {
+    const readOnly = await watchWriteBlock(req);
+    if (readOnly) return readOnly;
     const token = bearer(req);
     if (!token) return json({ ok: false, error: "Send Authorization: Bearer YOUR_TOKEN." }, 401);
     const found = await agentRoom(token);

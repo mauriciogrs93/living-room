@@ -1,6 +1,6 @@
 import { json, ownerKeyFrom, preflight, readJson, sameOrigin } from "@/lib/http";
 import { roomFailure, type RoomPort } from "@/lib/room/access";
-import { agentRoom, ipKey, limited } from "@/lib/apartments/resolve";
+import { agentRoom, ipKey, limited, watchWriteBlock } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
 import { NOTE_MAX, UNREAD_CAP, flushMail, loadOwner, publicNotes, touchBox, unreadCount, type Mailbox } from "@/lib/room/mailbox";
 import { VersionedRoom } from "@/lib/room/store/versioned-room";
@@ -63,6 +63,8 @@ export const POST = guarded(postNote);
 
 async function postNote(req: Request) {
   try {
+    const readOnly = await watchWriteBlock(req);
+    if (readOnly) return readOnly;
     const tooMany = await limited(`note-ip:${ipKey(req)}`, { limit: 12, windowMs: 60_000 }, "Too many notes. Wait a moment.");
     if (tooMany) return tooMany;
     const body = await readJson(req);

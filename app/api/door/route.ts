@@ -1,5 +1,5 @@
 import { roomFailure } from "@/lib/room/access";
-import { ownerContext, withCookies } from "@/lib/apartments/resolve";
+import { ownerContext, withCookies, watchWriteBlock } from "@/lib/apartments/resolve";
 import { guarded } from "@/lib/room/guard";
 import { baseUrl, ownerJson, readJson, sameOrigin } from "@/lib/http";
 import { inviteLine } from "@/lib/join-line";
@@ -33,6 +33,8 @@ export const GET = guarded(async (req) => {
 
 export const POST = guarded(async (req) => {
   try {
+    const readOnly = await watchWriteBlock(req);
+    if (readOnly) return readOnly;
     if (!sameOrigin(req)) return ownerJson({ ok: false, error: "Only the room owner can see the door." }, 403);
     const body = await readJson(req);
     if (!body.ok) return body.response;

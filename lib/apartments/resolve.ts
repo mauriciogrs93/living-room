@@ -173,6 +173,24 @@ export async function viewerContext(req: Request): Promise<ViewerContext | null 
   return null;
 }
 
+/**
+ * r1: every write from a watch session is a clean 403 (never 401/404 from a later step). Runs first in each
+ * write route. A request that carries an agent credential (Authorization bearer, the agent-owner cookie) or a
+ * signed-in account is not "a watch session" and goes on as before; no watch cookie = no lookup at all.
+ */
+export async function watchWriteBlock(req: Request): Promise<Response | null> {
+  const token = cookieValue(req, WATCH_COOKIE);
+  if (!WATCH_RE.test(token)) return null;
+  if (req.headers.get("authorization") || cookieValue(req, "__Host-lr_owner")) return null;
+  const { account, setCookies } = await currentAccount(req);
+  if (account) return null;
+  if (!(await directory().watchSession(sessionHash(token)))) return null;
+  return withCookies(
+    ownerJson({ ok: false, code: "watch_read_only", error: "This is a read-only watch link. Only the owner can change things here." }, 403),
+    setCookies,
+  );
+}
+
 export function forbiddenViewer(setCookies: string[] = []) {
   return withCookies(ownerJson({ ok: false, code: "private", error: "This apartment is private. Sign in, or ask the owner for a watch link." }, 403), setCookies);
 }

@@ -3,7 +3,7 @@ import { roomFailure } from "@/lib/room/access";
 import { guarded } from "@/lib/room/guard";
 import { inviteLine } from "@/lib/join-line";
 import { INVITE_ROTATE_MS, INVITE_TTL_MS } from "@/lib/room/invite-ttl";
-import { ipKey, limited, mintWatch, ownerContext, withCookies } from "@/lib/apartments/resolve";
+import { ipKey, limited, mintWatch, ownerContext, withCookies, watchWriteBlock } from "@/lib/apartments/resolve";
 import { LIMITS } from "@/lib/apartments/limits";
 
 export const runtime = "nodejs";
@@ -20,6 +20,8 @@ export const dynamic = "force-dynamic";
  */
 export const POST = guarded(async (req) => {
   try {
+    const readOnly = await watchWriteBlock(req);
+    if (readOnly) return readOnly;
     if (!sameOrigin(req)) return ownerJson({ ok: false, error: "Only the apartment owner can invite." }, 403);
     const perIp = await limited(`invite-ip:${ipKey(req)}`, LIMITS.invitePerIp, "Too many invites. Wait a minute.", "invite_mint_limited");
     if (perIp) return perIp;
