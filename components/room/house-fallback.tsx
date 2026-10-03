@@ -3,9 +3,11 @@
 import { Component, useEffect, type ReactNode } from "react";
 import { FLOORS, HOUSE } from "@/lib/room/layout";
 import type { PublicAgent } from "@/lib/room/types";
+import { mutedHex } from "./maquette/color";
 
 /**
- * Flat three-floor house used when WebGL cannot paint the dollhouse.
+ * Flat three-floor house used when WebGL cannot paint the dollhouse, drawn as a maquette section:
+ * plaster storeys on a birch plinth, oak and linen furniture blocks, plaster figures in each agent's muted colour.
  * It stays in the main bundle so a failed room-canvas chunk still has a house.
  */
 export function HouseFallback({ agents = [] }: { agents?: PublicAgent[] }) {
@@ -14,14 +16,19 @@ export function HouseFallback({ agents = [] }: { agents?: PublicAgent[] }) {
   }, []);
   return (
     <div className="room-stage flex h-full w-full items-center justify-center px-5 pt-16 pb-24">
-      <div className="w-full max-w-[340px]" aria-label="The living room">
-        <div className="mx-auto h-8 w-[84%] rounded-t-[48px] bg-[#6e4328] shadow-[inset_0_-10px_0_#4a2e1c]" />
-        <div className="overflow-hidden rounded-[18px] border-[10px] border-[#5c3a24] bg-[#c4a07a] shadow-[0_22px_48px_rgba(0,0,0,0.38)]">
+      <figure className="fb-house" aria-label="The living room">
+        <div className="fb-storey">
           <Bedroom agents={agents} />
+        </div>
+        <div className="fb-storey">
           <Living agents={agents} />
+        </div>
+        <div className="fb-storey">
           <Kitchen agents={agents} />
         </div>
-      </div>
+        <div className="fb-plinth" />
+        <figcaption className="fb-caption">FIG. 1 · THE LIVING ROOM · SECTION A–A</figcaption>
+      </figure>
     </div>
   );
 }
@@ -48,13 +55,10 @@ function People({ agents, floor }: { agents: PublicAgent[]; floor: number }) {
         const span = HOUSE.x1 - HOUSE.x0;
         const left = ((agent.position.x - HOUSE.x0) / span) * 100;
         return (
-          <span
-            key={agent.id}
-            className="absolute bottom-1 z-10 grid size-6 place-items-center rounded-full text-[13px] shadow"
-            style={{ left: `clamp(4%, ${left}%, 86%)`, background: agent.color }}
-            title={agent.name}
-          >
-            {agent.emoji}
+          <span key={agent.id} className="fb-figure" style={{ left: `clamp(6%, ${left}%, 88%)` }} title={agent.name}>
+            <i className="fb-head" />
+            <i className="fb-body" style={{ background: mutedHex(agent.color) }} />
+            <b className="fb-name">{agent.name}</b>
           </span>
         );
       })}
@@ -64,12 +68,13 @@ function People({ agents, floor }: { agents: PublicAgent[]; floor: number }) {
 
 function Bedroom({ agents }: { agents: PublicAgent[] }) {
   return (
-    <div className="relative h-[108px] border-b-[6px] border-[#5c3a24] bg-[#f3e2cf]">
-      <div className="absolute top-3 left-3 h-14 w-16 rounded-sm border-4 border-[#f7f1e6] bg-[#9ec4de]" />
-      <div className="absolute right-3 bottom-2 h-8 w-[46%] rounded-t-md bg-[#f7f1e6] shadow" />
-      <div className="absolute right-4 bottom-7 h-3 w-[38%] rounded-sm bg-[#a8483c]" />
-      <div className="absolute bottom-2 left-[38%] h-10 w-3 rounded-full bg-[#b8894a]" />
-      <div className="absolute bottom-10 left-[34%] h-5 w-8 rounded-full bg-[#f6e2c0]" />
+    <div className="fb-room">
+      <i className="fb-block fb-window" style={{ left: "6%", top: "18%", width: "16%", height: "40%" }} />
+      <i className="fb-block" style={{ right: "8%", bottom: 0, width: "40%", height: "22%", background: "#D6C5A9" }} />
+      <i className="fb-block" style={{ right: "8%", bottom: "22%", width: "38%", height: "10%", background: "#E2DDD5" }} />
+      <i className="fb-block" style={{ right: "40%", bottom: "22%", width: "8%", height: "10%", background: "#B8674E" }} />
+      <i className="fb-block" style={{ left: "30%", bottom: 0, width: "3px", height: "58%", background: "#2D3136" }} />
+      <i className="fb-block" style={{ left: "27%", bottom: "54%", width: "22px", height: "14px", background: "#E2DDD5" }} />
       <People agents={agents} floor={2} />
     </div>
   );
@@ -77,14 +82,13 @@ function Bedroom({ agents }: { agents: PublicAgent[] }) {
 
 function Living({ agents }: { agents: PublicAgent[] }) {
   return (
-    <div className="relative h-[118px] border-b-[6px] border-[#5c3a24] bg-[#f6efe4]">
-      <div className="absolute inset-x-6 bottom-2 h-8 rounded-sm bg-[#c45c4e]/80" />
-      <div className="absolute bottom-4 left-4 h-10 w-[48%] rounded-t-2xl bg-[#6e9a86]" />
-      <div className="absolute bottom-12 left-7 h-4 w-8 rounded-sm bg-[#fffaf4]" />
-      <div className="absolute top-3 right-3 h-12 w-16 rounded-sm bg-[#2a2624]" />
-      <div className="absolute top-4 right-4 h-8 w-12 rounded-sm bg-[#243044]" />
-      <div className="absolute right-20 bottom-3 h-12 w-3 rounded-full bg-[#b56848]" />
-      <div className="absolute right-[4.6rem] bottom-12 h-6 w-8 rounded-full bg-[#3f7a52]" />
+    <div className="fb-room">
+      <i className="fb-block" style={{ left: "8%", bottom: 0, width: "44%", height: "26%", background: "#E2DDD5" }} />
+      <i className="fb-block" style={{ left: "8%", bottom: "26%", width: "44%", height: "14%", background: "#D3CCC0" }} />
+      <i className="fb-block" style={{ right: "10%", top: "22%", width: "26%", height: "30%", background: "#2D3136" }} />
+      <i className="fb-block" style={{ right: "8%", bottom: 0, width: "30%", height: "18%", background: "#66574B" }} />
+      <i className="fb-block" style={{ left: "58%", bottom: 0, width: "9%", height: "14%", background: "#B8674E", borderRadius: "2px 2px 3px 3px" }} />
+      <i className="fb-block" style={{ left: "58.5%", bottom: "14%", width: "8%", height: "18%", background: "#A7AD9C", borderRadius: "50% 50% 30% 30%" }} />
       <People agents={agents} floor={1} />
     </div>
   );
@@ -92,13 +96,12 @@ function Living({ agents }: { agents: PublicAgent[] }) {
 
 function Kitchen({ agents }: { agents: PublicAgent[] }) {
   return (
-    <div className="relative h-[108px] bg-[#efe2d2]">
-      <div className="absolute inset-x-0 top-0 h-5 bg-[#d7c4a8]" />
-      <div className="absolute top-5 right-3 h-16 w-10 rounded-sm bg-[#f4f7f6] shadow" />
-      <div className="absolute top-8 right-4 h-6 w-7 rounded-sm bg-[#d5ddd8]" />
-      <div className="absolute bottom-2 left-3 h-8 w-[42%] rounded-sm bg-[#8a5a36]" />
-      <div className="absolute bottom-8 left-6 size-4 rounded-full bg-[#c45c4e]" />
-      <div className="absolute bottom-9 left-12 size-3 rounded-full bg-[#f6e2c0]" />
+    <div className="fb-room">
+      <i className="fb-block" style={{ left: "4%", bottom: 0, width: "54%", height: "34%", background: "#D6C5A9" }} />
+      <i className="fb-block" style={{ left: "4%", bottom: "34%", width: "54%", height: "5%", background: "#EEEAE3" }} />
+      <i className="fb-block" style={{ right: "6%", bottom: 0, width: "16%", height: "70%", background: "#EFECE6", border: "1px solid rgba(45,49,54,.18)" }} />
+      <i className="fb-block fb-window" style={{ right: "26%", top: "16%", width: "20%", height: "34%" }} />
+      <i className="fb-block" style={{ left: "30%", bottom: "39%", width: "6%", height: "9%", background: "#B89758", borderRadius: "40% 40% 2px 2px" }} />
       <People agents={agents} floor={0} />
     </div>
   );

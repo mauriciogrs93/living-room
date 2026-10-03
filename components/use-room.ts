@@ -157,5 +157,6 @@ function sign(data: Snapshot) {
   const pet = dog ? `${dog.mode}:${dog.since ?? 0}:${dog.followId ?? ""}:${dog.fetchUntil ?? 0}:${dog.reactUntil ?? 0}` : "";
   const objects = data.objects.map((object) => `${object.id}:${object.stateText}:${object.position.x.toFixed(2)}:${object.position.z.toFixed(2)}`).join("|");
   const tail = data.events[data.events.length - 1]?.id ?? "";
-  return `${agents}#${pet}#${objects}#${tail}#${data.radio.on}:${data.radio.name}#${data.drawings.length}#${data.diary.length}`;
+  const door = data.door ? `${data.door.locked ? 1 : 0}:${data.door.knocking ? 1 : 0}` : "";
+  return `${agents}#${pet}#${objects}#${tail}#${data.radio.on}:${data.radio.name}#${data.drawings.length}#${data.diary.length}#${door}`;
 }

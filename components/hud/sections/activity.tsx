@@ -8,6 +8,7 @@ import { OwnerActivity } from "@/components/room/owner-notes";
 import { OneLiner } from "@/components/one-liner";
 import type { HudModel } from "../model";
 import { ACTIVITY_LIMIT } from "../tokens";
+import { mutedHex } from "@/components/room/maquette/color";
 
 export function ActivitySection({ model }: { model: HudModel }) {
   const agents = model.snapshot?.agents ?? [];
@@ -20,7 +21,7 @@ export function ActivitySection({ model }: { model: HudModel }) {
       {selected && (
         <div className="hud-person">
           <p>
-            <span aria-hidden>{selected.emoji}</span> {selected.name}
+            <span className="hud-swatch is-inline" style={{ background: mutedHex(selected.color) }} aria-hidden /> {selected.name}
           </p>
           <p className="hud-quiet">{selected.status}</p>
           {selected.speech && <p className="hud-quiet">“{selected.speech.text}”</p>}
@@ -68,10 +69,10 @@ function AgentList({
             className={`hud-person-btn${agent.id === selectedId ? " is-on" : ""}`}
             onClick={() => onFocus(agent.id)}
           >
-            <span className="hud-swatch" style={{ background: agent.color }} />
+            <span className="hud-swatch" style={{ background: mutedHex(agent.color) }} />
             <span>
               <span className="hud-line">
-                <span aria-hidden>{agent.emoji}</span> {agent.name}
+                {agent.name}
               </span>
               <span className="hud-quiet">{agent.status}</span>
             </span>

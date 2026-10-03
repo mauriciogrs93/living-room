@@ -2,206 +2,207 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RoundedBox } from "@react-three/drei";
-import { CanvasTexture, SRGBColorSpace, type Group } from "three";
+import * as THREE from "three";
 import { FLOORS, HOUSE, SHELL } from "@/lib/room/layout";
-import { HouseStairs } from "./furniture-stairs";
-import { paintSkyCanvas, useAtmosphere } from "./atmosphere";
+import { useAtmosphere } from "./atmosphere";
 import { useFidgets } from "./interact";
 import { tapObject } from "./viewer-tap";
-import { C, Chunk, Tap, useMaps, useScene, type Maps } from "./furniture-kit";
+import { Tap, useBuilt, useMats, useScene } from "./furniture-kit";
+import { SwayPlant } from "./furniture-pieces";
+import { GEO, PAL } from "./maquette/config";
+import { currentEnv, disposeBuilt, familyMaterial, familyPaint, pleatGeo } from "./maquette/kit";
+import { counter, pendant } from "./maquette/pieces";
+import { FRONT, buildShell } from "./maquette/shell";
 
-export function RoomShell() {
-  const { dusk, night } = useAtmosphere();
-  const maps = useMaps();
+/** 0 = kitchen close-up, 1 = living close-up: the storeys above lift off like a model's floor plate. */
+export function RoomShell({ lift = null }: { lift?: number | null }) {
+  const { M, night } = useMats();
   const { lightOn } = useFidgets();
   const live = useScene();
-  const floorLit = [
+  const shell = useMemo(() => buildShell(M, night), [M, night]);
+  useEffect(
+    () => () => {
+      disposeBuilt(shell.base);
+      shell.storeys.forEach(disposeBuilt);
+    },
+    [shell],
+  );
+  useEffect(() => {
+    shell.storeys.forEach((g, i) => {
+      g.visible = lift == null || i <= lift;
+    });
+    // each flight lifts off with the plate it arrives at
+    shell.flights.forEach((f, i) => {
+      f.visible = lift == null || i + 1 <= lift;
+    });
+  }, [shell, lift]);
+  const lit = [
     lightOn["kitchen-light"] ?? live.lights.kitchen,
     lightOn["living-light"] ?? live.lights.living,
     lightOn.lamp ?? live.lights.lamp,
   ];
-  const x0 = HOUSE.x0 - 0.18;
-  const x1 = HOUSE.x1 + 0.18;
-  const width = x1 - x0;
-  const zBack = HOUSE.zBack - 0.12;
-  const zFront = HOUSE.zFront + 0.16;
-  const depth = zFront - zBack;
-  const zMid = (zBack + zFront) / 2;
-  const top = FLOORS[2].y + HOUSE.roomH;
-  // Right-hand shaft. Floors stop here so a climber on the stairs is not buried.
-  const cut = 1.22;
-  const bayW = cut - x0;
-  const bayX = (x0 + cut) / 2;
+  const show = (i: number) => lift == null || i <= lift;
 
   return (
-    <group>
-      <RoundedBox position={[0, -0.24, zMid]} args={[width + 0.34, 0.42, depth + 0.34]} radius={0.08} smoothness={2} receiveShadow>
-        <meshStandardMaterial map={maps.wood ?? undefined} color="#ffffff" roughness={0.62} />
-      </RoundedBox>
-
-      {FLOORS.map((floor, index) => {
-        const wall = index === 2 ? maps.bedroom : index === 1 ? maps.stripe : maps.plaster;
-        const roof = index === 2;
-        const ground = index === 0;
-        const slabX = roof ? 0 : bayX;
-        const slabW = roof ? width + 0.16 : bayW + 0.08;
-        const floorX = ground ? 0 : bayX;
-        const floorW = ground ? width - 0.12 : bayW - 0.1;
-        return (
-          <group key={floor.y} position={[0, floor.y, 0]}>
-            <mesh position={[floorX, 0.05, (zBack + zFront) / 2]} receiveShadow>
-              <boxGeometry args={[floorW, 0.1, depth - 0.1]} />
-              <meshStandardMaterial
-                map={maps.floor ?? undefined}
-                bumpMap={maps.floorBump ?? undefined}
-                bumpScale={0.05}
-                color={maps.floor ? "#ffffff" : "#b8885a"}
-                roughness={0.86}
-              />
-            </mesh>
-            {index > 0 && (
-              <mesh position={[bayX, -0.04, (zBack + zFront) / 2]} rotation={[-Math.PI / 2, 0, 0]}>
-                <planeGeometry args={[bayW - 0.12, depth - 0.16]} />
-                <meshBasicMaterial color="#120e0c" transparent opacity={0.42} depthWrite={false} />
-              </mesh>
-            )}
-            <Chunk position={[0, HOUSE.roomH / 2, zBack]} args={[width, HOUSE.roomH, 0.1]} map={wall} radius={0.02} roughness={0.94} castShadow={false} />
-            <Chunk position={[x0, HOUSE.roomH / 2, zMid]} args={[0.12, HOUSE.roomH, depth]} map={maps.plaster} radius={0.02} roughness={0.94} castShadow={false} />
-            <Chunk position={[x1, HOUSE.roomH / 2, zMid]} args={[0.12, HOUSE.roomH, depth]} map={maps.plaster} radius={0.02} roughness={0.94} castShadow={false} />
-            <mesh position={[0, 0.07, zBack + 0.08]} receiveShadow>
-              <boxGeometry args={[width - 0.28, 0.07, 0.045]} />
-              <meshStandardMaterial map={maps.wood ?? undefined} color="#ffffff" roughness={0.7} />
-            </mesh>
-            <Chunk position={[slabX, HOUSE.roomH, (zBack + zFront) / 2]} args={[slabW, HOUSE.frame, depth + 0.08]} map={maps.wood} radius={0.03} roughness={0.58} />
-            <pointLight
-              position={[0.2, 1.85, 0.85]}
-              intensity={(index === 2 ? 0.45 : 0.52) + (night ? 0.9 : dusk ? 0.28 : 0) + (floorLit[index] ? 1.85 : 0)}
-              distance={5.4}
-              decay={2}
-              color={night ? "#ffb56a" : "#fff1d4"}
-            />
-            <Chunk position={[slabX, HOUSE.roomH, zFront - 0.02]} args={[roof ? width + 0.28 : bayW + 0.14, 0.22, 0.22]} map={maps.wood} radius={0.04} roughness={0.55} />
-          </group>
-        );
-      })}
-
-      <group position={[0, FLOORS[0].y, 0]}>
-        <mesh position={[0, 1.28, HOUSE.zBack - 0.02]}>
-          <planeGeometry args={[width - 0.5, 0.9]} />
-          <meshStandardMaterial map={maps.tile ?? undefined} color="#ffffff" roughness={0.42} metalness={0.04} />
-        </mesh>
-        <mesh position={[0, 0.48, HOUSE.zBack - 0.015]} receiveShadow>
-          <planeGeometry args={[width - 0.7, 0.62]} />
-          <meshStandardMaterial map={maps.brick ?? undefined} color="#ffffff" roughness={0.92} />
-        </mesh>
-      </group>
-
-      <HouseStairs />
-      <Chunk position={[x0 - 0.02, top / 2, zFront]} args={[0.28, top + 0.5, 0.22]} map={maps.wood} radius={0.04} roughness={0.55} />
-      <Chunk position={[x1 + 0.02, top / 2, zFront]} args={[0.28, top + 0.5, 0.22]} map={maps.wood} radius={0.04} roughness={0.55} />
-
-      <group position={[SHELL.bedWindow.x, FLOORS[2].y + SHELL.bedWindow.y, SHELL.bedWindow.z]} rotation={[0, Math.PI / 2, 0]}>
-        <ShutterWindow position={[0, 0, 0]} catalog />
-      </group>
-      <ShutterWindow position={[SHELL.kitchenWindow.x, FLOORS[0].y + SHELL.kitchenWindow.y, SHELL.kitchenWindow.z]} />
-
-      <Frame position={[SHELL.frameGap.x, FLOORS[SHELL.frameGap.floor].y + SHELL.frameGap.y, SHELL.frameGap.z]} w={SHELL.frameGap.d} h={SHELL.frameGap.h} map={maps.art} rotation={[0, -Math.PI / 2, 0]} />
-      <Frame position={[SHELL.frameTv.x, FLOORS[SHELL.frameTv.floor].y + SHELL.frameTv.y, SHELL.frameTv.z]} w={SHELL.frameTv.d} h={SHELL.frameTv.h} color="#efe2c4" rotation={[0, -Math.PI / 2, 0]} />
-      <Frame position={[SHELL.frameBed.x, FLOORS[SHELL.frameBed.floor].y + SHELL.frameBed.y, SHELL.frameBed.z]} w={SHELL.frameBed.d} h={SHELL.frameBed.h} color="#f3d9c8" rotation={[0, -Math.PI / 2, 0]} />
-
-      <WallShelf position={[SHELL.wallShelf.x, FLOORS[2].y + SHELL.wallShelf.y, SHELL.wallShelf.z]} />
-      <Kitchen />
-      <SwayPlant position={[SHELL.plantLiving.x, FLOORS[SHELL.plantLiving.floor].y + SHELL.plantLiving.y, SHELL.plantLiving.z]} />
-      <SwayPlant position={[SHELL.plantBed.x, FLOORS[SHELL.plantBed.floor].y + SHELL.plantBed.y, SHELL.plantBed.z]} scale={0.72} />
-
-      <Rug position={[0.2, FLOORS[0].y + 0.11, 1.0]} args={[1.15, 0.82]} map={maps.rugGold} />
-      <Rug position={[-0.2, FLOORS[1].y + 0.11, 1.2]} args={[1.85, 1.12]} map={maps.rug} />
-      <Rug position={[0.15, FLOORS[2].y + 0.11, 1.05]} args={[1.45, 0.9]} map={maps.rugSage} />
+    <group name="shell">
+      <primitive object={shell.base} />
+      {shell.storeys.map((g, i) => (
+        <primitive key={i} object={g} />
+      ))}
+      {show(0) && (
+        <>
+          <Kitchen />
+          <KitchenPendant on={lit[0]} />
+          <MaquetteWindow position={[SHELL.kitchenWindow.x, FLOORS[0].y + SHELL.kitchenWindow.y, GEO.wallInZ - 0.03]} w={SHELL.kitchenWindow.w} h={SHELL.kitchenWindow.h} />
+          <SwayPlant position={[SHELL.plantLiving.x, FLOORS[0].y, SHELL.plantLiving.z]} scale={0.9} />
+          <SwayPlant position={[SHELL.plantBed.x, FLOORS[0].y, SHELL.plantBed.z]} scale={0.7} />
+        </>
+      )}
+      {show(2) && (
+        <group position={[GEO.wallInX - 0.03, FLOORS[2].y + SHELL.bedWindow.y, SHELL.bedWindow.z]} rotation={[0, Math.PI / 2, 0]}>
+          <MaquetteWindow position={[0, 0, 0]} w={SHELL.bedWindow.d} h={SHELL.bedWindow.h} catalog />
+        </group>
+      )}
+      {!night && <DaylightPatches lift={lift} />}
+      {/* night: a soft, shadowless warm bounce in each lit room so chair backs and wardrobe fronts read as wood, not holes */}
+      {night &&
+        lit.map((on, i) =>
+          on && show(i) ? <pointLight key={i} position={[-0.3, FLOORS[i].y + 1.7, FRONT - 0.2]} color="#FFD3A8" intensity={0.9 * Math.PI} distance={7} decay={1.4} /> : null,
+        )}
     </group>
   );
 }
 
-function Rug({
-  position,
-  args,
-  map,
-}: {
-  position: [number, number, number];
-  args: [number, number];
-  map: Maps["rug"];
-}) {
-  return (
-    <mesh position={position} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={args} />
-      <meshStandardMaterial map={map ?? undefined} color="#ffffff" roughness={0.92} />
-    </mesh>
-  );
-}
-
-function WeatherGlass() {
-  const { sky, night } = useAtmosphere();
-  const texture = useMemo(() => {
-    const canvas = paintSkyCanvas(sky);
-    const map = new CanvasTexture(canvas);
-    map.colorSpace = SRGBColorSpace;
-    return map;
-  }, [sky]);
-  useEffect(() => () => texture.dispose(), [texture]);
-  const drops = useRef<Group>(null);
-  const wet = sky === "rain" || sky === "snow";
-  useFrame(({ clock }) => {
-    const group = drops.current;
-    if (!group) return;
-    group.children.forEach((child, index) => {
-      const speed = sky === "snow" ? 0.12 : 0.42;
-      child.position.y = 0.24 - ((clock.elapsedTime * speed + index * 0.13) % 0.52);
+/**
+ * By day, a soft pool of window light on the floor in front of each window (sky light, so it is diffuse and has no hard
+ * sun edge). One merged quad mesh, one shared material: +1 draw call, no texture.
+ */
+const DAYLIGHT = new THREE.ShaderMaterial({
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  // additive: the patch adds warm light to whatever floor/rug is under it, with the window's mullion cross as a soft shadow
+  blending: THREE.AdditiveBlending,
+  uniforms: { uColor: { value: new THREE.Color("#FFE4BC") }, uPeak: { value: 0.26 } },
+  vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }",
+  fragmentShader:
+    "uniform vec3 uColor; uniform float uPeak; varying vec2 vUv; void main(){ float side = smoothstep(0.0,0.22,vUv.x)*smoothstep(1.0,0.78,vUv.x); float fall = pow(1.0-vUv.y, 1.7)*smoothstep(0.0,0.06,vUv.y); float bar = 1.0 - 0.75*max(1.0-smoothstep(0.012,0.03,abs(vUv.x-0.5)), 1.0-smoothstep(0.012,0.03,abs(vUv.y-0.42))); gl_FragColor = vec4(uColor, side*fall*bar*uPeak); }",
+});
+function DaylightPatches({ lift }: { lift: number | null }) {
+  const geo = useMemo(() => {
+    const show = (i: number) => lift == null || i <= lift;
+    const quads: number[][] = [];
+    const k = SHELL.kitchenWindow;
+    if (show(0)) {
+      const y = FLOORS[0].y + 0.006;
+      const z0 = GEO.wallInZ + 0.02;
+      // [x,y,z] of: wall-left, wall-right, far-right, far-left (u across, v away from the wall)
+      quads.push([k.x - k.w / 2 - 0.12, y, z0, k.x + k.w / 2 + 0.12, y, z0, k.x + k.w / 2 + 0.42, y, z0 + 1.25, k.x - k.w / 2 + 0.12, y, z0 + 1.25]);
+    }
+    const b = SHELL.bedWindow;
+    if (show(2)) {
+      const y = FLOORS[2].y + 0.006;
+      const x0 = GEO.wallInX + 0.02;
+      quads.push([x0, y, b.z + b.d / 2 + 0.12, x0, y, b.z - b.d / 2 - 0.12, x0 + 1.1, y, b.z - b.d / 2 + 0.1, x0 + 1.1, y, b.z + b.d / 2 + 0.4]);
+    }
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const idx: number[] = [];
+    quads.forEach((q, i) => {
+      pos.push(...q);
+      uv.push(0, 0, 1, 0, 1, 1, 0, 1);
+      const o = i * 4;
+      idx.push(o, o + 2, o + 1, o, o + 3, o + 2);
     });
-  });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    return g;
+  }, [lift]);
+  useEffect(() => () => geo.dispose(), [geo]);
+  return <mesh name="daylight" geometry={geo} material={DAYLIGHT} renderOrder={1} raycast={() => null} userData={{ noContact: true, skipContact: true }} />;
+}
+
+function KitchenPendant({ on }: { on: boolean }) {
+  const { M } = useMats();
+  const built = useBuilt(() => pendant(M, on, HOUSE.roomH), [M, on]);
+  // hangs over the kitchen table
+  const z = -0.35 + ((0.9 - FLOORS[0].z0) / (FLOORS[0].z1 - FLOORS[0].z0)) * (HOUSE.zFront - HOUSE.zBack);
   return (
-    <>
-      <mesh position={[0, 0.02, 0.04]}>
-        <planeGeometry args={[0.78, 0.58]} />
-        <meshStandardMaterial
-          map={texture}
-          color="#ffffff"
-          roughness={0.28}
-          emissive={night ? "#ffb06a" : "#ffd7a8"}
-          emissiveIntensity={night ? 0.62 : sky === "sun" ? 0.22 : 0.1}
-        />
-      </mesh>
-      {wet && (
-        <group ref={drops} position={[0, 0, 0.055]}>
-          {Array.from({ length: 8 }, (_, index) => (
-            <mesh key={index} position={[-0.28 + (index % 4) * 0.18, 0.1 - (index > 3 ? 0.2 : 0), 0]}>
-              <boxGeometry args={[sky === "snow" ? 0.028 : 0.012, sky === "snow" ? 0.028 : 0.07, 0.008]} />
-              <meshBasicMaterial color={sky === "snow" ? "#f4f7fb" : "#d5e7f2"} />
-            </mesh>
-          ))}
-        </group>
-      )}
-      {sky === "fog" && (
-        <mesh position={[0, 0.02, 0.06]}>
-          <planeGeometry args={[0.78, 0.58]} />
-          <meshBasicMaterial color="#e4e6e2" transparent opacity={0.55} depthWrite={false} />
-        </mesh>
-      )}
-    </>
+    <group name="obj:kitchen-pendant" position={[-0.6, FLOORS[0].y, z]}>
+      <primitive object={built.group} />
+      {on && <pointLight position={[0, HOUSE.roomH - 0.8, 0]} color={PAL.lamp} intensity={3} distance={4.6} decay={2} />}
+    </group>
   );
 }
 
-function ShutterWindow({ position, catalog = false }: { position: [number, number, number]; catalog?: boolean }) {
-  const maps = useMaps();
+const GLASS_DAY: Record<string, string> = { sun: "#E4EBF3", clouds: "#E1E4E8", rain: "#D3DAE2", snow: "#EEF1F4", fog: "#E6E7E6" };
+/** One shared glass material per (night, sky) for every window pane: clearcoat-like sheen from low roughness + env. */
+const GLASS = new Map<string, THREE.MeshPhysicalMaterial>();
+function glassMaterial(night: boolean, sky: string) {
+  const key = `${night}|${sky}`;
+  let m = GLASS.get(key);
+  if (!m) {
+    m = new THREE.MeshPhysicalMaterial({
+      color: night ? "#3A4558" : (GLASS_DAY[sky] ?? GLASS_DAY.sun),
+      emissive: night ? "#1E2633" : "#DCE5F0",
+      emissiveIntensity: night ? 0.4 : 0.35,
+      roughness: 0.12,
+      metalness: 0.0,
+      clearcoat: 1,
+      clearcoatRoughness: 0.08,
+      transparent: true,
+      opacity: night ? 0.75 : 0.6,
+      depthWrite: false,
+      envMapIntensity: 0.6,
+    });
+    GLASS.set(key, m);
+  }
+  const env = currentEnv();
+  if (env && m.envMap !== env) {
+    m.envMap = env;
+    m.needsUpdate = true;
+  }
+  return m;
+}
+
+function MaquetteWindow({ position, w, h, catalog = false }: { position: [number, number, number]; w: number; h: number; catalog?: boolean }) {
+  const { M } = useMats();
+  const { sky, night } = useAtmosphere();
   const { curtainsOpen, toggleCurtains, say } = useFidgets();
-  const left = useRef<Group>(null);
-  const right = useRef<Group>(null);
-  const open = useRef(0);
+  const left = useRef<THREE.Group>(null);
+  const right = useRef<THREE.Group>(null);
+  const drops = useRef<THREE.Group>(null);
+  const open = useRef(curtainsOpen ? 1 : 0);
+  const wet = sky === "rain" || sky === "snow";
+  const cw = 0.2;
+  const shut = (w / 2 + 0.03) / cw;
+  // curtains share the house's one surface material (linen tone + sheen baked into the pleat geometry)
+  const curtainGeo = useMemo(() => familyPaint(pleatGeo(cw, h + 0.12, 0.04, 4).clone(), M.linen), [M, h]);
+  useEffect(() => () => curtainGeo.dispose(), [curtainGeo]);
+  const curtainMat = familyMaterial("fabric", night);
+  const glassMat = useMemo(() => glassMaterial(night, sky), [night, sky]);
   useFrame(({ clock }, delta) => {
-    const target = curtainsOpen ? 1 : 0;
-    open.current += (target - open.current) * Math.min(1, delta * 4);
-    const drift = Math.sin(clock.elapsedTime * 0.8 + position[0]) * 0.012;
-    if (left.current) left.current.position.x = -0.42 - open.current * 0.22 + drift;
-    if (right.current) right.current.position.x = 0.42 + open.current * 0.22 - drift;
+    open.current += ((curtainsOpen ? 1 : 0) - open.current) * Math.min(1, delta * 4);
+    const o = open.current;
+    const drift = Math.sin(clock.elapsedTime * 0.8 + position[0]) * 0.006;
+    const sx = shut + (1 - shut) * o;
+    const x = w / 4 + (w / 2 + 0.05 - w / 4) * o;
+    if (left.current) {
+      left.current.scale.x = sx;
+      left.current.position.x = -x + drift;
+    }
+    if (right.current) {
+      right.current.scale.x = sx;
+      right.current.position.x = x - drift;
+    }
+    if (drops.current) {
+      drops.current.children.forEach((child, index) => {
+        const speed = sky === "snow" ? 0.12 : 0.42;
+        child.position.y = h * 0.3 - ((clock.elapsedTime * speed + index * 0.13) % (h * 0.6));
+      });
+    }
   });
   return (
     <Tap
@@ -211,175 +212,59 @@ function ShutterWindow({ position, catalog = false }: { position: [number, numbe
         say(curtainsOpen ? "Curtains drawn" : "Curtains open");
       }}
     >
-      <group position={position}>
-        <Chunk position={[0, 0, 0]} args={[1.15, 0.9, 0.07]} map={maps.wood} radius={0.03} />
-        <WeatherGlass />
-        <mesh position={[0, 0.02, 0.045]}>
-          <boxGeometry args={[0.025, 0.58, 0.01]} />
-          <meshStandardMaterial color="#4a3424" roughness={0.5} />
+      <group name="obj:window" position={position}>
+        <mesh position={[0, 0, -0.01]} userData={{ noContact: true }} material={glassMat}>
+          <planeGeometry args={[w - 0.08, h - 0.08]} />
         </mesh>
-        <mesh position={[0, 0.02, 0.045]}>
-          <boxGeometry args={[0.78, 0.02, 0.01]} />
-          <meshStandardMaterial color="#4a3424" roughness={0.5} />
-        </mesh>
-        <group ref={left}>
-          <Chunk position={[0, 0.02, 0.06]} args={[0.22, 0.78, 0.03]} color={C.curtain} radius={0.02} roughness={0.84} />
-        </group>
-        <group ref={right}>
-          <Chunk position={[0, 0.02, 0.06]} args={[0.22, 0.78, 0.03]} color={C.curtainDeep} radius={0.02} roughness={0.84} />
-        </group>
-      </group>
-    </Tap>
-  );
-}
-
-function Frame({
-  position,
-  w,
-  h,
-  color = "#f4eadc",
-  map,
-  rotation = [0, 0, 0] as [number, number, number],
-}: {
-  position: [number, number, number];
-  w: number;
-  h: number;
-  color?: string;
-  map?: Maps["art"];
-  rotation?: [number, number, number];
-}) {
-  return (
-    <group position={position} rotation={rotation}>
-      <Chunk position={[0, 0, 0]} args={[w, h, 0.04]} color="#5c4030" radius={0.02} roughness={0.45} />
-      <mesh position={[0, 0, 0.025]}>
-        <planeGeometry args={[w - 0.08, h - 0.08]} />
-        {map ? (
-          <meshStandardMaterial map={map} roughness={0.62} />
-        ) : (
-          <meshStandardMaterial color={color} roughness={0.7} />
+        {wet && (
+          <group ref={drops} position={[0, 0, -0.005]}>
+            {Array.from({ length: 8 }, (_, index) => (
+              <mesh key={index} position={[-w * 0.36 + (index % 4) * w * 0.24, 0, 0]} userData={{ noContact: true }}>
+                <boxGeometry args={[sky === "snow" ? 0.024 : 0.008, sky === "snow" ? 0.024 : 0.06, 0.004]} />
+                <meshBasicMaterial color={sky === "snow" ? "#F7F5F0" : "#C9D3DC"} />
+              </mesh>
+            ))}
+          </group>
         )}
-      </mesh>
-    </group>
-  );
-}
-
-function WallShelf({ position }: { position: [number, number, number] }) {
-  const maps = useMaps();
-  const spines = ["#8f3d32", "#3f6154", "#c6a15a", "#6d88a8", "#f4efe6"];
-  return (
-    <group position={position}>
-      <Chunk position={[0, 0, 0.08]} args={[0.7, 0.045, 0.18]} map={maps.wood} radius={0.015} />
-      {spines.slice(0, 4).map((color, index) => (
-        <Chunk key={color} position={[-0.24 + index * 0.16, 0.16, 0.08]} args={[0.09, 0.24, 0.14]} color={color} radius={0.012} />
-      ))}
-    </group>
-  );
-}
-
-export function SwayPlant({
-  position,
-  scale = 1,
-  onTap,
-}: {
-  position: [number, number, number];
-  scale?: number;
-  onTap?: () => void;
-}) {
-  const ref = useRef<Group>(null);
-  const extra = useRef(0);
-  const { plantNudge, nudgePlant, say } = useFidgets();
-  const seen = useRef(plantNudge);
-  useFrame(({ clock }, delta) => {
-    if (plantNudge !== seen.current) {
-      seen.current = plantNudge;
-      extra.current = 1;
-    }
-    extra.current *= Math.pow(0.08, delta);
-    if (!ref.current) return;
-    const amp = 0.035 + extra.current * 0.22;
-    ref.current.rotation.z = Math.sin(clock.elapsedTime * 1.25 + position[0] * 2) * amp;
-    ref.current.rotation.x = Math.cos(clock.elapsedTime * 0.9 + position[2]) * amp * 0.35;
-  });
-  return (
-    <Tap
-      onTap={() => {
-        if (onTap) onTap();
-        else {
-          nudgePlant();
-          say("The leaves shiver");
-        }
-      }}
-    >
-      <group ref={ref} position={position} scale={scale}>
-        <mesh position={[0, 0.14, 0]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.13, 0.1, 0.16, 16]} />
-          <meshStandardMaterial color={C.pot} roughness={0.72} />
-        </mesh>
-        <mesh position={[0, 0.22, 0]}>
-          <cylinderGeometry args={[0.14, 0.13, 0.03, 16]} />
-          <meshStandardMaterial color="#8d4e34" roughness={0.6} />
-        </mesh>
-        {[0, 1.1, 2.2, 3.4, 4.6].map((angle) => (
-          <mesh key={angle} position={[Math.sin(angle) * 0.05, 0.48, Math.cos(angle) * 0.05]} rotation={[0.45, angle, 0.2]} castShadow>
-            <capsuleGeometry args={[0.03, 0.36, 4, 8]} />
-            <meshStandardMaterial color={angle % 2 ? C.plantDeep : C.plant} roughness={0.62} />
+        {sky === "fog" && (
+          <mesh position={[0, 0, -0.004]} userData={{ noContact: true }}>
+            <planeGeometry args={[w - 0.08, h - 0.08]} />
+            <meshBasicMaterial color="#ECEBE8" transparent opacity={0.5} depthWrite={false} />
           </mesh>
-        ))}
+        )}
+        {/* pleated linen panels: a real fold profile, not a slab */}
+        <group ref={left} position={[-(w / 2 + 0.05), -0.06, 0.09]}>
+          <mesh material={curtainMat} receiveShadow geometry={curtainGeo} position={[0, -(h + 0.12) / 2, 0]} dispose={null} />
+        </group>
+        <group ref={right} position={[w / 2 + 0.05, -0.06, 0.09]}>
+          <mesh material={curtainMat} receiveShadow geometry={curtainGeo} position={[0, -(h + 0.12) / 2, 0]} dispose={null} />
+        </group>
       </group>
     </Tap>
   );
 }
 
 function Kitchen() {
-  const maps = useMaps();
+  const { M } = useMats();
+  const built = useBuilt(() => counter(M), [M]);
   const { cabinetOpen, toggleCabinet, say } = useFidgets();
-  const leftDoor = useRef<Group>(null);
-  const rightDoor = useRef<Group>(null);
   const open = useRef(0);
   useFrame((_, delta) => {
-    open.current += (((cabinetOpen ? 1 : 0) - open.current) * Math.min(1, delta * 5));
-    if (leftDoor.current) leftDoor.current.rotation.y = -open.current * 1.15;
-    if (rightDoor.current) rightDoor.current.rotation.y = open.current * 1.15;
+    open.current += ((cabinetOpen ? 1 : 0) - open.current) * Math.min(1, delta * 5);
+    built.parts.left.rotation.y = -open.current * 1.15;
+    built.parts.right.rotation.y = open.current * 1.15;
   });
+  useEffect(() => () => disposeBuilt(built.group), [built]);
   return (
-    <group position={[SHELL.counter.x, FLOORS[0].y, SHELL.counter.z]}>
-      <Chunk position={[0, 0.36, 0]} args={[SHELL.counter.w - 0.08, 0.64, 0.48]} map={maps.wood} radius={0.03} />
-      <mesh position={[0, 0.7, 0]} receiveShadow>
-        <boxGeometry args={[SHELL.counter.w, 0.045, SHELL.counter.d]} />
-        <meshStandardMaterial color="#d9d3c8" roughness={0.28} metalness={0.12} />
-      </mesh>
-      <group ref={leftDoor} position={[-0.88, 0.36, 0.24]}>
-        <Tap
-          onTap={() => {
-            toggleCabinet();
-            say(cabinetOpen ? "Cabinet shut" : "Cabinet open");
-          }}
-        >
-          <Chunk position={[0.44, 0, 0]} args={[0.86, 0.5, 0.04]} map={maps.wood} radius={0.015} />
-          <mesh position={[0.72, 0, 0.03]}>
-            <sphereGeometry args={[0.025, 10, 8]} />
-            <meshStandardMaterial color={C.brass} metalness={0.6} roughness={0.35} />
-          </mesh>
-        </Tap>
-      </group>
-      <group ref={rightDoor} position={[0.88, 0.36, 0.24]}>
-        <Tap
-          onTap={() => {
-            toggleCabinet();
-            say(cabinetOpen ? "Cabinet shut" : "Cabinet open");
-          }}
-        >
-          <Chunk position={[-0.44, 0, 0]} args={[0.86, 0.5, 0.04]} map={maps.wood} radius={0.015} />
-        </Tap>
-      </group>
-      <mesh position={[0.22, 0.78, 0.04]} castShadow>
-        <cylinderGeometry args={[0.045, 0.04, 0.07, 12]} />
-        <meshStandardMaterial color="#f4efe6" roughness={0.4} />
-      </mesh>
-      <mesh position={[0.34, 0.8, -0.02]}>
-        <boxGeometry args={[0.08, 0.1, 0.06]} />
-        <meshStandardMaterial color="#6e8f72" roughness={0.55} />
-      </mesh>
+    <group name="obj:kitchen-counter" position={[SHELL.counter.x, FLOORS[0].y, SHELL.counter.z]}>
+      <Tap
+        onTap={() => {
+          toggleCabinet();
+          say(cabinetOpen ? "Cabinet shut" : "Cabinet open");
+        }}
+      >
+        <primitive object={built.group} />
+      </Tap>
     </group>
   );
 }

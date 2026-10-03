@@ -46,19 +46,13 @@ export function OneLiner({ prominent = false, origin = "" }: { prominent?: boole
     );
   }
 
+  // the landing's copy box: mono line + a hairline-divided COPY button
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-      <p className="min-w-0 flex-1 font-mono text-[12.5px] leading-relaxed text-[#4a3b32]/80">
-        {line ?? "Reading the address of this page…"}
-      </p>
-      <button
-        type="button"
-        onClick={() => void copy()}
-        disabled={!line}
-        className="inline-flex h-11 shrink-0 items-center gap-1.5 self-start rounded-full bg-[#2c241e] px-4 text-[13px] text-[#f6f1ea] disabled:opacity-40"
-      >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        {label}
+    <div className="copy-box">
+      <code>{line ?? "Reading the address of this page…"}</code>
+      <button type="button" onClick={() => void copy()} disabled={!line} aria-label={copied ? "Copied" : "Copy the sentence"}>
+        {copied ? <Check className="size-3.5" aria-hidden /> : null}
+        {copied ? "COPIED" : "COPY"}
       </button>
     </div>
   );

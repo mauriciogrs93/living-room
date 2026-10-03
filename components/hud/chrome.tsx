@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDoorAccess, useKnockCount } from "@/components/room/door-client";
 import { useOwnerChecked, useOwnerPresent, useUnseenReplies } from "@/components/room/owner-notes";
+import { useAtmosphere } from "@/components/room/atmosphere";
 import { readBadges } from "./badges";
 import { useHudHash } from "./hash";
 import type { HudModel } from "./model";
@@ -30,6 +31,7 @@ export function HudChrome({
   const active = sections.find((section) => section.id === hash.section) ?? null;
   const [drag, setDrag] = useState(0);
   const pull = useRef<{ y: number; dy: number } | null>(null);
+  const { label, clock, place } = useAtmosphere();
   const hold = useRef<{ timer: number; fired: boolean } | null>(null);
 
   useEffect(() => {
@@ -114,7 +116,19 @@ export function HudChrome({
             onPointerUp={gripUp}
             onPointerCancel={gripUp}
           />
+          {/* a drawing title block */}
+          <div className="hud-tb-row">
+            <span>LR–01</span>
+            <span>SECTION A–A</span>
+            <span>1:50</span>
+          </div>
           <h2 className="hud-display">The Living Room</h2>
+          <div className="hud-tb-row is-muted">
+            <span>{[place, label, clock].filter(Boolean).join(" · ").toUpperCase()}</span>
+            <span>
+              {count} {count === 1 ? "AGENT" : "AGENTS"}
+            </span>
+          </div>
           <div className="hud-tabs" role="tablist">
             {sections.map((section) => (
               <button
@@ -125,8 +139,7 @@ export function HudChrome({
                 className={section.id === active.id ? "is-on" : ""}
                 onClick={() => hash.open(section.id)}
               >
-                <HudIcon name={section.icon} />
-                {section.title}
+                {section.title.toUpperCase()}
               </button>
             ))}
           </div>
@@ -151,43 +164,14 @@ export function HudChrome({
         onContextMenu={(event) => event.preventDefault()}
       >
         <span className={`hud-live${live?.tone === "on" ? " is-on" : ""}`} />
-        <span className="hud-here">{count} here</span>
+        <span className="hud-here">{count} HERE</span>
         {knocks > 0 ? (
-          <span className="hud-count" data-door-badge={knocks} aria-label={`${knocks} at the door`}>
-            {knocks}
+          <span key={knocks} className="hud-count" data-door-badge={knocks} aria-label={`${knocks} at the door`}>
+            {knocks > 9 ? "9+" : knocks}
           </span>
         ) : null}
         {mail ? <span className="hud-mail" aria-label="Unread reply" /> : null}
       </button>
     </>
-  );
-}
-
-function HudIcon({ name }: { name: "sun" | "list" | "mail" | "door" }) {
-  if (name === "door") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden>
-        <path d="M4 3.5h8v10H4zM10 8.5h.1" />
-      </svg>
-    );
-  }
-  if (name === "list") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden>
-        <path d="M3 4.5h10M3 8h10M3 11.5h7" />
-      </svg>
-    );
-  }
-  if (name === "mail") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden>
-        <path d="M2.5 4.5h11v7h-11zM3 5l5 4 5-4" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden>
-      <circle cx="8" cy="8" r="3.2" />
-    </svg>
   );
 }

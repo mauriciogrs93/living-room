@@ -423,7 +423,7 @@ export function OwnerEventText({ event, plain }: { event: FeedEvent; plain?: boo
   return (
     <>
       <span>{view.title}</span>
-      {view.reply ? <span className="mt-0.5 block text-[13px] text-[#3d6b56]">{view.reply}</span> : null}
+      {view.reply ? <span className="mt-0.5 block text-[13px] text-[var(--hud-ok-ink)]">{view.reply}</span> : null}
     </>
   );
 }
@@ -438,24 +438,24 @@ export function OwnerActivity({ events, now }: { events: FeedEvent[]; now: numbe
   ].sort((a, b) => b.at - a.at);
   return (
     <ul className="space-y-2.5 pb-2">
-      {rows.length === 0 && <li className="text-sm text-[#6d5b4e]">Nothing has happened yet.</li>}
+      {rows.length === 0 && <li className="text-sm text-[var(--hud-muted)]">Nothing has happened yet.</li>}
       {rows.map((row) =>
         row.kind === "note" ? (
           <li key={row.note.id} className="text-sm leading-snug">
             <span>You left a note: “{row.note.text}”</span>
             {threadOf(row.note).length ? (
-              <span className="mt-0.5 block text-[13px] text-[#3d6b56]">
+              <span className="mt-0.5 block text-[13px] text-[var(--hud-ok-ink)]">
                 {mail?.name} replied: “{threadOf(row.note)[threadOf(row.note).length - 1]?.text}”
               </span>
             ) : (
-              <span className="mt-0.5 block text-[11px] text-[#8a7364]">Waiting for a reply</span>
+              <span className="mt-0.5 block text-[11px] text-[var(--hud-muted)]">Waiting for a reply</span>
             )}
-            <span className="mt-0.5 block text-[11px] text-[#8a7364]">{ago(row.note.at, now)}</span>
+            <span className="mt-0.5 block text-[11px] text-[var(--hud-muted)]">{ago(row.note.at, now)}</span>
           </li>
         ) : (
           <li key={row.event.id} className="text-sm leading-snug">
             <OwnerEventText event={row.event} />
-            <span className="mt-0.5 block text-[11px] text-[#8a7364]">{ago(row.event.at, now)}</span>
+            <span className="mt-0.5 block text-[11px] text-[var(--hud-muted)]">{ago(row.event.at, now)}</span>
           </li>
         ),
       )}

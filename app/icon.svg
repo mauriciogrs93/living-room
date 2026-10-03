@@ -1,6 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="8" fill="#C4542C"/>
-  <path d="M6 18.5h20v2.4a2.2 2.2 0 0 1-2.2 2.2H8.2A2.2 2.2 0 0 1 6 20.9v-2.4Z" fill="#F6ECDF"/>
-  <path d="M8 18.5V14.2A2.2 2.2 0 0 1 10.2 12h11.6a2.2 2.2 0 0 1 2.2 2.2v4.3" stroke="#F6ECDF" stroke-width="1.7"/>
-  <circle cx="23.5" cy="9" r="1.6" fill="#F0C14B"/>
+  <!-- The Living Room as a maquette section: plaster plate, three storeys cut open, birch plinth, one terracotta mark -->
+  <rect width="32" height="32" rx="4" fill="#F5F2EB"/>
+  <rect x="5" y="25.2" width="22" height="2.6" rx="0.8" fill="#D6C5A9"/>
+  <path d="M8.5 25.2V5.5h15v19.7" stroke="#2D3136" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M8.5 12h10.2M8.5 18.6h10.2" stroke="#2D3136" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M18.7 25.2l4.8-6.6M18.7 18.6l4.8-6.6" stroke="#A3A7AC" stroke-width="1.2" stroke-linecap="round"/>
+  <circle cx="12.4" cy="22.2" r="1.7" fill="#B8674E"/>
 </svg>

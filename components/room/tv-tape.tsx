@@ -4,12 +4,17 @@ import { useLayoutEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3, type Object3D } from "three";
 import { str } from "./furniture-kit";
+import { homography } from "./maquette/kit";
 
 export type Headline = { title: string; source: string };
 
-const left = new Vector3();
-const right = new Vector3();
-const mid = new Vector3();
+const corner = new Vector3();
+const CORNERS: [number, number][] = [
+  [-1, 1],
+  [1, 1],
+  [1, -1],
+  [-1, -1],
+];
 
 export function headlinesOf(state: Record<string, unknown>): Headline[] {
   const raw = state.headlines;
@@ -27,18 +32,21 @@ export function headlinesOf(state: Record<string, unknown>): Headline[] {
   return out;
 }
 
-export function NewsTape({ power, headlines }: { power: boolean; headlines: Headline[] }) {
-  const anchorL = useRef<Object3D>(null);
-  const anchorR = useRef<Object3D>(null);
+/**
+ * The one TV ticker: an HTML band projected (matrix3d homography) onto the lower 18% of the TV glass, so it is
+ * clipped inside the screen and foreshortens with it. `band` is the anchor the TV builder places on the glass.
+ */
+export function NewsTape({ power, headlines, band }: { power: boolean; headlines: Headline[]; band?: Object3D }) {
   const el = useRef<HTMLDivElement | null>(null);
   const { camera, gl, size } = useThree();
-  const label = headlines.map((item) => `${item.title} — ${item.source || "wire"}`).join("   ·   ");
+  const label = headlines.map((item) => `${item.title} — ${item.source || "wire"}`.toUpperCase()).join("  ·  ");
 
   useLayoutEffect(() => {
     const host = gl.domElement.parentElement;
     if (!host) return;
     const div = document.createElement("div");
     div.className = "news-tape";
+    div.setAttribute("aria-hidden", "true");
     host.appendChild(div);
     el.current = div;
     return () => {
@@ -54,42 +62,52 @@ export function NewsTape({ power, headlines }: { power: boolean; headlines: Head
     if (!power || !label) return;
     const track = document.createElement("div");
     track.className = "news-tape-track";
-    track.textContent = `${label}   ·   ${label}`;
+    for (let i = 0; i < 2; i += 1) {
+      const span = document.createElement("span");
+      span.textContent = label;
+      track.appendChild(span);
+    }
     div.appendChild(track);
   }, [power, label]);
 
   useFrame(() => {
     const div = el.current;
-    const a = anchorL.current;
-    const b = anchorR.current;
-    if (!div || !a || !b) return;
-    if (!power || !label) {
+    if (!div || !band) return;
+    let visible = power && Boolean(label);
+    for (let p: Object3D | null = band; p && visible; p = p.parent) if (!p.visible) visible = false;
+    if (!visible) {
       div.style.visibility = "hidden";
       return;
     }
-    a.updateWorldMatrix(true, false);
-    b.updateWorldMatrix(true, false);
-    a.getWorldPosition(left);
-    b.getWorldPosition(right);
-    mid.copy(left).add(right).multiplyScalar(0.5);
-    const projected = mid.project(camera);
-    const onScreen = projected.z >= -1 && projected.z <= 1;
-    div.style.visibility = onScreen ? "visible" : "hidden";
-    if (!onScreen) return;
-    const x = (projected.x * 0.5 + 0.5) * size.width;
-    const y = (-projected.y * 0.5 + 0.5) * size.height;
-    const edgeL = left.project(camera);
-    const edgeR = right.project(camera);
-    const span = Math.abs(edgeR.x - edgeL.x) * 0.5 * size.width;
-    div.style.left = `${x}px`;
-    div.style.top = `${y}px`;
-    div.style.width = `${Math.max(span, 168)}px`;
+    const [bw, bh] = (band.userData.size as [number, number] | undefined) ?? [1.06, 0.108];
+    band.updateWorldMatrix(true, false);
+    const W = 300;
+    const H = (W * bh) / bw;
+    const pts: [number, number][] = [];
+    let behind = false;
+    for (const [sx, sy] of CORNERS) {
+      corner.set((sx * bw) / 2, (sy * bh) / 2, 0).applyMatrix4(band.matrixWorld).project(camera);
+      if (corner.z < -1 || corner.z > 1) behind = true;
+      pts.push([(corner.x * 0.5 + 0.5) * size.width, (-corner.y * 0.5 + 0.5) * size.height]);
+    }
+    if (behind) {
+      div.style.visibility = "hidden";
+      return;
+    }
+    const [a, b, c, d, e, f, g, h] = homography(
+      [
+        [0, 0],
+        [W, 0],
+        [W, H],
+        [0, H],
+      ],
+      pts,
+    );
+    div.style.visibility = "visible";
+    div.style.width = `${W}px`;
+    div.style.height = `${H}px`;
+    div.style.transform = `matrix3d(${a},${d},0,${g},${b},${e},0,${h},0,0,1,0,${c},${f},0,1)`;
   });
 
-  return (
-    <>
-      <object3D ref={anchorL} position={[-0.56, 1.24, 0.08]} />
-      <object3D ref={anchorR} position={[0.56, 1.24, 0.08]} />
-    </>
-  );
+  return null;
 }

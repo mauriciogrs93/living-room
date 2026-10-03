@@ -20,9 +20,9 @@ export function NowSection({ model }: { model: HudModel }) {
         {clock ? ` · ${clock}` : ""}
       </p>
       <p className="hud-kicker">Radio</p>
-      <p className="hud-line">{playing ? radio?.name || "On" : "Off"}</p>
+      <p className="hud-line">{playing ? radio?.name || "On" : radio?.name ? `Off · ${radio.name}` : "Off"}</p>
       <div className="hud-row">
-        <button type="button" className="hud-chip" onClick={() => tapRadio(playing || hearing ? "off" : "on")}>
+        <button type="button" className="hud-chip is-solid" onClick={() => tapRadio(playing || hearing ? "off" : "on")}>
           {playing || hearing ? "Pause" : "Play"}
         </button>
         <button type="button" className="hud-chip" onClick={() => tapRadio("next")}>

@@ -2,11 +2,12 @@
 
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import type { Group, Mesh } from "three";
+import type { Group } from "three";
 import { DOG_SPOTS, stagePose } from "@/lib/room/layout";
 import { dogWander, motionPoint, route, samplePath } from "@/lib/room/paths";
 import type { PublicAgent, PublicDog } from "@/lib/room/types";
-import { Tap, useScene } from "./furniture-kit";
+import { Tap, useBuilt, useMats, useScene } from "./furniture-kit";
+import { dog as buildDog } from "./maquette/pieces";
 
 function agentAt(agent: PublicAgent, now: number) {
   if (!agent.motion) return { x: agent.position.x, z: agent.position.z };
@@ -16,8 +17,9 @@ function agentAt(agent: PublicAgent, now: number) {
 
 export function HouseDog({ dog, agents, skew }: { dog: PublicDog; agents: PublicAgent[]; skew: number }) {
   const { onTapDog } = useScene();
+  const { M } = useMats();
+  const built = useBuilt(() => buildDog(M), [M], { noCast: true });
   const group = useRef<Group>(null);
-  const tail = useRef<Mesh>(null);
   const yaw = useRef(0.4);
   const prev = useRef({ x: dog.x, z: dog.z });
   useFrame(({ clock }) => {
@@ -63,44 +65,18 @@ export function HouseDog({ dog, agents, skew }: { dog: PublicDog; agents: Public
     const staged = stagePose(x, z);
     const bob = moving && !nap ? Math.abs(Math.sin(clock.elapsedTime * 10)) * 0.025 : 0;
     if (group.current) {
-      group.current.position.set(staged.x, staged.y + (nap ? 0.08 : 0.16) + bob, staged.z);
-      group.current.rotation.set(0, yaw.current, nap ? Math.PI / 2 : 0);
+      // plaster dog: origin at the body centre, paws 0.142 below it; napping it rolls onto its side
+      group.current.position.set(staged.x, staged.y + (nap ? 0.085 : 0.142) + bob, staged.z);
+      group.current.rotation.set(nap ? 1.35 : 0, yaw.current, 0, "YXZ");
     }
-    if (tail.current) tail.current.rotation.z = Math.sin(clock.elapsedTime * (dog.mode === "fetch" ? 10 : 4)) * 0.5;
+    built.parts.tail.rotation.y = nap ? 0 : Math.sin(clock.elapsedTime * (dog.mode === "fetch" ? 10 : 4)) * 0.5;
+    built.parts.head.rotation.z = nap ? -0.2 : Math.sin(clock.elapsedTime * 0.7) * 0.08;
   });
   const staged = stagePose(dog.x, dog.z);
-  const nap = dog.mode === "nap";
   return (
     <Tap onTap={onTapDog}>
-      <group ref={group} position={[staged.x, staged.y + 0.16, staged.z]}>
-        <mesh position={[0, 0.08, 0]} raycast={() => null}>
-          <capsuleGeometry args={[0.09, 0.22, 4, 8]} />
-          <meshStandardMaterial color="#c4a574" roughness={0.72} />
-        </mesh>
-        <mesh position={[0.22, nap ? 0.12 : 0.18, 0.08]}>
-          <sphereGeometry args={[0.09, 12, 10]} />
-          <meshStandardMaterial color="#d8bc8a" roughness={0.7} />
-        </mesh>
-        <mesh position={[0.26, nap ? 0.14 : 0.22, 0.12]} raycast={() => null}>
-          <sphereGeometry args={[0.018, 8, 8]} />
-          <meshStandardMaterial color="#2c241e" />
-        </mesh>
-        <mesh ref={tail} position={[-0.18, 0.14, 0]} rotation={[0, 0, 0.8]} raycast={() => null}>
-          <capsuleGeometry args={[0.02, 0.12, 4, 6]} />
-          <meshStandardMaterial color="#a68455" />
-        </mesh>
-        {!nap &&
-          [
-            [0.08, 0, 0.06],
-            [0.08, 0, -0.06],
-            [-0.08, 0, 0.06],
-            [-0.08, 0, -0.06],
-          ].map((pos) => (
-            <mesh key={pos.join()} position={pos as [number, number, number]} raycast={() => null}>
-              <cylinderGeometry args={[0.02, 0.02, 0.1, 6]} />
-              <meshStandardMaterial color="#b08968" />
-            </mesh>
-          ))}
+      <group ref={group} position={[staged.x, staged.y + 0.142, staged.z]} userData={{ skipContact: true }}>
+        <primitive object={built.group} />
       </group>
     </Tap>
   );

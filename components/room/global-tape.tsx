@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useAtmosphere } from "./atmosphere";
 
 type Item = {
   title: string;
@@ -9,18 +10,6 @@ type Item = {
   summary: string;
   url: string;
   publishedAt: number;
-};
-
-const COLORS: Record<string, string> = {
-  WORLD: "#4F6D8A",
-  US: "#4F6D8A",
-  EUROPE: "#7E9C76",
-  ASIA: "#C8553D",
-  "MIDDLE EAST": "#E3A857",
-  AFRICA: "#7E9C76",
-  AMERICAS: "#4F6D8A",
-  TECH: "#4F6D8A",
-  SCIENCE: "#7E9C76",
 };
 
 const QUIET: Item = {
@@ -40,6 +29,18 @@ export function GlobalTape() {
   const [shown, setShown] = useState(true);
   const [fitted, setFitted] = useState(QUIET.title);
   const line = useRef<HTMLButtonElement>(null);
+  const { label, clock: hourLabel, place } = useAtmosphere();
+
+  // the camera reframes around the Tonight card (phone: below it), and phone notes yield to it
+  useEffect(() => {
+    const root = document.documentElement;
+    if (open) root.dataset.tonight = "1";
+    else delete root.dataset.tonight;
+    window.dispatchEvent(new Event("maquette-layout"));
+    return () => {
+      delete root.dataset.tonight;
+    };
+  }, [open]);
 
   useEffect(() => {
     let stop = false;
@@ -96,10 +97,16 @@ export function GlobalTape() {
     setFitted(next);
   }, [item.title, shown]);
 
+  const openIndex = open ? Math.max(0, items.indexOf(open)) : 0;
+  const meta = [place, label, hourLabel].filter(Boolean).join(" · ").toUpperCase();
+
   return (
     <>
       <div className="global-tape" role="region" aria-label="Tonight">
-        <div className="global-tape-flag">Tonight</div>
+        <div className="global-tape-flag">
+          <i aria-hidden />
+          TONIGHT
+        </div>
         <div className="global-tape-window">
           <button
             ref={line}
@@ -110,25 +117,43 @@ export function GlobalTape() {
             {fitted}
           </button>
         </div>
+        {meta ? <span className="global-tape-meta">{meta}</span> : null}
       </div>
       {open && (
         <div className="global-tape-scrim" onClick={() => setOpen(null)}>
           <article className="global-tape-card" role="dialog" aria-label={open.title} onClick={(event) => event.stopPropagation()}>
-            <p className="global-tape-card-region" style={{ color: COLORS[open.region] ?? COLORS.WORLD }}>
-              {open.region || "WORLD"}
-            </p>
-            <h2>{open.title}</h2>
-            {open.summary ? <p className="global-tape-card-summary">{open.summary}</p> : null}
-            <p className="global-tape-card-meta">
-              {open.source}
-              {age(open, now) ? ` · ${age(open, now)}` : ""}
+            <div className="tc-kicker">
+              <b>
+                <i aria-hidden />
+                TONIGHT
+              </b>
+              <span>
+                {(open.region || "WORLD").toUpperCase()}
+                {items.length > 1 ? ` · ${openIndex + 1} OF ${items.length}` : ""}
+              </span>
+            </div>
+            <h2 className="tc-title">{open.title}</h2>
+            {open.summary ? <p className="tc-summary">{open.summary}</p> : null}
+            <p className="tc-meta">
+              {open.source.toUpperCase()}
+              {age(open, now) ? ` · ${age(open, now).toUpperCase()} AGO` : ""}
               {open.publishedAt ? ` · ${clock(open.publishedAt)}` : ""}
             </p>
-            {open.url ? (
-              <a href={open.url} target="_blank" rel="noopener noreferrer">
-                Read full story
-              </a>
-            ) : null}
+            <div className="tc-actions">
+              {open.url ? (
+                <a className="tc-btn is-primary" href={open.url} target="_blank" rel="noopener noreferrer">
+                  READ STORY
+                </a>
+              ) : null}
+              {items.length > 1 ? (
+                <button type="button" className="tc-btn" onClick={() => setOpen(items[(openIndex + 1) % items.length] ?? null)}>
+                  NEXT
+                </button>
+              ) : null}
+              <button type="button" className="tc-btn" onClick={() => setOpen(null)}>
+                CLOSE
+              </button>
+            </div>
           </article>
         </div>
       )}
@@ -143,7 +168,7 @@ function usable(item: Item) {
 function age(item: Item, now: number) {
   if (!item.publishedAt) return "";
   const mins = Math.max(0, Math.round((now - item.publishedAt) / 60000));
-  if (mins < 1) return "now";
+  if (mins < 1) return "1m";
   if (mins < 60) return `${mins}m`;
   const hours = Math.floor(mins / 60);
   if (hours < 48) return `${hours}h`;

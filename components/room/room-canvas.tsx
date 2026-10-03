@@ -3,88 +3,258 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { HorizontalBlurShader } from "three/examples/jsm/shaders/HorizontalBlurShader.js";
+import { VerticalBlurShader } from "three/examples/jsm/shaders/VerticalBlurShader.js";
+import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import type { LiveSnapshot } from "@/components/use-room";
 import { useAtmosphere } from "./atmosphere";
 import { AgentAvatar } from "./avatar";
 import { Furniture, HouseDog, HouseMaterials, RoomShell, SceneLiveProvider } from "./furniture";
+import { STATIC_KINDS, StaticFurniture } from "./furniture-pieces";
+import { DoorMesh, type DoorMeshProps } from "./maquette/door-mesh";
+import { MinimalHud, floorOfY, minimalHud } from "./maquette/minimal-hud";
 import { HouseFallback, RoomStageBoundary } from "./house-fallback";
 import { ComputerOverlay, ComputerProvider } from "./computer-desk";
-import { stagePose } from "@/lib/room/layout";
+import { FLOORS, HOUSE, stagePose } from "@/lib/room/layout";
 import { HudAnchors } from "@/components/hud/anchors-bridge";
-import { DeckContext, FidgetNote, FidgetProvider, useFidgets } from "./interact";
+import { DeckContext, FidgetNote, FidgetProvider } from "./interact";
+import { tightDevice } from "./furniture-kit";
+import { GEO, MAQUETTE } from "./maquette/config";
+import { FRONT } from "./maquette/shell";
 
-const BOUNDS = new THREE.Box3(new THREE.Vector3(-2.62, -0.46, -0.55), new THREE.Vector3(2.62, 8.58, 2.35));
-/** Front-cut dollhouse. A small lift shows the floor depth and the stairs. */
-const VIEW = new THREE.Vector3(0, 0.42, 1).normalize();
-const _corner = new THREE.Vector3();
-const _center = new THREE.Vector3();
-const _screenUp = new THREE.Vector3();
+/**
+ * The house as a photographed architectural model: FOV 28 perspective from ~34 deg yaw / 30 deg pitch, framed into
+ * the screen area the HUD leaves free, warm key + cool fill, soft PCF shadows and baked contact shadows.
+ */
 
-function floorBox(floor: string | null) {
-  const x0 = -2.22;
-  const x1 = 2.22;
-  const z0 = -0.42;
-  const z1 = 2.2;
-  if (floor === "kitchen") return new THREE.Box3(new THREE.Vector3(x0, -0.22, z0), new THREE.Vector3(x1, 2.64, z1));
-  if (floor === "living") return new THREE.Box3(new THREE.Vector3(x0, 2.68, z0), new THREE.Vector3(x1, 5.52, z1));
-  if (floor === "bedroom") return new THREE.Box3(new THREE.Vector3(x0, 5.52, z0), new THREE.Vector3(x1, 8.5, z1));
-  return BOUNDS;
+type FloorName = "kitchen" | "living" | "bedroom";
+const FLOOR_INDEX: Record<FloorName, number> = { kitchen: 0, living: 1, bedroom: 2 };
+
+function floorParam(): FloorName | null {
+  if (typeof window === "undefined") return null;
+  const floor = new URLSearchParams(window.location.search).get("floor");
+  return floor === "kitchen" || floor === "living" || floor === "bedroom" ? floor : null;
 }
 
-function fitCamera(
-  camera: THREE.OrthographicCamera,
-  width: number,
-  height: number,
-  box: THREE.Box3,
-  floorMode: boolean,
-  focus: { x: number; y: number; z: number } | null,
-) {
-  const portrait = height > width;
-  const topInset = portrait ? 46 : 48;
-  const bottomInset = portrait ? 72 : 64;
-  const sideInset = portrait ? (floorMode ? 0 : 8) : 48;
-  const availW = Math.max(120, width - sideInset * 2);
-  const availH = Math.max(120, height - topInset - bottomInset);
+/** Short landscape phones: the FIG. 1 caption moves to a left column, vertically centred, beside the house. */
+const LANDSCAPE_CSS = `@media (orientation: landscape) and (max-height: 500px) {
+  .room-root .sheet-caption { top: 50% !important; bottom: auto !important; transform: translateY(-50%); max-width: 190px; }
+}`;
 
-  box.getCenter(_center);
-  if (floorMode && focus) {
-    _center.x = THREE.MathUtils.clamp(focus.x, box.min.x + 0.4, box.max.x - 0.4);
-    _center.y = THREE.MathUtils.clamp(focus.y + 0.7, box.min.y + 0.3, box.max.y - 0.3);
+/** Design-only figure line-up (?debug=1&lineup=1): all agents standing in the kitchen, faces to the camera. */
+let LINEUP_BOX: THREE.Box3 | null = null;
+function lineupFlag() {
+  return typeof window !== "undefined" && debugFlag() && new URLSearchParams(window.location.search).get("lineup") === "1";
+}
+function lineupAgents(agents: LiveSnapshot["agents"]): LiveSnapshot["agents"] {
+  const f = FLOORS[0];
+  // clear kitchen floor between the counter run (z -0.72) and the table/chair (z >= 0.55), left of the stair foot
+  const z = 0.12;
+  const xs = [-0.2, 0.35, 0.86];
+  const yaws = [0.1, -0.06, 0.24];
+  const box = new THREE.Box3();
+  const out = agents.slice(0, 3).map((a, i) => {
+    const w = stagePose(xs[i], z);
+    void f;
+    box.expandByPoint(new THREE.Vector3(w.x - 0.3, w.y, w.z - 0.25));
+    box.expandByPoint(new THREE.Vector3(w.x + 0.3, w.y + 1.72, w.z + 0.25));
+    return { ...a, position: { x: xs[i], y: f.y, z }, yaw: yaws[i], anchor: "feet" as const, pose: "idle" as const, status: "", motion: null, speech: null, lie: false, away: false, emote: null, objectId: null, holding: null } as (typeof agents)[number];
+  });
+  LINEUP_BOX = box;
+  return out;
+}
+
+function viewBox(floor: FloorName | null) {
+  if (LINEUP_BOX) return LINEUP_BOX.clone();
+  if (floor) {
+    const y = FLOORS[FLOOR_INDEX[floor]].y;
+    return new THREE.Box3(new THREE.Vector3(GEO.wallOutX - 0.1, y - 0.32, GEO.wallOutZ - 0.1), new THREE.Vector3(GEO.edgeR + 0.1, y + HOUSE.roomH, FRONT + 0.1));
   }
-  camera.position.copy(_center).addScaledVector(VIEW, 18);
+  return new THREE.Box3(new THREE.Vector3(GEO.wallOutX - 0.1, -0.36, GEO.wallOutZ - 0.1), new THREE.Vector3(GEO.edgeR + 0.1, FLOORS[2].y + HOUSE.roomH, FRONT + 0.1));
+}
+
+/** Safe-area insets (notch, home indicator) in CSS px, read from env() through a probe element. */
+let safeProbe: HTMLDivElement | null = null;
+function safeInsets() {
+  if (!safeProbe) {
+    safeProbe = document.createElement("div");
+    safeProbe.style.cssText =
+      "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)";
+    document.body.appendChild(safeProbe);
+  }
+  const cs = getComputedStyle(safeProbe);
+  return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+}
+
+/**
+ * The rectangle of the canvas the HUD leaves free (CSS px), measured from the live DOM every refit: the TONIGHT strip
+ * (or the open Tonight sheet), the "N HERE" button, the room card, plus safe-area insets. Works for any viewport.
+ */
+function freeRect(W: number, H: number) {
+  const phone = W < 800;
+  const safe = safeInsets();
+  const rect = (sel: string) => {
+    const r = document.querySelector<HTMLElement>(sel)?.getBoundingClientRect();
+    return r && r.height > 0 && r.width > 0 ? r : null;
+  };
+  const card = rect(".mini-sheet") ?? rect(".hud-card");
+  const tonight = rect(".global-tape-card");
+  const tape = rect(".global-tape-line");
+  const fab = rect(".mini-pill") ?? rect(".hud-fab");
+  // headroom above the model for name tags / a speech note, so the house never jumps when someone talks
+  const tagRoom = phone ? (H < 700 ? 26 : 34) : 28;
+  const tapeBottom = Math.max(tape ? tape.bottom : phone ? 31 : 30, safe.t);
+  if (phone) {
+    const top = (tonight ? Math.round(tonight.bottom) + 10 : Math.round(tapeBottom)) + tagRoom;
+    const fabTop = fab ? Math.round(fab.top) : H - 58 - safe.b;
+    let bottom = Math.max(H - fabTop + 8, 24 + safe.b);
+    if (card) bottom = Math.max(bottom, H - Math.round(card.top) + 12);
+    const side = 8;
+    const x = side + safe.l;
+    return { x, y: top, w: W - x - side - safe.r, h: Math.max(160, H - top - bottom) };
+  }
+  const right = (card ? Math.max(32, W - Math.round(card.left) + 24) : 32) + safe.r;
+  let left = (tonight && tonight.bottom > H * 0.5 ? Math.round(tonight.right) + 24 : 32) + safe.l;
+  // short landscape: the drawing caption sits in its own left column (see LANDSCAPE_CSS) and the house takes the rest
+  const caption = H < 500 ? rect(".sheet-caption") : null;
+  if (caption) left = Math.max(left, Math.round(caption.right) + 16);
+  // short landscape phones: the "N HERE" button sits bottom-right; keep the model clear of it and of the strip
+  const top = Math.round(tapeBottom) + (H < 500 ? 8 : tagRoom);
+  const bottom = H < 500 ? Math.max(10, safe.b + 8) : Math.max(20, safe.b + 12);
+  return { x: left, y: top, w: W - left - right, h: H - top - bottom };
+}
+
+/** Real silhouette points of the full model (plinth, wall tops, slab edges): a tighter fit than the bounding box. */
+function hullPoints(): THREE.Vector3[] {
+  const { wallOutX, wallInX, wallOutZ, wallInZ, edgeR, cut } = GEO;
+  const topY = FLOORS[2].y + HOUSE.roomH;
+  const pts: THREE.Vector3[] = [];
+  for (const x of [wallOutX - 0.25, edgeR + 0.25]) for (const z of [wallOutZ - 0.25, FRONT + 0.25]) for (const y of [-0.36, -0.06]) pts.push(new THREE.Vector3(x, y, z));
+  pts.push(new THREE.Vector3(wallOutX, topY, wallOutZ), new THREE.Vector3(edgeR, topY, wallOutZ), new THREE.Vector3(edgeR, topY, wallInZ));
+  pts.push(new THREE.Vector3(wallOutX, topY, FRONT), new THREE.Vector3(wallInX, topY, FRONT));
+  for (const f of FLOORS) pts.push(new THREE.Vector3(cut, f.y, FRONT), new THREE.Vector3(edgeR, f.y, wallInZ + 0.42));
+  // the top flight's handrail and a standing figure's head on the top floor
+  pts.push(new THREE.Vector3(1.9, FLOORS[2].y + 1.0, FRONT), new THREE.Vector3(cut, FLOORS[2].y + 1.3, FRONT));
+  return pts;
+}
+
+const _dir = new THREE.Vector3();
+const _c = new THREE.Vector3();
+const _q = new THREE.Vector3();
+
+function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number, floor: FloorName | null) {
+  const phone = W < 800;
+  const yaw = THREE.MathUtils.degToRad(phone ? MAQUETTE.yawPhone : MAQUETTE.yawDesktop);
+  // short landscape phones: a slightly lower eye flattens the plinth's depth so the tall house can use the full height
+  const short = W > H && H < 500;
+  const pitch = THREE.MathUtils.degToRad(MAQUETTE.pitch - (short ? 7 : 0));
+  const box = viewBox(floor);
+  box.getCenter(_c);
+  const r = freeRect(W, H);
+  camera.fov = MAQUETTE.fov;
+  camera.near = 0.5;
+  camera.far = 120;
   camera.up.set(0, 1, 0);
-  camera.lookAt(_center);
-  camera.near = 0.1;
-  camera.far = 60;
-  camera.zoom = 1;
-  camera.updateMatrixWorld();
-  camera.updateProjectionMatrix();
-
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (let i = 0; i < 8; i += 1) {
-    _corner.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
-    _corner.applyMatrix4(camera.matrixWorldInverse);
-    minX = Math.min(minX, _corner.x);
-    maxX = Math.max(maxX, _corner.x);
-    minY = Math.min(minY, _corner.y);
-    maxY = Math.max(maxY, _corner.y);
+  camera.aspect = r.w / r.h;
+  _dir.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+  const pts: THREE.Vector3[] = floor ? [] : hullPoints();
+  if (floor) for (let i = 0; i < 8; i += 1) pts.push(new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z));
+  let dist = 30;
+  const shift = new THREE.Vector2();
+  for (let it = 0; it < 8; it += 1) {
+    camera.position.copy(_c).addScaledVector(_dir, dist);
+    camera.lookAt(_c);
+    camera.clearViewOffset();
+    camera.aspect = r.w / r.h;
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+    let mnx = 9;
+    let mxx = -9;
+    let mny = 9;
+    let mxy = -9;
+    for (const p of pts) {
+      _q.copy(p).project(camera);
+      mnx = Math.min(mnx, _q.x);
+      mxx = Math.max(mxx, _q.x);
+      mny = Math.min(mny, _q.y);
+      mxy = Math.max(mxy, _q.y);
+    }
+    // portrait phone, one floor framed: zoom in for real; the room may crop ~13% each side (the outer wall faces and
+    // the stair shaft), so the floor fills the width instead of sitting small in a width-bound frame
+    const cropX = floor && W < 800 && !LINEUP_BOX ? 0.62 : 1;
+    const need = Math.max(((mxx - mnx) / 2) * cropX, (mxy - mny) / 2);
+    shift.set((mxx + mnx) / 2, (mxy + mny) / 2);
+    dist *= need / (floor ? 0.995 : 0.988);
   }
-
-  const zoomW = availW / Math.max(0.01, maxX - minX);
-  const zoomH = availH / Math.max(0.01, maxY - minY);
-  const framed = floorMode || portrait ? Math.max(zoomW, zoomH) : Math.min(zoomW, zoomH);
-  camera.zoom = framed * (floorMode ? 1 : portrait ? 1 : 0.96);
-
-  const upPx = height / 2 - (topInset + availH / 2);
-  _screenUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
-  const shift = upPx / camera.zoom;
-  _center.addScaledVector(_screenUp, -shift);
-  camera.position.copy(_center).addScaledVector(VIEW, 18);
-  camera.lookAt(_center);
+  camera.position.copy(_c).addScaledVector(_dir, dist);
+  camera.lookAt(_c);
+  camera.updateMatrixWorld();
+  const ox = -r.x + (shift.x * r.w) / 2;
+  let oy = -r.y - (shift.y * r.h) / 2;
+  camera.setViewOffset(r.w, r.h, ox, oy, W, H);
   camera.updateProjectionMatrix();
+  // phones, one floor framed (tap a room / follow someone): the floors below stay in view, so centre the visible stack
+  // (framed floor + everything under it) in the free area instead of leaving the space above the floor empty
+  // portrait phone, one floor: pin that floor's wall tops just under the top bar; the floors below fill the rest
+  if (floor && W < 800 && !LINEUP_BOX) {
+    const tops = pts.map((p) => {
+      _q.copy(p).project(camera);
+      return ((1 - _q.y) / 2) * H;
+    });
+    const d = r.y + 6 - Math.min(...tops);
+    if (Math.abs(d) > 1) {
+      oy -= d;
+      camera.setViewOffset(r.w, r.h, ox, oy, W, H);
+      camera.updateProjectionMatrix();
+    }
+  }
+  if (floor && W < 800 && false) {
+    const stack = [...pts];
+    for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) stack.push(new THREE.Vector3(x, -0.36, z));
+    const ys = stack.map((p) => {
+      _q.copy(p).project(camera);
+      return ((1 - _q.y) / 2) * H;
+    });
+    const top = Math.min(...ys);
+    const bot = Math.max(...ys);
+    const d = Math.max(r.y + r.h / 2 - (top + bot) / 2, r.y - top);
+    if (Math.abs(d) > 1) {
+      oy -= d;
+      camera.setViewOffset(r.w, r.h, ox, oy, W, H);
+      camera.updateProjectionMatrix();
+    }
+  }
+  // phones, full view: the model is usually width-bound, so balance the leftover height: slide it down until the gap
+  // under the plinth matches the gap above the walls, as long as no plinth point lands on the "N HERE" button
+  if (!floor && W < 800) {
+    const visible = (sel: string) => {
+      const b = document.querySelector<HTMLElement>(sel)?.getBoundingClientRect();
+      return b && b.height > 0 && b.width > 0 ? b : null;
+    };
+    const fab = visible(".mini-pill") ?? visible(".hud-fab");
+    const sheet = visible(".mini-sheet") ?? visible(".hud-card");
+    const tape = document.querySelector<HTMLElement>(".global-tape-line")?.getBoundingClientRect();
+    const safe = safeInsets();
+    const px = pts.map((p) => {
+      _q.copy(p).project(camera);
+      return { x: ((_q.x + 1) / 2) * W, y: ((1 - _q.y) / 2) * H };
+    });
+    const top = Math.min(...px.map((p) => p.y));
+    const bot = Math.max(...px.map((p) => p.y));
+    const gapTop = top - Math.max(tape ? tape.bottom : 31, safe.t);
+    // an open sheet/card is a hard floor: the model never slides under it
+    const floorY = sheet ? Math.min(H - safe.b - 12, sheet.top - 12) : H - safe.b - 12;
+    let room = floorY - bot;
+    if (fab && fab.height > 0) for (const p of px) if (p.x > fab.left - 10 && p.x < fab.right + 10) room = Math.min(room, fab.top - 10 - p.y);
+    const gapBottom = floorY - bot;
+    const s = Math.max(0, Math.min(room, (gapBottom - gapTop) / 2));
+    if (s > 1) {
+      oy -= s;
+      camera.setViewOffset(r.w, r.h, ox, oy, W, H);
+      camera.updateProjectionMatrix();
+    }
+  }
+  return dist;
 }
 
 function LabelSpacing() {
@@ -147,54 +317,48 @@ function LabelSpacing() {
   return null;
 }
 
-function Backdrop() {
-  const { night } = useAtmosphere();
-  const texture = useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    const paint = ctx.createRadialGradient(128, 70, 16, 128, 150, 210);
-    if (night) {
-      paint.addColorStop(0, "#4a3428");
-      paint.addColorStop(0.55, "#2a1c16");
-      paint.addColorStop(1, "#120e0c");
-    } else {
-      paint.addColorStop(0, "#f3dcc0");
-      paint.addColorStop(0.48, "#c9956c");
-      paint.addColorStop(1, "#6d4630");
-    }
-    ctx.fillStyle = paint;
-    ctx.fillRect(0, 0, 256, 256);
-    const map = new THREE.CanvasTexture(canvas);
-    map.colorSpace = THREE.SRGBColorSpace;
-    return map;
-  }, [night]);
-
-  useEffect(() => () => texture?.dispose(), [texture]);
-  if (!texture) return null;
-
-  return (
-    <mesh position={[0, 4, -2.4]} renderOrder={-1}>
-      <planeGeometry args={[36, 36]} />
-      <meshBasicMaterial map={texture} depthWrite={false} toneMapped={false} />
-    </mesh>
-  );
+function pixelBudget() {
+  const tight = tightDevice();
+  const phone = window.innerWidth < 800;
+  return {
+    // capable phones may go to their native 3x; AdaptiveDpr walks it down when the frame rate drops
+    dpr: Math.min(window.devicePixelRatio || 1, tight ? 1.5 : phone ? 3 : 2),
+    // the shadow map is static (rendered only when something moves), so phones can afford a sharper, softer map
+    shadow: tight ? 1536 : 2048,
+  };
 }
 
-function pixelBudget() {
-  const nav = navigator as Navigator & { deviceMemory?: number };
-  const memory = nav.deviceMemory ?? 8;
-  const ios =
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const tight = ios || memory <= 4;
-  return {
-    dpr: tight ? 1 : Math.min(window.devicePixelRatio || 1, 1.5),
-    shadow: tight ? 512 : 1024,
-    antialias: true,
-  };
+/**
+ * Adaptive pixel ratio: every 2 s of rendered frames, drop 0.5x (to a floor of 1) when the average frame rate falls
+ * under 40 fps, and step back up by 0.25x after a sustained 58+ fps. Off under ?debug=1 so the render harness
+ * (software GL, ~3 fps) keeps the fixed cap it measures.
+ */
+function AdaptiveDpr({ max }: { max: number }) {
+  const setDpr = useThree((state) => state.setDpr);
+  const acc = useRef({ t: 0, n: 0, dpr: max, good: 0 });
+  useFrame((_, delta) => {
+    if (debugFlag()) return;
+    const a = acc.current;
+    a.t += delta;
+    a.n += 1;
+    if (a.t < 2) return;
+    const fps = a.n / a.t;
+    a.t = 0;
+    a.n = 0;
+    if (fps < 40 && a.dpr > 1) {
+      a.dpr = Math.max(1, a.dpr - 0.5);
+      a.good = 0;
+      setDpr(a.dpr);
+    } else if (fps > 58 && a.dpr < max) {
+      a.good += 1;
+      if (a.good >= 3) {
+        a.dpr = Math.min(max, a.dpr + 0.25);
+        a.good = 0;
+        setDpr(a.dpr);
+      }
+    }
+  });
+  return null;
 }
 
 function webglAvailable() {
@@ -207,6 +371,129 @@ function webglAvailable() {
   } catch {
     return false;
   }
+}
+
+/**
+ * Perf probe for the design budget (draw calls, triangles, materials). Exposes window.__glStats; read-only, no UI.
+ * gl.info is read in useFrame, i.e. the numbers of the previous rendered frame (shadow passes included).
+ */
+/** Design preview of the v16 door without door data: ?debug=1&door=locked|knocking|open. */
+function doorPreview(): DoorMeshProps | null {
+  if (!debugFlag()) return null;
+  const d = new URLSearchParams(window.location.search).get("door");
+  if (d === "locked") return { locked: true, knocking: false, open: false };
+  if (d === "knocking") return { locked: true, knocking: true, open: false };
+  if (d === "open") return { locked: false, knocking: false, open: true };
+  return null;
+}
+
+/** Strip the HUD-only knock count before handing the door to the mesh. */
+function doorMeshProps(door: DoorMeshProps & { knocks?: number }): DoorMeshProps {
+  return { locked: door.locked, knocking: door.knocking, open: door.open, onTap: door.onTap };
+}
+
+/** Perf hooks (window.__glStats / __glDump) only with ?debug=1. */
+function debugFlag() {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1";
+}
+
+/**
+ * Static shadow map: the sun never moves and figures don't cast (they keep their blob shadows), so the shadow map is
+ * rendered once and only re-rendered when a caster's transform, geometry or visibility changes (a door swings, a
+ * piece is rebuilt, a floor lifts off) or day/night flips. Idle frames skip the whole shadow pass.
+ */
+function ShadowCache({ night }: { night: boolean }) {
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  const last = useRef("");
+  const refreshes = useRef(0);
+  useLayoutEffect(() => {
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = true;
+    return () => {
+      gl.shadowMap.autoUpdate = true;
+    };
+  }, [gl]);
+  useEffect(() => {
+    last.current = "";
+  }, [night]);
+  useFrame(() => {
+    let a = 0;
+    let b = 0;
+    let n = 0;
+    scene.traverseVisible((o) => {
+      const caster = (o as THREE.Mesh).isMesh && o.castShadow;
+      const light = (o as THREE.DirectionalLight).isDirectionalLight && o.castShadow;
+      if (!caster && !light) return;
+      const e = o.matrixWorld.elements;
+      n += 1;
+      a += (e[0] + e[5] * 3 + e[10] * 5 + e[4] * 7 + e[8] * 11 + e[12] * 13 + e[13] * 17 + e[14] * 19) * ((n % 7) + 1);
+      b += caster ? (o as THREE.Mesh).geometry.id * n : o.id;
+    });
+    const sig = `${n}|${a.toFixed(4)}|${b}`;
+    if (sig !== last.current) {
+      last.current = sig;
+      gl.shadowMap.needsUpdate = true;
+      refreshes.current += 1;
+      (window as unknown as { __shadowRefreshes?: number }).__shadowRefreshes = refreshes.current;
+    }
+  });
+  return null;
+}
+
+function GlStats() {
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  const n = useRef(0);
+  useEffect(() => {
+    (window as unknown as { __glDump?: () => unknown }).__glDump = () => {
+      const rows: Array<Record<string, unknown>> = [];
+      scene.traverseVisible((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const chain: string[] = [];
+        let p: THREE.Object3D | null = m;
+        while (p && chain.length < 14) { chain.push(p.name || p.type); p = p.parent; }
+        const g = m.geometry;
+        const tris = g.index ? g.index.count / 3 : (g.attributes.position?.count ?? 0) / 3;
+        const mat = Array.isArray(m.material) ? m.material[0] : m.material;
+        rows.push({ path: chain.join("<"), cast: m.castShadow, inst: (m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).count : 0, tris: Math.round(tris), mat: mat.type + ":" + (mat.name || mat.uuid.slice(0, 4)) });
+      });
+      return rows;
+    };
+  }, [scene]);
+  useFrame(() => {
+    n.current += 1;
+    const w = window as unknown as { __glStats?: Record<string, number> };
+    const info = gl.info;
+    const prev = w.__glStats ?? {};
+    let materials = prev.materials ?? 0;
+    let meshes = prev.meshes ?? 0;
+    if (n.current % 10 === 0 || n.current === 1) {
+      const set = new Set<string>();
+      let count = 0;
+      scene.traverseVisible((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        count += 1;
+        (Array.isArray(m.material) ? m.material : [m.material]).forEach((mat) => set.add(mat.uuid));
+      });
+      materials = set.size;
+      meshes = count;
+    }
+    w.__glStats = {
+      calls: info.render.calls,
+      shadowRefreshes: (window as unknown as { __shadowRefreshes?: number }).__shadowRefreshes ?? -1,
+      triangles: info.render.triangles,
+      textures: info.memory.textures,
+      geometries: info.memory.geometries,
+      programs: info.programs?.length ?? 0,
+      materials,
+      meshes,
+      frame: n.current,
+    };
+  });
+  return null;
 }
 
 function GlWatch({ onLost }: { onLost: () => void }) {
@@ -235,82 +522,335 @@ function GlWatch({ onLost }: { onLost: () => void }) {
   return null;
 }
 
-function Picture({ night, shadows }: { night: boolean; shadows: boolean }) {
+function Picture({ night }: { night: boolean }) {
   const gl = useThree((state) => state.gl);
   useLayoutEffect(() => {
-    gl.shadowMap.enabled = shadows;
-    gl.shadowMap.type = THREE.PCFSoftShadowMap;
+    gl.shadowMap.enabled = true;
+    gl.shadowMap.type = THREE.PCFShadowMap;
     gl.outputColorSpace = THREE.SRGBColorSpace;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
-    gl.toneMappingExposure = night ? 1.14 : 1.05;
-  }, [gl, night, shadows]);
+    gl.toneMappingExposure = night ? 0.92 : 1.0;
+    gl.setClearColor(0x000000, 0);
+  }, [gl, night]);
   return null;
 }
 
-function KeyLight() {
-  const { night } = useAtmosphere();
-  const light = useRef<THREE.DirectionalLight>(null);
+/** Warm low key ~39 deg left of the camera axis, cool shadowless fill from the camera side, sky/ground hemisphere. */
+function LightRig({ night, phone, mapSize }: { night: boolean; phone: boolean; mapSize: number }) {
+  const sun = useRef<THREE.DirectionalLight>(null);
   const scene = useThree((state) => state.scene);
-  const mapSize = useMemo(() => pixelBudget().shadow, []);
-
+  const target = useMemo(() => new THREE.Object3D(), []);
+  const camYaw = phone ? MAQUETTE.yawPhone : MAQUETTE.yawDesktop;
+  const az = THREE.MathUtils.degToRad(MAQUETTE.sunLeadDeg - camYaw);
+  const el = THREE.MathUtils.degToRad(MAQUETTE.sunElevationDeg);
+  target.position.set(0, 3.6, 0.9);
+  const pos: [number, number, number] = [
+    target.position.x - Math.sin(az) * Math.cos(el) * 20,
+    target.position.y + Math.sin(el) * 20,
+    target.position.z + Math.cos(az) * Math.cos(el) * 20,
+  ];
   useLayoutEffect(() => {
-    const sun = light.current;
-    if (!sun) return;
-    sun.target.position.set(0, 4.1, 0);
-    scene.add(sun.target);
+    scene.add(target);
+    if (sun.current) sun.current.target = target;
     return () => {
-      scene.remove(sun.target);
+      scene.remove(target);
     };
-  }, [scene]);
-
+  }, [scene, target]);
+  useLayoutEffect(() => {
+    const light = sun.current;
+    if (!light) return;
+    light.shadow.radius = night ? 6 : 4.5;
+    light.shadow.blurSamples = 16;
+    light.shadow.needsUpdate = true;
+  }, [night]);
+  const L = Math.PI; // spec intensities are legacy units (three r155+ dropped the implicit x PI)
   return (
-    <directionalLight
-      ref={light}
-      position={[-6.2, 12.4, 7.4]}
-      intensity={night ? 0.58 : 1.32}
-      color={night ? "#ffc48a" : "#fff3e2"}
-      castShadow={mapSize > 0}
-      shadow-mapSize-width={mapSize || 256}
-      shadow-mapSize-height={mapSize || 256}
-      shadow-camera-near={1}
-      shadow-camera-far={36}
-      shadow-camera-left={-7}
-      shadow-camera-right={7}
-      shadow-camera-top={9}
-      shadow-camera-bottom={-5}
-      shadow-bias={-0.0004}
-      shadow-normalBias={0.04}
-    />
+    <>
+      <directionalLight
+        ref={sun}
+        position={pos}
+        color={night ? "#AFC0DD" : "#FFDDB5"}
+        intensity={night ? 0.45 : 1.6 * L}
+        castShadow
+        shadow-mapSize-width={mapSize}
+        shadow-mapSize-height={mapSize}
+        shadow-camera-near={5}
+        shadow-camera-far={40}
+        shadow-camera-left={-7}
+        shadow-camera-right={7}
+        shadow-camera-top={7}
+        shadow-camera-bottom={-7}
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.02}
+      />
+      <hemisphereLight args={[night ? "#6F7F9C" : "#DDE6F5", night ? "#5A4A3C" : "#C4B8A8", (night ? 0.4 : 0.4) * L]} />
+      <directionalLight position={[12, 7, 18]} color={night ? "#6A7A96" : "#DCE4F2"} intensity={(night ? 0.1 : 0.32) * L} />
+    </>
   );
 }
 
-function RoomAmbient({
-  night,
-  lights,
-}: {
-  night: boolean;
-  lights: { lamp: boolean; living: boolean; kitchen: boolean };
-}) {
-  const { lightOn } = useFidgets();
-  const any =
-    (lightOn.lamp ?? lights.lamp) ||
-    (lightOn["living-light"] ?? lights.living) ||
-    (lightOn["kitchen-light"] ?? lights.kitchen);
-  return <ambientLight color={night ? "#ffd3ae" : "#fff6ea"} intensity={night ? 0.22 : any ? 0.4 : 0.2} />;
+/** ?view=agent[&who=name]: a face-on hero close-up of one agent, from the clearest side (raycast against the house). */
+function heroTarget() {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search);
+  return q.get("view") === "agent" ? (q.get("who") ?? "").toLowerCase() : null;
+}
+const _ray = new THREE.Raycaster();
+const _hd = new THREE.Vector3();
+const _hb = new THREE.Box3();
+function HeroCamera({ who, agents }: { who: string; agents: LiveSnapshot["agents"] }) {
+  const camera = useThree((state) => state.camera) as THREE.PerspectiveCamera;
+  const scene = useThree((state) => state.scene);
+  const size = useThree((state) => state.size);
+  const pick = useRef<{ angle: number; at: number }>({ angle: 0, at: -1 });
+  const head = useMemo(() => new THREE.Vector3(), []);
+  const eye = useMemo(() => new THREE.Vector3(), []);
+  const n = useRef(0);
+  const key = useRef<THREE.DirectionalLight>(null);
+  const yawS = useRef<number | null>(null);
+  useFrame(() => {
+    const agent = agents.find((a) => a.name.toLowerCase() === who || a.id.toLowerCase() === who) ?? agents[0];
+    if (!agent) return;
+    const group = scene.getObjectByName(`avatar:${agent.id}`);
+    if (!group) return;
+    (camera as THREE.PerspectiveCamera & { manual?: boolean }).manual = true;
+    // figure: hip at the group origin; head centre ~0.635 * figureScale above it
+    head.set(group.position.x, group.position.y + 0.635 * MAQUETTE.figureScale, group.position.z);
+    // face-on: aim along the head's own facing (it turns towards the TV, the screen, the kettle), smoothed
+    const h = group.getObjectByName("head");
+    let target = group.rotation.y;
+    if (h) {
+      h.getWorldPosition(head);
+      h.getWorldDirection(_hd);
+      target = Math.atan2(_hd.x, _hd.z);
+    }
+    if (yawS.current === null) yawS.current = target;
+    yawS.current += Math.atan2(Math.sin(target - yawS.current), Math.cos(target - yawS.current)) * 0.05;
+    const yaw = yawS.current;
+    const dist = 1.85;
+    n.current += 1;
+    if (pick.current.at < 0 || n.current % 45 === 0) {
+      const blockers: THREE.Object3D[] = [];
+      scene.traverseVisible((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        let p: THREE.Object3D | null = m;
+        while (p) {
+          if (p.name.startsWith("avatar")) return;
+          p = p.parent;
+        }
+        const mat = m.material as THREE.Material;
+        if (mat && (mat as THREE.Material).transparent) return;
+        blockers.push(m);
+      });
+      // the view must be clear for the face AND the chest/hands (a monitor below the eye line blocks the frame too)
+      const clear = (angle: number) =>
+        [0, -0.2, -0.38].every((dy) => {
+          const from = head.clone().add(new THREE.Vector3(0, dy, 0));
+          const to = new THREE.Vector3(head.x + Math.sin(yaw + angle) * dist, head.y + 0.1, head.z + Math.cos(yaw + angle) * dist);
+          const dir = to.clone().sub(from);
+          const len = dir.length();
+          _ray.set(from.addScaledVector(dir.normalize(), 0.12), dir);
+          _ray.far = len - 0.12;
+          return !_ray.intersectObjects(blockers, false).length;
+        });
+      for (const angle of [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1.0, -1.0, 1.3, -1.3]) {
+        if (clear(angle)) {
+          pick.current = { angle, at: n.current };
+          break;
+        }
+      }
+      if (pick.current.at < 0) pick.current = { angle: 0, at: n.current };
+    }
+    const a = yaw + pick.current.angle;
+    eye.set(head.x + Math.sin(a) * dist, head.y + 0.1, head.z + Math.cos(a) * dist);
+    camera.fov = 26;
+    // cutaway: anything between the lens and ~0.32 m in front of the face is clipped, so posts and stair stringers never block
+    // ...but never into the agent itself (a hand reaching towards the lens stays whole)
+    _hb.setFromObject(group);
+    camera.near = Math.max(0.05, Math.min(dist - 0.32, _hb.distanceToPoint(eye) - 0.03));
+    camera.clearViewOffset();
+    camera.aspect = size.width / size.height;
+    camera.position.copy(eye);
+    camera.lookAt(head.x, head.y - 0.17, head.z);
+    camera.updateProjectionMatrix();
+    // portrait key: a soft, warm, shadowless light from upper camera-left, so brow, sockets and nose read on the face
+    const l = key.current;
+    if (l) {
+      const side = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
+      l.position.copy(eye).addScaledVector(side, -0.9).add(new THREE.Vector3(0, 0.75, 0));
+      l.target.position.copy(head);
+      l.target.updateMatrixWorld();
+    }
+  });
+  return <directionalLight ref={key} intensity={1.5} color="#FFF3E2" />;
+}
+const HERO_CSS = ".room-root .agent-stack, .room-root .global-tape, .room-root .hud-fab, .room-root .sheet-caption, .room-root .hud-card { display: none !important; }";
+
+function FixedCamera({ floor }: { floor: FloorName | null }) {
+  const camera = useThree((state) => state.camera) as THREE.PerspectiveCamera;
+  const size = useThree((state) => state.size);
+  const invalidate = useThree((state) => state.invalidate);
+  useLayoutEffect(() => {
+    (camera as THREE.PerspectiveCamera & { manual?: boolean }).manual = true;
+    let timers: number[] = [];
+    const fit = () => {
+      const dist = fitCamera(camera, size.width, size.height, floor);
+      document.documentElement.dataset.floorFrame = floor ?? "all";
+      document.documentElement.dataset.roomZoom = dist.toFixed(1);
+      invalidate();
+    };
+    const refit = () => {
+      timers.forEach((t) => window.clearTimeout(t));
+      fit();
+      // cards animate in: measure again once they have settled
+      timers = [90, 260, 520].map((ms) => window.setTimeout(fit, ms));
+    };
+    refit();
+    window.addEventListener("maquette-layout", refit);
+    window.addEventListener("hashchange", refit);
+    return () => {
+      timers.forEach((t) => window.clearTimeout(t));
+      window.removeEventListener("maquette-layout", refit);
+      window.removeEventListener("hashchange", refit);
+    };
+  }, [camera, size.width, size.height, floor, invalidate]);
+  return null;
 }
 
-function FixedCamera({ focus }: { focus: { x: number; y: number; z: number } | null }) {
-  const camera = useThree((state) => state.camera) as THREE.OrthographicCamera;
-  const size = useThree((state) => state.size);
+// ---------------------------------------------------------------- baked contact shadows
+const contactMat = new THREE.ShaderMaterial({
+  uniforms: { uFloor: { value: 0 }, uFar: { value: 0.5 } },
+  side: THREE.DoubleSide,
+  vertexShader: "varying float vH; void main(){ vec4 wp = modelMatrix*vec4(position,1.); vH = wp.y; gl_Position = projectionMatrix*viewMatrix*wp; }",
+  fragmentShader: "uniform float uFloor; uniform float uFar; varying float vH; void main(){ float t = clamp((vH-uFloor)/uFar,0.,1.); float a = pow(1.-t, 2.4); gl_FragColor = vec4(1.,1.,1.,a); }",
+});
 
-  useLayoutEffect(() => {
-    const floor = new URLSearchParams(window.location.search).get("floor");
-    const mode = floor === "kitchen" || floor === "living" || floor === "bedroom";
-    fitCamera(camera, size.width, size.height, floorBox(mode ? floor : null), mode, focus);
-    document.documentElement.dataset.floorFrame = mode ? floor! : "all";
-    document.documentElement.dataset.roomZoom = String(Math.round(camera.zoom));
-  }, [camera, size.width, size.height, focus]);
+type BakeOpts = { far?: number; res?: number; blur?: number; opacity?: number; tint?: string };
 
+function bakeContact(gl: THREE.WebGLRenderer, scene: THREE.Scene, y: number, x0: number, x1: number, z0: number, z1: number, o: BakeOpts = {}) {
+  const { far = 0.45, res = 512, blur = 3, opacity = 0.5, tint = "#2B3140" } = o;
+  const w = x1 - x0;
+  const d = z1 - z0;
+  const rw = res;
+  const rh = Math.round((res * d) / w);
+  const rtA = new THREE.WebGLRenderTarget(rw, rh, { type: THREE.HalfFloatType });
+  const rtB = rtA.clone();
+  const cam = new THREE.OrthographicCamera(-w / 2, w / 2, d / 2, -d / 2, 0, far);
+  cam.position.set((x0 + x1) / 2, y + 0.002, (z0 + z1) / 2);
+  cam.rotation.set(Math.PI / 2, 0, 0);
+  cam.updateMatrixWorld();
+  contactMat.uniforms.uFloor.value = y;
+  contactMat.uniforms.uFar.value = far;
+  const prevTarget = gl.getRenderTarget();
+  const prevAlpha = gl.getClearAlpha();
+  const prevColor = new THREE.Color();
+  gl.getClearColor(prevColor);
+  const prevShadow = gl.shadowMap.autoUpdate;
+  gl.shadowMap.autoUpdate = false;
+  scene.overrideMaterial = contactMat;
+  gl.setRenderTarget(rtA);
+  gl.setClearColor(0xffffff, 0);
+  gl.clear();
+  gl.render(scene, cam);
+  scene.overrideMaterial = null;
+  const hq = new FullScreenQuad(new THREE.ShaderMaterial(HorizontalBlurShader));
+  const vq = new FullScreenQuad(new THREE.ShaderMaterial(VerticalBlurShader));
+  const hm = hq.material as THREE.ShaderMaterial;
+  const vm = vq.material as THREE.ShaderMaterial;
+  for (let k = 0; k < 2; k += 1) {
+    hm.uniforms.tDiffuse.value = rtA.texture;
+    hm.uniforms.h.value = (blur / rw) * (k ? 0.6 : 1);
+    gl.setRenderTarget(rtB);
+    hq.render(gl);
+    vm.uniforms.tDiffuse.value = rtB.texture;
+    vm.uniforms.v.value = (blur / rh) * (k ? 0.6 : 1);
+    gl.setRenderTarget(rtA);
+    vq.render(gl);
+  }
+  hm.dispose();
+  vm.dispose();
+  hq.dispose();
+  vq.dispose();
+  rtB.dispose();
+  gl.setRenderTarget(prevTarget);
+  gl.setClearColor(prevColor, prevAlpha);
+  gl.shadowMap.autoUpdate = prevShadow;
+  const geo = new THREE.PlaneGeometry(w, d);
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i += 1) uv.setY(i, 1 - uv.getY(i));
+  const mat = new THREE.MeshBasicMaterial({ map: rtA.texture, color: tint, transparent: true, opacity, depthWrite: false, toneMapped: false });
+  const plane = new THREE.Mesh(geo, mat);
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.set((x0 + x1) / 2, y + 0.003, (z0 + z1) / 2);
+  plane.renderOrder = 1;
+  plane.userData.isContact = true;
+  plane.name = "contact-shadow";
+  plane.userData.noContact = true;
+  plane.userData.target = rtA;
+  plane.raycast = () => {};
+  return plane;
+}
+
+/** Bake soft contact shadows under every piece (one map per floor + one under the plinth). Re-bakes when furniture moves. */
+function ContactShadows({ bakeKey, night, lift }: { bakeKey: string; night: boolean; lift: number | null }) {
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  const planes = useRef<THREE.Mesh[]>([]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const hidden: THREE.Object3D[] = [];
+      scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        const skip = obj.userData.skipContact || obj.userData.noContact || obj.userData.isContact || (mesh.isMesh && (mesh.material as THREE.Material)?.transparent);
+        if (skip && obj.visible) {
+          hidden.push(obj);
+          obj.visible = false;
+        }
+      });
+      const fresh = [
+        bakeContact(gl, scene, FLOORS[0].y, GEO.wallInX, GEO.edgeR, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.74, blur: 2.4 }),
+        bakeContact(gl, scene, FLOORS[1].y, GEO.wallInX, GEO.cut, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.74, blur: 2.4 }),
+        bakeContact(gl, scene, FLOORS[2].y, GEO.wallInX, GEO.cut, GEO.wallInZ, FRONT, { opacity: night ? 0.64 : 0.74, blur: 2.4 }),
+        bakeContact(gl, scene, -0.26, GEO.wallOutX - 1.2, GEO.edgeR + 1.2, GEO.wallOutZ - 1.2, FRONT + 1.2, {
+          far: 0.5,
+          res: 256,
+          blur: 6,
+          opacity: night ? 0.6 : 0.35,
+          tint: night ? "#06080B" : "#5A5F68",
+        }),
+      ];
+      hidden.forEach((obj) => {
+        obj.visible = true;
+      });
+      for (const old of planes.current) {
+        scene.remove(old);
+        old.geometry.dispose();
+        (old.material as THREE.Material).dispose();
+        (old.userData.target as THREE.WebGLRenderTarget).dispose();
+      }
+      fresh.forEach((p, i) => {
+        p.userData.floor = i < 3 ? i : -1;
+        p.visible = i === 3 || lift == null || i <= lift;
+        scene.add(p);
+      });
+      planes.current = fresh;
+      performance.mark("house-contact");
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [gl, scene, bakeKey, night, lift]);
+  useEffect(
+    () => () => {
+      for (const old of planes.current) {
+        scene.remove(old);
+        old.geometry.dispose();
+        (old.material as THREE.Material).dispose();
+        (old.userData.target as THREE.WebGLRenderTarget).dispose();
+      }
+      planes.current = [];
+    },
+    [scene],
+  );
   return null;
 }
 
@@ -323,7 +863,10 @@ export function RoomCanvas({
   onOpenBooks,
   onTapRadio,
   onTapDog,
+  door = null,
 }: {
+  /** v16 front door: pass the door state to draw it (off when null/undefined). Engineer adds one prop at the call site. */
+  door?: (DoorMeshProps & { knocks?: number }) | null;
   snapshot: LiveSnapshot;
   selectedId: string | null;
   onSelectAgent: (id: string | null) => void;
@@ -347,11 +890,18 @@ export function RoomCanvas({
       onTapRadio: onTapRadio ?? (() => {}),
       onTapDog: onTapDog ?? (() => {}),
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [kettle, snapshot.objects, snapshot.drawings, snapshot.radio?.name, onOpenBooks, onTapRadio, onTapDog],
   );
   const bottom = deck === "min" ? 28 : 118;
   const [down, setDown] = useState(() => !webglAvailable());
   const budget = useMemo(() => pixelBudget(), []);
+  const [lineup] = useState(lineupFlag);
+  const [hero] = useState(heroTarget);
+  const [floor, setFloor] = useState<FloorName | null>(() => (lineupFlag() ? "kitchen" : floorParam()));
+  const mini = useMemo(minimalHud, []);
+  const lift = floor ? FLOOR_INDEX[floor] : null;
+  const phone = typeof window !== "undefined" && window.innerWidth < 800;
   const onUnavailableRef = useRef(onUnavailable);
   useEffect(() => {
     onUnavailableRef.current = onUnavailable;
@@ -359,6 +909,11 @@ export function RoomCanvas({
   useEffect(() => {
     if (down) onUnavailableRef.current?.();
   }, [down]);
+
+  const bakeKey = snapshot.objects
+    .map((o) => `${o.id}:${o.position.x.toFixed(2)},${o.position.z.toFixed(2)},${o.rotation.toFixed(2)}`)
+    .join("|") + `|d${(snapshot.drawings ?? []).length}`;
+  const above = (z: number, y = 0) => lift != null && stagePose(0, z).y + y > FLOORS[lift].y + 1.2;
 
   if (down) return <HouseFallback agents={snapshot.agents} />;
 
@@ -371,66 +926,85 @@ export function RoomCanvas({
     >
       <FidgetProvider>
         <ComputerProvider>
-        <DeckContext.Provider value={{ bottom }}>
-          <RoomStageBoundary fallback={<HouseFallback agents={snapshot.agents} />}>
-          <Canvas
-            orthographic
-            shadows={budget.shadow > 0}
-            dpr={budget.dpr}
-            camera={{ position: [0, 6, 16], zoom: 70, near: 0.1, far: 60 }}
-            onCreated={() => performance.mark("house-webgl")}
-            gl={{
-              antialias: budget.antialias,
-              alpha: false,
-              powerPreference: "high-performance",
-              failIfMajorPerformanceCaveat: false,
-              toneMapping: THREE.ACESFilmicToneMapping,
-              toneMappingExposure: 1.02,
-            }}
-            onPointerMissed={() => onSelectAgent(null)}
-          >
-            <color attach="background" args={[night ? "#140e0c" : "#8d5c40"]} />
-            <Picture night={night} shadows={budget.shadow > 0} />
-            <Backdrop />
-            <hemisphereLight args={[night ? "#ffd8b0" : "#fff6e8", night ? "#6b4632" : "#8d7464", night ? 0.46 : 0.5]} />
-            <RoomAmbient night={night} lights={live.lights} />
-            <KeyLight />
-            <HouseMaterials>
-              <SceneLiveProvider value={live}>
-                <RoomShell />
-                {snapshot.objects.map((object) => (
-                  <Furniture key={object.id} object={object} />
-                ))}
-                {snapshot.dog && <HouseDog dog={snapshot.dog} agents={snapshot.agents} skew={skew} />}
-              </SceneLiveProvider>
-            </HouseMaterials>
-            {snapshot.agents.map((agent) => (
-              <AgentAvatar
-                key={agent.id}
-                agent={agent}
-                skew={skew}
-                focused={agent.id === selectedId}
-                onSelect={onSelectAgent}
+          <DeckContext.Provider value={{ bottom }}>
+            <RoomStageBoundary fallback={<HouseFallback agents={snapshot.agents} />}>
+              <Canvas
+                shadows="percentage"
+                dpr={budget.dpr}
+                camera={{ fov: MAQUETTE.fov, position: [8, 9, 14], near: 0.5, far: 120 }}
+                onCreated={() => performance.mark("house-webgl")}
+                gl={{
+                  antialias: true,
+                  alpha: true,
+                  powerPreference: "high-performance",
+                  failIfMajorPerformanceCaveat: false,
+                  toneMapping: THREE.ACESFilmicToneMapping,
+                }}
+                onPointerMissed={() => {
+                  onSelectAgent(null);
+                  if (mini) setFloor(null);
+                }}
+              >
+                <Picture night={night} />
+                <LightRig night={night} phone={phone} mapSize={budget.shadow} />
+                <HouseMaterials night={night}>
+                  <SceneLiveProvider value={live}>
+                    <group
+                      onClick={
+                        mini
+                          ? (event) => {
+                              // minimal-HUD mockup: tap a room to bring that floor up to the frame
+                              if (event.delta > 8) return;
+                              event.stopPropagation();
+                              setFloor(floorOfY(event.point.y + 0.05));
+                            }
+                          : undefined
+                      }
+                    >
+                    <RoomShell lift={lift} />
+                    {snapshot.objects
+                      .filter((object) => !above(object.position.z, object.position.y) && !STATIC_KINDS.has(object.kind))
+                      .map((object) => (
+                        <Furniture key={object.id} object={object} />
+                      ))}
+                    <StaticFurniture objects={snapshot.objects.filter((object) => STATIC_KINDS.has(object.kind) && !above(object.position.z, object.position.y))} />
+                    {(door ?? doorPreview()) && <DoorMesh {...doorMeshProps((door ?? doorPreview())!)} />}
+                    {snapshot.dog && !above(snapshot.dog.z) && <HouseDog dog={snapshot.dog} agents={snapshot.agents} skew={skew} />}
+                    </group>
+                  </SceneLiveProvider>
+                </HouseMaterials>
+                {(lineup ? lineupAgents(snapshot.agents) : snapshot.agents)
+                  .filter((agent) => !above(agent.position.z))
+                  .map((agent) => (
+                    <AgentAvatar key={agent.id} agent={agent} skew={skew} focused={agent.id === selectedId} onSelect={onSelectAgent} />
+                  ))}
+                <ContactShadows bakeKey={bakeKey} night={night} lift={lift} />
+                <LabelSpacing />
+                <HudAnchors snapshot={snapshot} />
+                {hero != null ? <HeroCamera who={hero} agents={snapshot.agents} /> : <FixedCamera floor={floor} />}
+                <GlWatch onLost={() => setDown(true)} />
+                <ShadowCache night={night} />
+                <AdaptiveDpr max={budget.dpr} />
+                {debugFlag() && <GlStats />}
+              </Canvas>
+            </RoomStageBoundary>
+            <FidgetNote />
+            <ComputerOverlay />
+            <style>{LANDSCAPE_CSS}</style>
+            {hero != null && <style>{HERO_CSS}</style>}
+            {mini && (
+              <MinimalHud
+                agents={snapshot.agents}
+                selectedId={selectedId}
+                onSelectAgent={onSelectAgent}
+                floor={floor}
+                setFloor={setFloor}
+                radio={{ on: snapshot.radio?.on ?? false, name: snapshot.radio?.name ?? "" }}
+                onTapRadio={onTapRadio}
+                door={{ locked: (door ?? doorPreview())?.locked ?? true, knocks: door?.knocks ?? ((door ?? doorPreview())?.knocking ? 2 : 0) }}
               />
-            ))}
-            <LabelSpacing />
-            <HudAnchors snapshot={snapshot} />
-            <FixedCamera
-              focus={
-                selectedId
-                  ? stagePose(
-                      snapshot.agents.find((agent) => agent.id === selectedId)?.position.x ?? 0,
-                      snapshot.agents.find((agent) => agent.id === selectedId)?.position.z ?? 0,
-                    )
-                  : null
-              }
-            />
-            <GlWatch onLost={() => setDown(true)} />
-          </Canvas>
-          </RoomStageBoundary>
-          <FidgetNote />
-          <ComputerOverlay />
-        </DeckContext.Provider>
+            )}
+          </DeckContext.Provider>
         </ComputerProvider>
       </FidgetProvider>
     </div>

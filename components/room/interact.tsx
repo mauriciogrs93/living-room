@@ -105,7 +105,7 @@ export function FidgetNote() {
   const { note } = useFidgets();
   if (!note) return null;
   return (
-    <div className="pointer-events-none absolute top-[max(4.5rem,calc(env(safe-area-inset-top)+3.5rem))] left-1/2 z-10 max-w-[calc(100vw-24px)] -translate-x-1/2 truncate rounded-full bg-[#f7f1e7]/92 px-3.5 py-1.5 text-[13px] text-[#2c241e] shadow-[0_8px_24px_rgba(28,18,12,0.18)]">
+    <div className="fidget-note" role="status">
       {note.text}
     </div>
   );
