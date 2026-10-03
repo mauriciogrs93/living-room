@@ -307,6 +307,14 @@
   background: var(--hud-leader);
 }
 
+/* the note sits beside the speaker's tag (avatar.tsx places it left/right, top-aligned), and the tag's own leader
+   already points at the figure; in landscape the downward pointer would hang over empty space, so drop it */
+@media (orientation: landscape) {
+  .agent-bubble::after {
+    display: none;
+  }
+}
+
 .agent-bubble-name {
   color: var(--hud-ink-55);
   font: 500 10px/1 var(--mono);
