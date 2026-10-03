@@ -13,13 +13,15 @@ import { createRequire } from "node:module";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BASE, VIA, call, check, done, sleep, redact, LINE_RE } from "./v20-http.mjs";
+import { BASE, VIA, call, check, done, sleep, redact, mint, cookieFor, LINE_RE } from "./v20-http.mjs";
 
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PW_CORE);
 const ownerKey = readFileSync(process.env.OWNER_KEY_FILE, "utf8").trim();
 const profile = mkdtempSync(join(tmpdir(), "v20-journey-"));
-const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+// A protected preview without SHARE_URL: the browser can't get past the login wall, so the owner's tap is the same
+// request the Copy button makes (POST /api/door {action:"invite"} with the owner cookie), sent through vercel curl.
+const BROWSER = !VIA || Boolean(process.env.SHARE_URL);
+const browser = BROWSER ? await require(process.env.PW_CORE).chromium.launch({ executablePath: process.env.PW_CHROME, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] }) : null;
 const origin = new URL(BASE).origin;
 async function context(opts = {}) {
   const ctx = await browser.newContext({ viewport: opts.viewport || { width: 1440, height: 900 }, isMobile: !!opts.mobile, hasTouch: !!opts.mobile, deviceScaleFactor: opts.mobile ? 2 : 1 });
@@ -30,8 +32,13 @@ async function context(opts = {}) {
 const clip = (p) => p.evaluate(() => navigator.clipboard.readText()).catch(() => "");
 const lines = [];
 try {
+  if (!BROWSER) {
+    const r = await mint(cookieFor(ownerKey));
+    lines.push(r.json?.line || "");
+    check("owner Copy request (POST /api/door invite, owner cookie) -> fresh line with a real code", r.status === 200 && LINE_RE.test(r.json?.line || ""), redact(r.json?.line));
+  }
   // 1. non-owner
-  {
+  if (BROWSER) {
     const ctx = await context();
     const p = await ctx.newPage();
     await p.goto(`${BASE}/`, { waitUntil: "networkidle" });
@@ -51,7 +58,7 @@ try {
     await ctx.close();
   }
   // 2. owner taps Copy
-  {
+  if (BROWSER) {
     const ctx = await context();
     const p = await ctx.newPage();
     await p.goto(`${BASE}/room#owner=${ownerKey}`, { waitUntil: "load" });
@@ -116,7 +123,7 @@ try {
   const st = await call("GET", "/api/state");
   check("Pastee is gone from the room", !(st.json?.agents || []).some((a) => a.name === "Pastee"));
 } finally {
-  await browser.close();
+  await browser?.close();
   rmSync(profile, { recursive: true, force: true });
 }
 done("v20-journey");
