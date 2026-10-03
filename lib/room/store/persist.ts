@@ -27,7 +27,12 @@ export type RoomCommit = {
   roomChanged: boolean;
   /** v19: idempotency. Stored in the same transaction as the commit (room_commit p_idem_*). */
   idem?: { key: string; response: unknown; status: number } | null;
+  /** v21: invite index rows to write in the same transaction (hashes only). */
+  invites?: InviteChanges | null;
 };
+
+/** v21: invites minted / used / cancelled by this commit (sha256 hashes only, never codes). */
+export type InviteChanges = { add: { hash: string; expMs: number }[]; use: string[]; cancel: string[] };
 
 export type RoomCommitResult =
   | { conflict: true }

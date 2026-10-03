@@ -15,7 +15,7 @@ import type { ActResult, Book, RadioStation, Snapshot } from "@/lib/room/types";
 import { bindStore } from "@/lib/room/store/active";
 import { applySeedBooks } from "@/lib/room/store/seed";
 import { mailWrite } from "@/lib/room/store/supabase-store";
-import { retryPause, sleep, type RoomPersistence, type RoomRead } from "@/lib/room/store/persist";
+import { retryPause, sleep, type InviteChanges, type RoomPersistence, type RoomRead } from "@/lib/room/store/persist";
 
 type RegisterInput = {
   name?: unknown;
@@ -92,6 +92,31 @@ function knockOwnerKey(raw: string | null, id: string) {
   } catch {
     return "";
   }
+}
+
+type SavedInvite = { hash?: string; exp?: number; usedAt?: number; cancelledAt?: number };
+function invitesOf(json: string | null): SavedInvite[] {
+  if (!json) return [];
+  try {
+    const data = JSON.parse(json) as { door?: { invites?: SavedInvite[] } };
+    return Array.isArray(data.door?.invites) ? data.door.invites : [];
+  } catch {
+    return [];
+  }
+}
+
+/** v21: invite index rows (hashes only) for this commit: minted, used and cancelled since `before`. */
+export function inviteChanges(before: string | null, after: string): InviteChanges | null {
+  const prior = new Map(invitesOf(before).map((item) => [item.hash ?? "", item]));
+  const changes: InviteChanges = { add: [], use: [], cancel: [] };
+  for (const item of invitesOf(after)) {
+    if (typeof item.hash !== "string" || !/^[0-9a-f]{64}$/.test(item.hash)) continue;
+    const old = prior.get(item.hash);
+    if (!old) changes.add.push({ hash: item.hash, expMs: Number(item.exp) || Date.now() });
+    if (item.usedAt && !old?.usedAt) changes.use.push(item.hash);
+    if (item.cancelledAt && !old?.cancelledAt) changes.cancel.push(item.hash);
+  }
+  return changes.add.length || changes.use.length || changes.cancel.length ? changes : null;
 }
 
 function agentIds(json: string) {
@@ -185,9 +210,11 @@ export class VersionedRoom {
     sent: MailChange[],
     roomChanged: boolean,
     idem: { key: string; response: unknown; status: number } | null = null,
+    beforeJson: string | null = null,
   ): Promise<boolean | { replay: unknown; status: number }> {
     const stateJson = JSON.stringify(engine.serialize());
     const result = await this.store.commit({
+      invites: beforeJson === null ? null : inviteChanges(beforeJson, stateJson),
       expectedVersion,
       stateJson,
       publicDoor: doorOf(stateJson),
@@ -264,7 +291,7 @@ export class VersionedRoom {
             if (JSON.stringify(response).length <= IDEM_MAX_BYTES) idem = { key: opts.idem.key, response, status: stored.status };
           }
         }
-        const ok = await this.commitEngine(engine, snap.version, snap.seen, sent, after !== before, idem);
+        const ok = await this.commitEngine(engine, snap.version, snap.seen, sent, after !== before, idem, before);
         if (ok && typeof ok === "object") {
           return (idemResult(ok.replay) ?? value) as T;
         }
@@ -469,6 +496,25 @@ export class VersionedRoom {
 
   snapshot(): Promise<Snapshot> {
     return this.inMail(() => this.peek((engine) => engine.snapshot()));
+  }
+
+  /** v21: legacy claim — the account becomes the door's owner (one committed write). */
+  setOwnerIdentity(identity: string, opts: { seeds?: boolean } = {}) {
+    return this.inMail(() => this.mutate((engine) => engine.setOwnerIdentity(identity, opts)));
+  }
+
+  /** v21: owner's "send home" by agent id (the owner is checked by the route from the session). */
+  async sendHome(agentId: string, block = false) {
+    const key = await this.inMail(() => this.peek((engine) => engine.ownerKeyOfAgent(agentId)));
+    if (!key) return { ok: false as const, status: 404, error: "That agent isn't here." };
+    return this.ownerLeave(key, block);
+  }
+
+  /** v21: owner's note to an agent in their apartment, by agent id. */
+  async noteAgent(agentId: string, message: unknown) {
+    const key = await this.inMail(() => this.peek((engine) => engine.ownerKeyOfAgent(agentId)));
+    if (!key) return { ok: false as const, status: 404, error: "That agent isn't here." };
+    return this.postNote(key, message);
   }
 
   subscribe(listener: (snapshot: Snapshot) => void) {

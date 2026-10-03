@@ -5,7 +5,7 @@ import { decodeState, encodeState, hashToken } from "@/lib/room/store/codec";
 import { roomRpcPrefix, supabaseConfig } from "@/lib/room/store/config";
 import type { MailWrite, RoomCommit, RoomPersistence, RoomRead, SeenStamp } from "@/lib/room/store/persist";
 
-type Rpc = (fn: string, args: Record<string, unknown>) => Promise<unknown>;
+export type Rpc = (fn: string, args: Record<string, unknown>) => Promise<unknown>;
 
 const RPC_MS = 3000;
 
@@ -34,6 +34,7 @@ function rpcHeaders(secret: string): Record<string, string> {
   return headers;
 }
 
+/** v21: every room function is apt_* (apartment-scoped); the prefix picks the test namespace (v21t_). */
 export function supabaseRpc(url: string, secret: string): Rpc {
   const headers = rpcHeaders(secret);
   const prefix = roomRpcPrefix();
@@ -42,7 +43,7 @@ export function supabaseRpc(url: string, secret: string): Rpc {
     const parent = currentSignal();
     const signal = parent ? AbortSignal.any([parent, timeout]) : timeout;
     try {
-      const response = await fetch(`${url}/rest/v1/rpc/${prefix}${fn}`, {
+      const response = await fetch(`${url}/rest/v1/rpc/${prefix}apt_${fn}`, {
         method: "POST",
         headers,
         body: JSON.stringify(args),
@@ -74,6 +75,15 @@ export function supabaseRpc(url: string, secret: string): Rpc {
   };
 }
 
+let sharedRpc: Rpc | null = null;
+export function envRpc(): Rpc | null {
+  if (sharedRpc) return sharedRpc;
+  const config = supabaseConfig();
+  if (!config) return null;
+  sharedRpc = supabaseRpc(config.url, config.secret);
+  return sharedRpc;
+}
+
 function presenceOf(raw: { presence?: { agent_id?: string; seen_ms?: number }[] } | null): SeenStamp[] {
   const seen: SeenStamp[] = [];
   for (const stamp of raw?.presence ?? []) {
@@ -84,17 +94,15 @@ function presenceOf(raw: { presence?: { agent_id?: string; seen_ms?: number }[] 
   return seen;
 }
 
+/** One apartment's room, mail, presence, rate limits and idempotency keys. */
 export class SupabaseStore implements RoomPersistence {
-  constructor(private readonly rpc: Rpc) {}
-
-  static fromEnv(): SupabaseStore | null {
-    const config = supabaseConfig();
-    if (!config) return null;
-    return new SupabaseStore(supabaseRpc(config.url, config.secret));
-  }
+  constructor(
+    private readonly rpc: Rpc,
+    readonly apartmentId: string,
+  ) {}
 
   async read(knownVersion: number | null): Promise<RoomRead> {
-    const raw = (await this.rpc("room_read", { p_known_version: knownVersion })) as {
+    const raw = (await this.rpc("room_read", { p_apartment: this.apartmentId, p_known_version: knownVersion })) as {
       version?: number;
       unchanged?: boolean;
       state_gz?: string | null;
@@ -114,7 +122,9 @@ export class SupabaseStore implements RoomPersistence {
       token_hash: change.tokenHash,
       drop_hashes: change.dropHashes,
     }));
+    const inv = input.invites;
     const raw = (await this.rpc("room_commit", {
+      p_apartment: this.apartmentId,
       p_expected: input.expectedVersion,
       p_state: encodeState(input.stateJson),
       p_public_door: input.publicDoor,
@@ -124,6 +134,7 @@ export class SupabaseStore implements RoomPersistence {
       p_idem_key: input.idem?.key ?? null,
       p_idem_response: input.idem ? input.idem.response : null,
       p_idem_status: input.idem ? input.idem.status : null,
+      p_invites: inv ? { add: inv.add.map((item) => ({ hash: item.hash, exp_ms: item.expMs })), use: inv.use, cancel: inv.cancel } : null,
     })) as { conflict?: boolean; version?: number; idempotent?: boolean; response?: unknown; status?: number };
     if (raw?.conflict) return { conflict: true as const };
     return {
@@ -135,13 +146,10 @@ export class SupabaseStore implements RoomPersistence {
     };
   }
 
-  /**
-   * Read-only probe of idempotency_keys through room_commit: a stored key returns early; otherwise the
-   * impossible expected version (-1) makes the mailbox-only path return a conflict with no writes.
-   * No schema change is needed.
-   */
+  /** Read-only idempotency probe (expected version -1 can never match, so nothing is written). */
   async idemGet(key: string) {
     const raw = (await this.rpc("room_commit", {
+      p_apartment: this.apartmentId,
       p_expected: -1,
       p_state: "",
       p_public_door: null,
@@ -151,13 +159,14 @@ export class SupabaseStore implements RoomPersistence {
       p_idem_key: key,
       p_idem_response: null,
       p_idem_status: null,
+      p_invites: null,
     })) as { idempotent?: boolean; response?: unknown; status?: number };
     if (raw?.idempotent) return { response: raw.response, status: Number(raw.status ?? 200) };
     return null;
   }
 
   async rateHit(key: string, limit: number, windowMs: number) {
-    const raw = (await this.rpc("rate_hit", { p_key: key, p_limit: limit, p_window_ms: windowMs })) as {
+    const raw = (await this.rpc("rate_hit", { p_apartment: this.apartmentId, p_key: key, p_limit: limit, p_window_ms: windowMs })) as {
       limited?: boolean;
       retry_after_ms?: number;
     };
@@ -165,15 +174,15 @@ export class SupabaseStore implements RoomPersistence {
   }
 
   async touchPresence(agentId: string, seenAtMs: number) {
-    await this.rpc("presence_touch", { p_agent_id: agentId, p_seen_ms: seenAtMs });
+    await this.rpc("presence_touch", { p_apartment: this.apartmentId, p_agent_id: agentId, p_seen_ms: seenAtMs });
   }
 
   async loadOwner(ownerKey: string) {
-    return asMailbox(await this.rpc("mail_owner", { p_owner_key: ownerKey }));
+    return asMailbox(await this.rpc("mail_owner", { p_apartment: this.apartmentId, p_owner_key: ownerKey }));
   }
 
   async loadToken(token: string) {
-    return asMailbox(await this.rpc("mail_token", { p_token_hash: hashToken(token) }));
+    return asMailbox(await this.rpc("mail_token", { p_apartment: this.apartmentId, p_token_hash: hashToken(token) }));
   }
 
   async kvGet(key: string) {

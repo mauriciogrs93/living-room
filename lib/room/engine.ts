@@ -113,6 +113,8 @@ import {
   doorBrief as doorBriefFn,
   doorStatus as doorStatusFn,
   doorView as doorViewFn,
+  claimOwner as claimOwnerFn,
+  ensureMigrated as ensureMigratedFn,
   freshDoor,
   holdResponse,
   type DoorState,
@@ -214,6 +216,26 @@ export class RoomEngine {
 
   doorAct(ownerKey: string, action: string, id = "") {
     return doorActFn(this as unknown as RoomHost, ownerKey, action, id);
+  }
+
+  /**
+   * v21: the apartment's owner is the account. Sets the door's owner hash to the server-side account
+   * identity (never sent to a browser). seeds=false drops the legacy Poppy / Tester placeholder rows.
+   */
+  setOwnerIdentity(identity: string, opts: { seeds?: boolean } = {}) {
+    const room = this as unknown as RoomHost;
+    ensureMigratedFn(room);
+    claimOwnerFn(room, identity);
+    if (opts.seeds === false) {
+      this.door.seeds = false;
+      this.door.trusted = this.door.trusted.filter((person) => person.ownerKey || (person.id !== "agt_b71b2b01" && !person.id.endsWith("_seed")));
+    }
+    return { ok: true as const };
+  }
+
+  /** v21: the agent's own ownerKey (its mailbox key), for owner actions by agent id. "" when not here. */
+  ownerKeyOfAgent(agentId: string) {
+    return this.agents.get(agentId)?.ownerKey ?? "";
   }
 
   look(token: string): ActResult | {

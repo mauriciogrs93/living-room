@@ -1,11 +1,23 @@
 import { hashToken } from "@/lib/room/store/codec";
 import type { Mailbox } from "@/lib/room/mailbox";
-import type { MailWrite, RoomCommit, RoomPersistence, RoomRead, SeenStamp } from "@/lib/room/store/persist";
+import type { InviteChanges, MailWrite, RoomCommit, RoomPersistence, RoomRead, SeenStamp } from "@/lib/room/store/persist";
+
+/** v21: what the memory apartment directory learns from each commit (token / ownerKey / invite -> apartment). */
+export type MemoryIndex = {
+  noteToken(hash: string, apartmentId: string): void;
+  dropToken(hash: string): void;
+  noteOwnerKey(ownerKey: string, apartmentId: string): void;
+  noteInvites(changes: InviteChanges, apartmentId: string): void;
+};
 
 type MailRow = { data: Mailbox; tokenHash: string; expiresAt: number };
 
 /** In-process stand-in for the SQL functions. Used to test compare-and-set. */
 export class MemoryPersist implements RoomPersistence {
+  constructor(
+    readonly apartmentId = "",
+    private readonly index: MemoryIndex | null = null,
+  ) {}
   version = 0;
   state: string | null = null;
   door = { locked: true, knocking: false };
@@ -53,9 +65,17 @@ export class MemoryPersist implements RoomPersistence {
     const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
     for (const change of input.mail) {
       this.mail.set(change.ownerKey, { data: change.data, tokenHash: change.tokenHash, expiresAt });
-      if (change.tokenHash) this.tokens.set(change.tokenHash, { ownerKey: change.ownerKey, expiresAt });
-      for (const hash of change.dropHashes) this.tokens.delete(hash);
+      this.index?.noteOwnerKey(change.ownerKey, this.apartmentId);
+      if (change.tokenHash) {
+        this.tokens.set(change.tokenHash, { ownerKey: change.ownerKey, expiresAt });
+        this.index?.noteToken(change.tokenHash, this.apartmentId);
+      }
+      for (const hash of change.dropHashes) {
+        this.tokens.delete(hash);
+        this.index?.dropToken(hash);
+      }
     }
+    if (input.invites) this.index?.noteInvites(input.invites, this.apartmentId);
     return { conflict: false as const, version: this.version };
   }
 

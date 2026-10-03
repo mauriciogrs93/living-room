@@ -71,9 +71,11 @@ export type DoorState = {
   invites: Invite[];
   visitors: Visitor[];
   passes: GuestPass[];
+  /** v21: the Poppy / Tester placeholder rows belong to the legacy room only. New apartments set false. */
+  seeds: boolean;
 };
 
-export { INVITE_TTL_MS } from "./invite-ttl";
+export { INVITE_TTL_MS, INVITE_ROTATE_MS } from "./invite-ttl";
 import { INVITE_TTL_MS } from "./invite-ttl";
 /** v20: invite mints per owner per minute (owner-only, inside the door write). INVITE_MINT_LIMIT env is for local tests only (floor 3). */
 export const INVITE_MINT_LIMIT = Math.max(3, Number(process.env.INVITE_MINT_LIMIT) || 10);
@@ -118,6 +120,7 @@ export function freshDoor(): DoorState {
     invites: [],
     visitors: [],
     passes: [],
+    seeds: true,
   };
 }
 
@@ -156,7 +159,7 @@ export function hasOwner(room: RoomHost) {
   return /^[0-9a-f]{64}$/.test(room.door?.ownerHash ?? "");
 }
 
-/** Mark the owner. Only the rescue claim (no owner yet) or the v18 migration call this. */
+/** Mark the owner. v21: called with the server-side account identity (lib/apartments/identity.ts). */
 export function claimOwner(room: RoomHost, ownerKey: string) {
   room.door.ownerHash = sha256(ownerKey.trim());
 }
@@ -186,7 +189,7 @@ export function ensureMigrated(room: RoomHost) {
     const steward = room.door.trusted.find((person) => person.ownerKey);
     if (steward) room.door.ownerHash = sha256(steward.ownerKey);
   }
-  ensureSeeds(room);
+  if (room.door.seeds) ensureSeeds(room);
 }
 
 export function expireKnocks(room: RoomHost, now = Date.now()) {
@@ -230,8 +233,7 @@ export function planEntry(
   };
   // Trusted agents holding their own key or token always walk in. Trust never means owner.
   if (id && isTrusted(room, id)) return enter({ trust: true });
-  // Rescue: an empty room with no owner yet. The next register becomes the owner (logged loudly).
-  if (!hasOwner(room)) return enter({ trust: true, owner: true });
+  // v21: no rescue claim. Every apartment has its owner (the account) from the start; an agent never becomes owner.
   const seed = claimableSeed(room, input);
   if (seed) return enter({ trust: true, seedId: seed.id });
   // Invites only (Option A). No knocking.
@@ -470,8 +472,9 @@ export function doorAct(room: RoomHost, ownerKey: string, action: string, id: st
     const unused = room.door.invites.filter((item) => !item.usedAt && !item.cancelledAt && item.exp > now);
     while (unused.length >= INVITE_MAX_UNUSED) unused.shift()!.cancelledAt = now;
     const code = newInviteCode();
-    room.door.invites.push({ hash: inviteHash(code), at: now, exp: now + INVITE_TTL_MS, usedBy: "", usedAt: 0 });
-    return { ok: true as const, message: "Invite ready.", invite: code };
+    const exp = now + INVITE_TTL_MS;
+    room.door.invites.push({ hash: inviteHash(code), at: now, exp, usedBy: "", usedAt: 0 });
+    return { ok: true as const, message: "Invite ready.", invite: code, expiresAt: exp };
   }
   if (action === "pause") {
     // One write: pause, and cancel every unused invite. Used records stay for the audit trail.
@@ -756,6 +759,7 @@ function sanitize(raw: unknown): DoorState {
     invites: invites(data.invites),
     visitors: visitors(data.visitors),
     passes: passes(data.passes),
+    seeds: data.seeds !== false,
   };
 }
 
