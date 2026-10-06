@@ -15,8 +15,6 @@ export const LIMITS = {
   otpPerEmail: { limit: 3, windowMs: 10 * MIN },
   /** Sign-in emails across the whole site (new and returning accounts): the signup ceiling. */
   otpGlobal: { limit: 60, windowMs: HOUR },
-  /** 6-digit code checks per IP. */
-  verifyPerIp: { limit: 10, windowMs: 10 * MIN },
   /** New apartments per IP, and across the site. */
   createPerIp: { limit: 3, windowMs: HOUR },
   createGlobal: { limit: 30, windowMs: HOUR },

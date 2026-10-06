@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { createHash } from "node:crypto";
-import { cookieValue } from "@/lib/http";
+import { baseUrl, cookieValue } from "@/lib/http";
 
 /**
  * v21 accounts: Supabase Auth email sign-in, server side only. The browser never gets a Supabase key:
@@ -104,6 +104,23 @@ export async function currentAccount(req: Request): Promise<{ account: Account |
   } catch {
     return { account: null, setCookies: auth.setCookies() };
   }
+}
+
+/**
+ * v21 r2: where Supabase's verify step sends the browser: this deployment's own /auth/callback (a preview's
+ * URL on a preview, production's on production). Supabase honours it only if it is on the redirect allow-list.
+ */
+export function signInRedirectUrl(req: Request) {
+  return `${baseUrl(req)}/auth/callback`;
+}
+
+/** Writer (r2): the one line for every sign-in email limit, ours or Supabase's (2 emails an hour by default). */
+export const EMAIL_LIMIT_COPY = "Too many emails for now. Try again in an hour.";
+
+/** Supabase's own email limit: HTTP 429, or the over_email_send_rate_limit / over_request_rate_limit codes. */
+export function isEmailRateLimit(error: { status?: number; code?: string } | null | undefined) {
+  if (!error) return false;
+  return error.status === 429 || error.code === "over_email_send_rate_limit" || error.code === "over_request_rate_limit";
 }
 
 export const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/i;

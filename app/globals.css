@@ -1201,5 +1201,12 @@ html[data-floor-frame]:not([data-floor-frame="all"]) .sheet-caption {
 .signin-form .signin-submit:focus-visible { outline: 2px solid #e07a3d; outline-offset: 2px; }
 .signin-form .signin-submit:disabled { opacity: 0.45; cursor: default; }
 .signin-link { align-self: flex-start; font-size: 12px; text-decoration: underline; color: var(--hud-muted, #6e7177); cursor: pointer; }
+/* r2: check-your-email (Writer's strings, sentence case; no code field) */
+.signin-sent { gap: 6px; }
+.signin-sent .signin-quiet { color: var(--hud-muted, #6e7177); }
+.signin-actions { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 8px; }
+.signin-resend { padding: 0; border: 0; background: none; font-size: 13px; color: #2d3136; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.signin-resend:disabled { opacity: 0.45; cursor: default; }
+.signin-resend:focus-visible { outline: 2px solid #e07a3d; outline-offset: 2px; }
 .signin-note { font-size: 14px; line-height: 1.45; }
 .signin-note.is-error { color: #a33a1c; }

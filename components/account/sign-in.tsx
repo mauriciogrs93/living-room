@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { refreshMe } from "./me";
 
-type Phase = "email" | "sending" | "sent" | "verifying";
+type Phase = "email" | "sending" | "sent" | "resending";
+
+const NO_CONNECTION = "Can't connect. Check your connection.";
+/** Writer (r2): Supabase allows 2 sign-in emails an hour; our 429 (or Supabase's, mapped) reads the same. */
+const EMAIL_LIMIT = "Too many emails for now. Try again in an hour.";
 
 const SIGNIN_NOTES: Record<string, string> = {
   expired: "That sign-in link has expired or was already used. Send a new one.",
@@ -25,12 +29,12 @@ function takeWatchCode() {
 }
 
 /**
- * v21 sign-in screen (/room for anyone without a session). Email -> a one-time link (and a code, when the
- * email template includes one). A watch link (#watch=...) is redeemed here into a read-only watch session.
+ * v21 sign-in screen (/room for anyone without a session). Email -> Supabase's default magic-link email; the
+ * link signs in only this browser (PKCE). No codes to type. A watch link (#watch=...) is redeemed here into a
+ * read-only watch session.
  */
 export function SignIn() {
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
   const [phase, setPhase] = useState<Phase>("email");
   const [note, setNote] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -61,52 +65,38 @@ export function SignIn() {
         }
         setWatchNote(body.error ?? "This watch link isn't valid. Ask the owner for a new one.");
       } catch {
-        setWatchNote("Can’t reach the room. Try the link again.");
+        setWatchNote(NO_CONNECTION);
       }
     })();
   }, []);
 
-  async function send(event: React.FormEvent) {
-    event.preventDefault();
-    if (phase === "sending") return;
+  /** POST /api/auth/otp: the server asks Supabase for its default magic-link email (PKCE, this browser). */
+  async function request(again: boolean) {
+    if (phase === "sending" || phase === "resending") return;
     setNote("");
-    setPhase("sending");
+    setPhase(again ? "resending" : "sending");
+    const back: Phase = again ? "sent" : "email";
     try {
       const res = await fetch("/api/auth/otp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) });
-      const body = (await res.json()) as { ok?: boolean; error?: string };
+      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; code?: string };
       if (!res.ok || !body.ok) {
-        setPhase("email");
-        setNote(body.error ?? "We couldn't send the email. Try again.");
+        setPhase(back);
+        setNote(res.status === 429 ? EMAIL_LIMIT : (body.error ?? "We couldn't send the email. Try again."));
         return;
       }
       setPhase("sent");
     } catch {
-      setPhase("email");
-      setNote("Can’t reach the room. Check your connection.");
+      setPhase(back);
+      setNote(NO_CONNECTION);
     }
   }
 
-  async function verify(event: React.FormEvent) {
+  function send(event: React.FormEvent) {
     event.preventDefault();
-    if (phase === "verifying") return;
-    setNote("");
-    setPhase("verifying");
-    try {
-      const res = await fetch("/api/auth/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, code }) });
-      const body = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !body.ok) {
-        setPhase("sent");
-        setNote(body.error ?? "That code didn't work.");
-        return;
-      }
-      await refreshMe();
-    } catch {
-      setPhase("sent");
-      setNote("Can’t reach the room. Check your connection.");
-    }
+    void request(false);
   }
 
-  const sent = phase === "sent" || phase === "verifying";
+  const sent = phase === "sent" || phase === "resending";
   return (
     <div className="landing min-h-dvh signin-page" data-signin="">
       <header className="landing-head mono">
@@ -122,7 +112,7 @@ export function SignIn() {
           <h1 className="landing-title signin-title">
             Sign in to open <span>your apartment.</span>
           </h1>
-          <p className="landing-lede">Each account has one private apartment. Only you can see it, and anyone you send a watch link.</p>
+          <p className="landing-lede">One account, one private apartment. Only you and people you send a watch link can see it.</p>
           {watchNote ? (
             <p className="signin-note" role="status" data-watch-note="">
               {watchNote}
@@ -148,29 +138,20 @@ export function SignIn() {
               </button>
             </form>
           ) : (
-            <form className="signin-form" onSubmit={verify}>
+            <div className="signin-form signin-sent" data-signin-sent="">
               <p className="signin-note" role="status">
-                Check your email. Open the link on this device, or type the code from the email.
+                Check your email and tap the link. Open it in this browser.
               </p>
-              <label className="mono" htmlFor="signin-code">
-                CODE
-              </label>
-              <input
-                id="signin-code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9 ]*"
-                placeholder="123456"
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-              />
-              <button type="submit" className="invite-copy signin-submit mono" disabled={phase === "verifying" || code.replace(/\s/g, "").length < 6}>
-                {phase === "verifying" ? "CHECKING…" : "SIGN IN"}
-              </button>
-              <button type="button" className="signin-link mono" onClick={() => { setPhase("email"); setCode(""); }}>
-                Use a different email
-              </button>
-            </form>
+              <p className="signin-note signin-quiet">It comes from Supabase. Not there? Check spam.</p>
+              <div className="signin-actions">
+                <button type="button" className="signin-resend" onClick={() => void request(true)} disabled={phase === "resending"} aria-busy={phase === "resending"} data-signin-resend="">
+                  Send it again
+                </button>
+                <button type="button" className="signin-resend" onClick={() => { setPhase("email"); setNote(""); }}>
+                  Use a different email
+                </button>
+              </div>
+            </div>
           )}
           {note ? (
             <p className="signin-note is-error" role="alert">
