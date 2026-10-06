@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { readJson } from "@/lib/http";
+import { authClient } from "@/lib/apartments/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,10 @@ export const dynamic = "force-dynamic";
  * Inert (404) unless ALL hold: VERCEL_ENV is "preview", V21_TEST_ADMIN_TOKEN (>= 32 chars) is set on this
  * deployment and matches the x-v21-test-token header, and the address is v21t-...@example.com (a reserved
  * domain that never receives mail). It creates the user as confirmed (Supabase admin API, server side, no
- * email sent) and returns a one-time magic-link token hash for GET /auth/confirm. Never logs anything.
+ * email sent) and returns a one-time magic-link token hash (the test harness exchanges it itself; r2 removed
+ * /auth/confirm from the app). With {"session": true} it exchanges the hash here instead and answers with the
+ * Supabase session cookies (HttpOnly) and no hash, so a browser or curl can sign in. Never logs anything.
+ * Reuses an existing test user when the address already exists (no new account).
  */
 const EMAIL = /^v21t-[a-z0-9-]{1,40}@example\.com$/;
 
@@ -40,6 +44,15 @@ export async function POST(req: Request) {
   const tokenHash = link.data?.properties?.hashed_token ?? "";
   if (link.error || !tokenHash) {
     return Response.json({ ok: false, error: "link failed", status: link.error?.status ?? 0 }, { status: 502, headers: { "Cache-Control": "no-store" } });
+  }
+  if ((body.value as { session?: unknown }).session === true) {
+    const auth = authClient(req);
+    if (!auth) return notFound();
+    const { error } = await auth.client.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
+    if (error) return Response.json({ ok: false, error: "session failed", status: error.status ?? 0 }, { status: 502, headers: { "Cache-Control": "no-store" } });
+    const res = Response.json({ ok: true, created: !made.error }, { headers: { "Cache-Control": "no-store" } });
+    for (const c of auth.setCookies()) res.headers.append("Set-Cookie", c);
+    return res;
   }
   return Response.json({ ok: true, tokenHash, created: !made.error }, { headers: { "Cache-Control": "no-store" } });
 }
