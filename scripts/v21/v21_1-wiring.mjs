@@ -4,7 +4,7 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PW_CORE || "/usr/local/lib/pnpm/5/.pnpm/playwright-core@1.59.1/node_modules/playwright-core");
+const { chromium } = require(process.env.PW_CORE || "/tmp/pw/node_modules/playwright-core");
 const CHROME = process.env.PW_CHROME || "/opt/google/chrome/chrome";
 const BASE = (process.env.BASE || "http://127.0.0.1:3921").replace(/\/$/, "");
 const STUB = (process.env.STUB || "http://127.0.0.1:4599").replace(/\/$/, "");
@@ -25,6 +25,11 @@ const ALLOW = new Set([
 ]);
 
 const browser = await chromium.launch({ executablePath: CHROME, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+let ipN = Math.floor(Math.random() * 200);
+function contextOptions(viewport) {
+  ipN += 1;
+  return { viewport, extraHTTPHeaders: { "x-forwarded-for": `10.77.${ipN % 250}.${Math.floor(Math.random() * 200)}` } };
+}
 
 async function controls(page, root) {
   return page.locator(root).locator("button, a").evaluateAll((els) =>
@@ -46,7 +51,7 @@ function unknown(list) {
 
 try {
   for (const [width, height] of [[1440, 900], [390, 844]]) {
-    const ctx = await browser.newContext({ viewport: { width, height } });
+    const ctx = await browser.newContext(contextOptions({ width, height }));
     const page = await ctx.newPage();
     await page.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("[data-auth-control=sign-in]", { timeout: 20000 });
@@ -66,7 +71,7 @@ try {
     await ctx.close();
   }
 
-  const err = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const err = await browser.newContext(contextOptions({ width: 1280, height: 800 }));
   const errPage = await err.newPage();
   await errPage.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await errPage.waitForSelector("[data-auth-control=sign-in]");
@@ -92,7 +97,7 @@ try {
   check("password sign-up lands in the room without the offer", (await errPage.locator("[data-password-offer]").count()) === 0);
   await err.close();
 
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const ctx = await browser.newContext(contextOptions({ width: 1280, height: 800 }));
   const page = await ctx.newPage();
   await page.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("[data-auth-control=magic]");
@@ -114,7 +119,8 @@ try {
   await page.click("[data-auth-control=not-now]");
   await page.waitForSelector("[data-password-offer]", { state: "detached" });
   const stored = await page.evaluate(() => ({ later: localStorage.getItem("lr-set-password-later"), keys: Object.keys(localStorage) }));
-  check("Not now dismisses on this device only", stored.later === "1" && stored.keys.every((key) => key === "lr-set-password-later" || key === "living-room-seen-replies"), stored.keys.join(","));
+  const localOk = new Set(["lr-set-password-later", "living-room-seen-replies", "living-room-mute"]);
+  check("Not now dismisses on this device only", stored.later === "1" && stored.keys.every((key) => localOk.has(key)) && !stored.keys.some((key) => key.startsWith("sb-") || key.includes("auth-token")), stored.keys.join(","));
   await page.click("[data-hud=fab]");
   await page.waitForSelector("[data-hud-tab=you]", { timeout: 15000 });
   await page.click("[data-hud-tab=you]");

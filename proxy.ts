@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { authConfig, serializeAuthCookie } from "@/lib/apartments/auth";
-import { PROXY_MATCHER, readSessionExpiry } from "@/lib/auth/session-cookie";
+import { readSessionExpiry } from "@/lib/auth/session-cookie";
 
 const REFRESH_WITHIN_S = 120;
 const AUTH_COOKIE = /^sb-[a-z0-9]+-auth-token/;
@@ -37,4 +37,5 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: PROXY_MATCHER };
+// Literal on purpose: Next reads this at build time and will not follow an imported constant.
+export const config = { matcher: ["/room", "/room/:path*", "/account/:path*", "/api/me"] };

@@ -174,7 +174,8 @@ const passwordRoute = await import("../../app/api/auth/password/route");
 const updateRoute = await import("../../app/api/auth/update-password/route");
 const signout = await import("../../app/api/auth/signout/route");
 const { NextRequest } = await import("next/server");
-const { proxy } = await import("../../proxy");
+const { proxy, config: proxyConfig } = await import("../../proxy");
+check("the proxy file's matcher matches the session-cookie list", proxyConfig.matcher.join(" ") === sessionCookie.PROXY_MATCHER.join(" "));
 
 const struck = [["Tap ", ["Con", "tinue"].join(""), " to finish."].join(""), ["One", "moment\u2026"].join(" ")];
 const root = path.resolve(import.meta.dirname, "../..");
