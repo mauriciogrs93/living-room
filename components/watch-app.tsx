@@ -149,7 +149,7 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
             <span>2 M</span>
           </span>
         </aside>
-        {status === "offline" && <p className="hud-offline">Can’t reach the room. This page will keep trying.</p>}
+        {status === "offline" && <p className="hud-offline">Can&apos;t connect. Check your connection.</p>}
         {role === "watch" ? (
           <p className="watch-badge mono" data-watch-badge="">
             WATCHING · READ-ONLY

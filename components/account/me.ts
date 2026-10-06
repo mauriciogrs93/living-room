@@ -21,7 +21,7 @@ async function load(): Promise<Me> {
     if (!res.ok) return { role: "error", message: String(body.error ?? "The room didn't answer.") };
     return body as unknown as Me;
   } catch {
-    return { role: "error", message: "Can’t reach the room. Check your connection." };
+    return { role: "error", message: "Can't connect. Check your connection." };
   }
 }
 
