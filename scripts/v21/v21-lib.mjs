@@ -4,6 +4,7 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 export const BASE = (process.env.BASE || "http://localhost:3921").replace(/\/$/, "");
 export const VIA = process.env.VIA || "";
@@ -82,7 +83,7 @@ export async function call(method, path, { body, jar, token, ip, headers = {}, b
   return res;
 }
 
-const REPO = process.env.REPO || "/workspace/living-room-v19";
+const REPO = process.env.REPO || fileURLToPath(new URL("../..", import.meta.url));
 const requireRepo = createRequire(`${REPO}/package.json`);
 function supabasePublic() {
   const env = Object.fromEntries(
@@ -92,12 +93,41 @@ function supabasePublic() {
 }
 
 /**
- * Test sign-in (r2: the app has no token-hash route any more). The preview-only helper mints a one-time
- * magic-link hash for a v21t-...@example.com address (no email); THIS harness exchanges it with Supabase Auth
- * (publishable key, @supabase/ssr) and keeps the resulting session cookies in a Jar. Existing test users are reused.
+ * Test sign-in (r2: the app has no token-hash route any more).
+ * Local (no PREVIEW / VIA): PKCE against scripts/v21/auth-stub.mjs. No email, no Supabase project.
+ * Preview: the preview-only helper mints a one-time magic-link hash for a v21t-...@example.com address
+ * (no email); THIS harness exchanges it with Supabase Auth and keeps the session cookies in a Jar.
  */
+async function signInLocal(email) {
+  const url = process.env.AUTH_STUB_URL || "http://127.0.0.1:4599";
+  const key = process.env.AUTH_STUB_KEY || "sb_publishable_local_stub";
+  if (typeof globalThis.WebSocket === "undefined") globalThis.WebSocket = class { constructor() { throw new Error("no realtime in tests"); } };
+  const { createServerClient } = requireRepo("@supabase/ssr");
+  const jar = new Jar();
+  const client = createServerClient(url, key, {
+    cookies: {
+      getAll: () => [...jar.map].map(([name, value]) => ({ name, value })),
+      setAll: (list) => {
+        for (const c of list) {
+          if (c.value) jar.map.set(c.name, c.value);
+          else jar.map.delete(c.name);
+        }
+      },
+    },
+    auth: { flowType: "pkce", autoRefreshToken: false, detectSessionInUrl: false, persistSession: true },
+  });
+  const otp = await client.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: `${BASE}/auth/callback` } });
+  if (otp.error) return { ok: false, status: otp.error.status || 401, jar };
+  const minted = await fetch(`${url}/stub/code?email=${encodeURIComponent(email)}`);
+  const body = await minted.json().catch(() => ({}));
+  if (!minted.ok || !body.code) return { ok: false, status: minted.status, jar };
+  const exchanged = await client.auth.exchangeCodeForSession(body.code);
+  return { ok: !exchanged.error && jar.has(/^sb-.*-auth-token/), status: exchanged.error ? 401 : 200, jar };
+}
+
 export async function signIn(email, { ip } = {}) {
   void ip;
+  if (!VIA && !process.env.PREVIEW) return signInLocal(email);
   const token = readFileSync("/workspace/.secrets/v21-test-admin.token", "utf8").trim();
   const link = await viaCurl(PREVIEW, "POST", "/api/test-admin/link", { "content-type": "application/json", "x-v21-test-token": token }, { email });
   const jar = new Jar();
