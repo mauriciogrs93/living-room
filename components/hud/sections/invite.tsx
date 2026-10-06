@@ -246,7 +246,7 @@ export function InviteSection({ model }: { model: HudModel }) {
   }
 
   const ready = Boolean(shown.line || shown.watch);
-  const isUpdated = (k: Kind) => freshUntil[k] > now && freshUntil[k] > Date.now();
+  const isUpdated = (k: Kind) => freshUntil[k] > now;
   return (
     <div className="hud-stack invite-tab" data-invite-section="" data-invite-state={ready ? "live" : note ? "error" : "loading"}>
       <p className="hud-quiet invite-intro">Copy one and send it right away. Each works once.</p>
