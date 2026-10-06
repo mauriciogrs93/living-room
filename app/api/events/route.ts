@@ -1,6 +1,7 @@
 import { preflight } from "@/lib/http";
 import { roomFailure, type RoomPort } from "@/lib/room/access";
-import { forbiddenViewer, ownerContext, viewerContext } from "@/lib/apartments/resolve";
+import { WATCH_ENDED_COPY } from "@/lib/apartments/copy";
+import { forbiddenViewer, ownerContext, viewerContext, watchApartment } from "@/lib/apartments/resolve";
 import { diffSnapshot } from "@/lib/room/sse-diff";
 import type { Snapshot } from "@/lib/room/types";
 
@@ -45,12 +46,14 @@ export async function GET(req: Request) {
   let engine: RoomPort;
   let apt = "";
   let identity = "";
+  let watch = false;
   try {
     const viewer = await viewerContext(req);
     if (viewer instanceof Response) return viewer;
     if (!viewer) return forbiddenViewer();
     engine = viewer.room as RoomPort;
     apt = viewer.apartmentId;
+    watch = viewer.role === "watch";
     if (viewer.role === "owner") {
       const owner = await ownerContext(req);
       if (!(owner instanceof Response)) identity = owner.identity;
@@ -129,6 +132,11 @@ export async function GET(req: Request) {
         if (closed) return;
         if (Date.now() >= deadline) {
           raw(`event: bye\ndata: {}\n\n`);
+          stop();
+          return;
+        }
+        if (watch && !(await watchApartment(req))) {
+          raw(`event: bye\ndata: ${JSON.stringify({ reason: "watch_ended", error: WATCH_ENDED_COPY })}\n\n`);
           stop();
           return;
         }

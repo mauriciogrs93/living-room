@@ -1,6 +1,7 @@
 import { ownerJson, sameOrigin } from "@/lib/http";
 import { roomFailure } from "@/lib/room/access";
 import { guarded } from "@/lib/room/guard";
+import { WATCH_REVOKE_DONE } from "@/lib/apartments/copy";
 import { directory } from "@/lib/apartments/directory";
 import { ownerContext, withCookies, watchWriteBlock } from "@/lib/apartments/resolve";
 
@@ -16,7 +17,7 @@ export const POST = guarded(async (req) => {
     const owner = await ownerContext(req);
     if (owner instanceof Response) return owner;
     const ended = await directory().watchRevoke(owner.apartment.id, true);
-    return withCookies(ownerJson({ ok: true, message: "Watch links ended.", ...ended }), owner.setCookies);
+    return withCookies(ownerJson({ ok: true, message: WATCH_REVOKE_DONE, ...ended }), owner.setCookies);
   } catch (error) {
     const failure = roomFailure(error);
     if (failure) return failure;

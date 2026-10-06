@@ -3,11 +3,26 @@
 import { useEffect, useState } from "react";
 import { WatchApp } from "./watch-app";
 import { SignIn } from "./account/sign-in";
+import { WATCH_ENDED_COPY } from "@/lib/apartments/copy";
 import { useMe } from "./account/me";
+import { useWatchEnded } from "./account/watch-ended";
 
 /** v21 /room: the signed-in owner or a watch-link guest sees the apartment; everyone else, the sign-in screen. */
+function WatchEnded({ message }: { message: string }) {
+  return (
+    <div className="landing min-h-dvh signin-page" data-watch-ended="">
+      <main className="signin-main">
+        <p className="signin-note" role="status">
+          {message}
+        </p>
+      </main>
+    </div>
+  );
+}
+
 export function RoomGate({ origin = "" }: { origin?: string }) {
   const me = useMe();
+  const watchEnded = useWatchEnded();
   const [watchWhileSignedIn] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.hash.replace(/^#/, "")).has("watch"));
   useEffect(() => {
     if (me?.role !== "owner") return;
@@ -20,6 +35,7 @@ export function RoomGate({ origin = "" }: { origin?: string }) {
   if (!me) return <div className="landing min-h-dvh" aria-busy="true" data-gate="loading" />;
   if (me.role === "none") return <SignIn />;
   if (me.role === "error") {
+    if (me.message === WATCH_ENDED_COPY) return <WatchEnded message={me.message} />;
     return (
       <div className="landing min-h-dvh signin-page" data-gate="error">
         <main className="signin-main">
@@ -30,6 +46,7 @@ export function RoomGate({ origin = "" }: { origin?: string }) {
       </div>
     );
   }
+  if (me.role === "watch" && watchEnded) return <WatchEnded message={watchEnded} />;
   return (
     <>
       {watchWhileSignedIn && me.role === "owner" ? (

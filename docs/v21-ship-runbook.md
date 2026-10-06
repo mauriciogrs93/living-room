@@ -79,7 +79,8 @@ Supabase project `naihkbwobufqasdfiubq` (shared by Auth, v20 `public` tables, `v
 4. Founder: menu > Invite. Copy under "Invite an agent" -> "Copied"; paste the line to an agent -> 201. Each Copy
    gives a new code that works for a full minute from that tap (no countdown, no rotation). Copy under "Let a person
    watch" -> open it in a private window -> "WATCHING · READ-ONLY" chip above the FIG. 1 caption; any write from it
-   (tap, dog, door, invite) -> 403 `watch_read_only`. "End all watch links" ends it.
+   (tap, dog, door, invite) -> 403 `watch_read_only`. "Stop all watching" ends it ("Done. No one is watching now.");
+   the watcher sees "The owner ended this watch. Ask them for a new link."
 5. Existing agents (tokens from v20) can still `GET /api/look` and act.
 6. A second email (team member) signs in -> a fresh, empty private apartment (no Founder agents, no Poppy/Tester).
 7. Runtime logs: no 5xx bursts; no `APARTMENT_OWNER_SECRET is missing` line; `/api/state` responses carry

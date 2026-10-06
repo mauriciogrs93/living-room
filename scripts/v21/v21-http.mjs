@@ -238,7 +238,7 @@ check("the newest of the 4 still works -> 200", newest.status === 200, `status $
 const revoke = await call("POST", "/api/apartment/watch-revoke", { jar: B.jar, ip: ipB, body: {} });
 const afterRevokeLink = await call("POST", "/api/watch/redeem", { jar: new Jar(), body: { code: capTaps[2].code } });
 const afterRevokeSession = await call("GET", "/api/state", { jar: bWatcher });
-check("owner ends all watch links -> unused links cancelled and open watch sessions end (403)", revoke.status === 200 && afterRevokeLink.status === 403 && afterRevokeLink.json?.code === "watch_cancelled" && afterRevokeSession.status === 403, `revoke ${revoke.status}, link ${afterRevokeLink.status} ${afterRevokeLink.json?.code}, session ${afterRevokeSession.status}`);
+check("owner ends all watch links -> unused links cancelled and open watch sessions end (403)", revoke.status === 200 && revoke.json?.message === "Done. No one is watching now." && afterRevokeLink.status === 403 && afterRevokeLink.json?.code === "watch_cancelled" && afterRevokeSession.status === 403 && afterRevokeSession.json?.code === "watch_ended" && afterRevokeSession.json?.error === "The owner ended this watch. Ask them for a new link.", `revoke ${revoke.status} ${revoke.json?.message || ""}, link ${afterRevokeLink.status} ${afterRevokeLink.json?.code}, session ${afterRevokeSession.status} ${afterRevokeSession.json?.code}`);
 
 // ---------- rate limits: 429 + Retry-After ----------
 if (!SKIP_LIMITS) {

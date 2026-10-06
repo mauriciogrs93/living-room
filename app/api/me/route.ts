@@ -2,7 +2,7 @@ import { ownerJson } from "@/lib/http";
 import { roomFailure } from "@/lib/room/access";
 import { guarded } from "@/lib/room/guard";
 import { currentAccount } from "@/lib/apartments/auth";
-import { ensureApartment, watchApartment, withCookies } from "@/lib/apartments/resolve";
+import { ensureApartment, hasWatchCookie, watchApartment, watchEndedResponse, withCookies } from "@/lib/apartments/resolve";
 import { maskEmail } from "@/lib/apartments/mask";
 import { INVITE_TTL_MS } from "@/lib/room/invite-ttl";
 
@@ -31,6 +31,7 @@ export const GET = guarded(async (req) => {
       );
     }
     if (await watchApartment(req)) return withCookies(ownerJson({ ok: true, role: "watch" }), setCookies);
+    if (hasWatchCookie(req)) return watchEndedResponse(setCookies);
     return withCookies(ownerJson({ ok: true, role: "none" }), setCookies);
   } catch (error) {
     const failure = roomFailure(error);

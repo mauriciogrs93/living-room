@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { WATCH_ENDED_COPY } from "@/lib/apartments/copy";
+import { setWatchEnded } from "./account/watch-ended";
 import type { Snapshot } from "@/lib/room/types";
 
 export type RoomStatus = "connecting" | "live" | "reconnecting" | "offline";
@@ -11,6 +13,7 @@ export function useRoom() {
   const [status, setStatus] = useState<RoomStatus>("connecting");
 
   useEffect(() => {
+    setWatchEnded(null);
     let cancelled = false;
     let source: EventSource | null = null;
     let poll: ReturnType<typeof setInterval> | undefined;
@@ -32,9 +35,25 @@ export function useRoom() {
       setSnapshot({ ...data, receivedAt: Date.now() });
     };
 
+    const endWatch = (message?: string) => {
+      cancelled = true;
+      source?.close();
+      source = null;
+      if (poll) clearInterval(poll);
+      poll = undefined;
+      if (retry) clearTimeout(retry);
+      setWatchEnded(message || WATCH_ENDED_COPY);
+    };
     const pull = async () => {
       try {
         const res = await fetch("/api/state", { cache: "no-store" });
+        if (res.status === 403) {
+          const body = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
+          if (body.code === "watch_ended") {
+            endWatch(body.error);
+            return;
+          }
+        }
         if (!res.ok) throw new Error(String(res.status));
         apply((await res.json()) as Snapshot);
       } catch {
@@ -80,6 +99,14 @@ export function useRoom() {
           apply(held);
         } catch {
           /* ignore malformed frames */
+        }
+      });
+      source.addEventListener("bye", (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data) as { reason?: string; error?: string };
+          if (data.reason === "watch_ended") endWatch(data.error);
+        } catch {
+          /* a normal stream restart has an empty bye */
         }
       });
       source.onerror = () => {

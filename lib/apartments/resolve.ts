@@ -9,6 +9,7 @@ import { INVITE_TTL_MS } from "@/lib/room/invite-ttl";
 import { directory, type Apartment } from "./directory";
 import { currentAccount, type Account } from "./auth";
 import { accountIdentity, ownerSecret } from "./identity";
+import { WATCH_ENDED_COPY } from "./copy";
 import { LIMITS, retryAfterSeconds, type Limit } from "./limits";
 
 /**
@@ -190,6 +191,15 @@ export async function watchApartment(req: Request) {
   return directory().watchSession(sessionHash(token));
 }
 
+/** A well-formed watch cookie whose session is gone: the owner ended it, or it expired. */
+export function watchEndedResponse(setCookies: string[] = []) {
+  return withCookies(ownerJson({ ok: false, code: "watch_ended", error: WATCH_ENDED_COPY }, 403), setCookies);
+}
+
+export function hasWatchCookie(req: Request) {
+  return WATCH_RE.test(cookieValue(req, WATCH_COOKIE));
+}
+
 export type ViewerContext = { apartmentId: string; role: "owner" | "watch"; room: VersionedRoom; setCookies: string[] };
 
 /**
@@ -203,8 +213,11 @@ export async function viewerContext(req: Request): Promise<ViewerContext | null 
     if (got instanceof Response) return withCookies(got, setCookies);
     return { apartmentId: got.apartment.id, role: "owner", room: roomFor(got.apartment.id), setCookies };
   }
-  const watched = await watchApartment(req);
-  if (watched) return { apartmentId: watched, role: "watch", room: roomFor(watched), setCookies };
+  if (hasWatchCookie(req)) {
+    const watched = await watchApartment(req);
+    if (watched) return { apartmentId: watched, role: "watch", room: roomFor(watched), setCookies };
+    return watchEndedResponse(setCookies);
+  }
   return null;
 }
 
