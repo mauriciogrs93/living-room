@@ -1,8 +1,9 @@
-// v21 HTTP test helpers. Local server: plain fetch (x-forwarded-for picks the "IP").
+// v21 HTTP test helpers (r2). Local server: plain fetch (x-forwarded-for picks the "IP").
 // Private preview: VIA=<deployment url> routes every call through `vercel curl` (the CLI's own protection
 // bypass; no token is created). Never prints keys, tokens, invite codes, watch codes or session cookies.
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 export const BASE = (process.env.BASE || "http://localhost:3921").replace(/\/$/, "");
 export const VIA = process.env.VIA || "";
@@ -81,14 +82,37 @@ export async function call(method, path, { body, jar, token, ip, headers = {}, b
   return res;
 }
 
-/** Test sign-in: the preview-only helper mints a one-time magic-link hash (no email); /auth/confirm turns it into a session. */
+const REPO = process.env.REPO || "/workspace/living-room-v19";
+const requireRepo = createRequire(`${REPO}/package.json`);
+function supabasePublic() {
+  const env = Object.fromEntries(
+    readFileSync("/workspace/.secrets/v21-local.env", "utf8").split("\n").filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]),
+  );
+  return { url: env.NEXT_PUBLIC_SUPABASE_URL, key: env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY };
+}
+
+/**
+ * Test sign-in (r2: the app has no token-hash route any more). The preview-only helper mints a one-time
+ * magic-link hash for a v21t-...@example.com address (no email); THIS harness exchanges it with Supabase Auth
+ * (publishable key, @supabase/ssr) and keeps the resulting session cookies in a Jar. Existing test users are reused.
+ */
 export async function signIn(email, { ip } = {}) {
+  void ip;
   const token = readFileSync("/workspace/.secrets/v21-test-admin.token", "utf8").trim();
   const link = await viaCurl(PREVIEW, "POST", "/api/test-admin/link", { "content-type": "application/json", "x-v21-test-token": token }, { email });
-  if (link.status !== 200 || !link.json?.tokenHash) return { ok: false, status: link.status, jar: new Jar() };
   const jar = new Jar();
-  const res = await call("GET", `/auth/confirm?token_hash=${encodeURIComponent(link.json.tokenHash)}&type=magiclink`, { jar, ip });
-  return { ok: res.status === 303 && jar.has(/^sb-.*-auth-token/) && !/signin=/.test(res.headers.get("location") || ""), status: res.status, location: (res.headers.get("location") || "").replace(/\?.*$/, ""), jar };
+  if (link.status !== 200 || !link.json?.tokenHash) return { ok: false, status: link.status, jar };
+  if (typeof globalThis.WebSocket === "undefined") globalThis.WebSocket = class { constructor() { throw new Error("no realtime in tests"); } };
+  const { createServerClient } = requireRepo("@supabase/ssr");
+  const { url, key } = supabasePublic();
+  const pending = [];
+  const client = createServerClient(url, key, {
+    cookies: { getAll: () => [], setAll: (list) => pending.push(...list) },
+    auth: { flowType: "pkce", autoRefreshToken: false, detectSessionInUrl: false, persistSession: true },
+  });
+  const { error } = await client.auth.verifyOtp({ token_hash: link.json.tokenHash, type: "magiclink" });
+  for (const c of pending) if (c.value) jar.map.set(c.name, c.value); else jar.map.delete(c.name);
+  return { ok: !error && jar.has(/^sb-.*-auth-token/), status: error ? 401 : 200, jar };
 }
 
 export const results = [];
