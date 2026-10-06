@@ -4,7 +4,7 @@ import { json } from "@/lib/http";
 import { RoomEngine, type PersistedRoom } from "@/lib/room/engine";
 import type { ActResult, Book, RadioStation, Snapshot } from "@/lib/room/types";
 import { flushMail, loadOwner, loadToken } from "@/lib/room/mailbox";
-import { RoomBusy, RoomOffline, RoomUnavailable } from "@/lib/room/errors";
+import { OwnerSecretMissing, RoomBusy, RoomOffline, RoomUnavailable } from "@/lib/room/errors";
 import { RedisError, redisCommand, redisConfig, redisTimed } from "@/lib/room/redis";
 import { roomRpcPrefix, supabaseConfig } from "@/lib/room/store/config";
 import { VersionedRoom } from "@/lib/room/store/versioned-room";
@@ -560,6 +560,10 @@ export function getEngine(): RoomPort {
 }
 
 export function roomFailure(error: unknown) {
+  if (error instanceof OwnerSecretMissing) {
+    // r2: fail closed. The log line is written once per instance by lib/apartments/identity.ts.
+    return json({ ok: false, code: "server_misconfigured", error: "Accounts aren't set up on this server yet. Try again later." }, 503);
+  }
   if (error instanceof RoomOffline) {
     return json({ ok: false, error: "room offline", retry: true }, 503, { "Retry-After": "2" });
   }

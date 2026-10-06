@@ -8,7 +8,7 @@ import { inviteHash, newInviteCode, sha256 } from "@/lib/room/door";
 import { INVITE_TTL_MS } from "@/lib/room/invite-ttl";
 import { directory, type Apartment } from "./directory";
 import { currentAccount, type Account } from "./auth";
-import { accountIdentity } from "./identity";
+import { accountIdentity, ownerSecret } from "./identity";
 import { LIMITS, retryAfterSeconds, type Limit } from "./limits";
 
 /**
@@ -63,6 +63,7 @@ export type Provisioned = { apartment: Apartment; created: boolean; claimedLegac
  * unique owner_id makes a race or a second call return the same apartment.
  */
 export async function ensureApartment(account: Account, req: Request): Promise<Provisioned | Response> {
+  ownerSecret(); // r2: production without APARTMENT_OWNER_SECRET fails closed here (503), before any lookup
   const dir = directory();
   const existing = await dir.forUser(account.id);
   if (existing) return { apartment: existing, created: false, claimedLegacy: false };

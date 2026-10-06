@@ -20,3 +20,11 @@ export class RoomOffline extends Error {
     this.name = "RoomOffline";
   }
 }
+
+/** v21 r2: production has no APARTMENT_OWNER_SECRET. Account routes fail closed (503), no fallback key. */
+export class OwnerSecretMissing extends Error {
+  constructor() {
+    super("APARTMENT_OWNER_SECRET is not set");
+    this.name = "OwnerSecretMissing";
+  }
+}
