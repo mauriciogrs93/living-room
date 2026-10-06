@@ -58,6 +58,39 @@ export function freshApartmentState(identity: string) {
 export type Provisioned = { apartment: Apartment; created: boolean; claimedLegacy: boolean };
 
 /**
+ * r2 (Performance): the user -> apartment lookup (for_user) cached in memory for 30 s, keyed by the VERIFIED
+ * account id (from getUser, itself cached 30 s), the same way the account is cached. Only found apartments are
+ * kept (a user with none yet asks the database every time until it is created or claimed), so a 1 s
+ * state-cache hit makes no database trip. An entry can only ever answer for the user id it was stored under.
+ */
+export const APARTMENT_CACHE_MS = 30_000;
+const apartmentCache = new Map<string, { apartment: Apartment; at: number }>();
+let apartmentLookups = 0;
+
+function rememberApartment(userId: string, apartment: Apartment) {
+  apartmentCache.delete(userId);
+  apartmentCache.set(userId, { apartment: { ...apartment }, at: Date.now() });
+  if (apartmentCache.size > 5000) apartmentCache.delete(apartmentCache.keys().next().value!);
+}
+
+export async function apartmentForUser(userId: string): Promise<Apartment | null> {
+  const hit = apartmentCache.get(userId);
+  if (hit && Date.now() - hit.at < APARTMENT_CACHE_MS) return { ...hit.apartment };
+  if (hit) apartmentCache.delete(userId);
+  apartmentLookups += 1;
+  const found = await directory().forUser(userId);
+  if (found) rememberApartment(userId, found);
+  return found;
+}
+
+/** Test hooks: database lookups so far, and a reset. */
+export const apartmentCacheStats = () => ({ lookups: apartmentLookups, size: apartmentCache.size });
+export function clearApartmentCache() {
+  apartmentCache.clear();
+  apartmentLookups = 0;
+}
+
+/**
  * One account, one apartment. Existing -> it. Verified LEGACY_OWNER_EMAIL -> claims the pre-v21 room
  * (agents, books, state and all). Otherwise a fresh private apartment (rate limited). The database's
  * unique owner_id makes a race or a second call return the same apartment.
@@ -65,13 +98,14 @@ export type Provisioned = { apartment: Apartment; created: boolean; claimedLegac
 export async function ensureApartment(account: Account, req: Request): Promise<Provisioned | Response> {
   ownerSecret(); // r2: production without APARTMENT_OWNER_SECRET fails closed here (503), before any lookup
   const dir = directory();
-  const existing = await dir.forUser(account.id);
+  const existing = await apartmentForUser(account.id);
   if (existing) return { apartment: existing, created: false, claimedLegacy: false };
   const identity = accountIdentity(account.id);
   const legacy = legacyEmail();
   if (legacy && account.emailVerified && account.email === legacy) {
     const claimed = await dir.claimLegacy(account.id);
     if (claimed) {
+      rememberApartment(account.id, claimed);
       await roomFor(claimed.id).setOwnerIdentity(identity);
       return { apartment: claimed, created: false, claimedLegacy: true };
     }
@@ -81,7 +115,7 @@ export async function ensureApartment(account: Account, req: Request): Promise<P
     (await limited("apt-create-all", LIMITS.createGlobal, "Too many new apartments right now. Try again later.", "create_rate_limited"));
   if (tooMany) return tooMany;
   const made = await dir.create(account.id, freshApartmentState(identity), { locked: true, knocking: false });
-  const apartment = (await dir.forUser(account.id)) ?? { id: made.id, kind: "private" as const, legacy: false };
+  const apartment = (await apartmentForUser(account.id)) ?? { id: made.id, kind: "private" as const, legacy: false };
   return { apartment, created: made.created, claimedLegacy: false };
 }
 
