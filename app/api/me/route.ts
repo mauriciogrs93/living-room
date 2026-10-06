@@ -4,7 +4,7 @@ import { guarded } from "@/lib/room/guard";
 import { currentAccount } from "@/lib/apartments/auth";
 import { ensureApartment, watchApartment, withCookies } from "@/lib/apartments/resolve";
 import { maskEmail } from "@/lib/apartments/mask";
-import { INVITE_ROTATE_MS, INVITE_TTL_MS } from "@/lib/room/invite-ttl";
+import { INVITE_TTL_MS } from "@/lib/room/invite-ttl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export const GET = guarded(async (req) => {
           role: "owner",
           email: maskEmail(account.email),
           apartment: { legacy: got.apartment.legacy, created: got.created, claimedLegacy: got.claimedLegacy },
-          invite: { ttlMs: INVITE_TTL_MS, rotateMs: INVITE_ROTATE_MS },
+          invite: { ttlMs: INVITE_TTL_MS },
         }),
         setCookies,
       );

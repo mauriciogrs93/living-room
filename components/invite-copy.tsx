@@ -9,14 +9,12 @@ import { PUBLIC_JOIN_COPY } from "@/lib/join-line";
 export type InviteCopyResult = { line: string; copied: boolean };
 
 /**
- * v20: mint a fresh invite (owner only, POST /api/door) and copy the line it comes back in.
- * Call this SYNCHRONOUSLY inside the tap handler: the clipboard write starts during the tap with a
- * promise of the line, so iPhone Safari allows it even though the line is fetched. Falls back to
- * writeText, then to { copied: false } so the caller shows the line to select by hand.
- * Rejects (with the server's message) when minting is refused: not the owner, paused, or rate-limited.
+ * Copy text that is still being fetched, iPhone-safe. Call this SYNCHRONOUSLY inside the tap handler: the
+ * clipboard write starts during the tap with a promise of the text, so iPhone Safari allows it even though
+ * the text arrives later. Falls back to writeText, then to { copied: false } so the caller shows the text to
+ * select by hand. Rejects (with the server's message) when the text can't be fetched.
  */
-export function startInviteCopy(): Promise<InviteCopyResult> {
-  const pending = createInviteLine();
+export function startCopy(pending: Promise<string>): Promise<InviteCopyResult> {
   let copy: Promise<void>;
   try {
     if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
@@ -45,6 +43,11 @@ export function startInviteCopy(): Promise<InviteCopyResult> {
       return { line, copied: false };
     }
   })();
+}
+
+/** v20: mint a fresh invite (owner only, POST /api/door) and copy the line it comes back in (see startCopy). */
+export function startInviteCopy(): Promise<InviteCopyResult> {
+  return startCopy(createInviteLine());
 }
 
 type Phase = "idle" | "busy" | "copied" | "failed";
@@ -104,7 +107,7 @@ function OwnerCopy({ variant }: { variant: "landing" | "hud" }) {
       },
       (error: unknown) => {
         setPhase("idle");
-        setNote(error instanceof Error ? error.message : "The door didn't answer.");
+        setNote(error instanceof Error ? error.message : "Couldn't make an invite. Try again.");
       },
     );
   }

@@ -75,7 +75,7 @@ export type DoorState = {
   seeds: boolean;
 };
 
-export { INVITE_TTL_MS, INVITE_ROTATE_MS } from "./invite-ttl";
+export { INVITE_TTL_MS } from "./invite-ttl";
 import { INVITE_TTL_MS } from "./invite-ttl";
 /** v20: invite mints per owner per minute (owner-only, inside the door write). INVITE_MINT_LIMIT env is for local tests only (floor 3). */
 export const INVITE_MINT_LIMIT = Math.max(3, Number(process.env.INVITE_MINT_LIMIT) || 10);

@@ -3,179 +3,262 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { signOut, useMe } from "@/components/account/me";
+import { startCopy } from "@/components/invite-copy";
 import type { HudModel } from "../model";
-import { INVITE_ROTATE_MS, INVITE_TTL_MS } from "@/lib/room/invite-ttl";
+import { INVITE_TTL_MS } from "@/lib/room/invite-ttl";
 
-type Pair = { line: string; watchLink: string; expiresAt: number; rotateAt: number; receivedAt: number };
+type Kind = "line" | "watch";
+/** A code on show. `expiresAt` is on this device's clock, counted from when the request was SENT, so the
+ *  menu refreshes a moment before the server's minute is up, never after. */
+type Shown = { value: string; expiresAt: number };
+type Minted = Partial<Record<Kind, Shown>>;
+
+const MINT_FAILED = "Couldn't make an invite. Try again.";
+const NO_CONNECTION = "Can't connect. Check your connection.";
 
 /**
- * The server's code and link are shown only blurred in screenshots (data-secret); nothing is logged.
- * Times are kept on this device's clock (received + ttl/rotate), so a skewed clock can't make a dead code
- * look alive: the server minted the pair just before answering, so the real expiry is slightly later.
+ * POST /api/apartment/invite. kind "line" | "watch" mints one; "both" mints the pair the menu shows when it opens.
+ * The server's codes are shown only blurred in screenshots (data-secret); nothing is logged.
  */
-async function mint(): Promise<Pair> {
-  const res = await fetch("/api/apartment/invite", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-  const body = (await res.json()) as { ok?: boolean; error?: string; line?: string; watchLink?: string; ttlMs?: number; rotateMs?: number };
-  if (!res.ok || !body.ok || !body.line || !body.watchLink) throw new Error(body.error ?? "The door didn't answer.");
-  const receivedAt = Date.now();
+async function mint(kind: Kind | "both"): Promise<Minted> {
+  const sentAt = Date.now();
+  let res: Response;
+  try {
+    res = await fetch("/api/apartment/invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(kind === "both" ? {} : { kind }),
+    });
+  } catch {
+    throw new Error(NO_CONNECTION);
+  }
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; code?: string; line?: string; watchLink?: string; ttlMs?: number };
+  if (!res.ok || !body.ok) {
+    // Paused invites and rate limits keep the server's own words; anything else is Writer's one line.
+    throw new Error((res.status === 409 || res.status === 429) && body.error ? body.error : MINT_FAILED);
+  }
   const ttl = Number(body.ttlMs) || INVITE_TTL_MS;
-  const rotate = Math.min(Number(body.rotateMs) || INVITE_ROTATE_MS, ttl);
-  return { line: body.line, watchLink: body.watchLink, expiresAt: receivedAt + ttl, rotateAt: receivedAt + rotate, receivedAt };
+  const out: Minted = {};
+  if (body.line) out.line = { value: body.line, expiresAt: sentAt + ttl };
+  if (body.watchLink) out.watch = { value: body.watchLink, expiresAt: sentAt + ttl };
+  if ((kind !== "watch" && !out.line) || (kind !== "line" && !out.watch)) throw new Error(MINT_FAILED);
+  return out;
 }
 
-function secondsLeft(at: number, now: number) {
-  const s = Math.max(0, Math.ceil((at - now) / 1000));
-  return `0:${String(s).padStart(2, "0")}`;
-}
+type Phase = "idle" | "busy" | "copied" | "failed";
 
 function CopyField({
   label,
-  value,
   kind,
-  meta,
-  updated = false,
-  dead = false,
+  shown,
+  phase,
+  updated,
+  dead,
+  onCopy,
+  children,
 }: {
   label: string;
-  value: string;
-  kind: "line" | "watch";
-  meta?: React.ReactNode;
-  updated?: boolean;
-  dead?: boolean;
+  kind: Kind;
+  shown: Shown | null;
+  phase: Phase;
+  updated: boolean;
+  dead: boolean;
+  onCopy: () => void;
+  children?: React.ReactNode;
 }) {
-  const [done, setDone] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setDone(true);
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => setDone(false), 2000);
-    } catch {
-      setDone(false);
-    }
-  }
   return (
-    <div className="invite-field" data-invite-field={kind}>
+    <div className="invite-field" data-invite-field={kind} data-copy-state={phase}>
       <p className="hud-kicker">{label}</p>
-      {meta}
-      <p className={`invite-line invite-value${dead ? " is-dead" : ""}`} data-secret="" data-invite-value={kind}>
-        {value}
+      <p className={`invite-line invite-value${dead ? " is-dead" : ""}`} data-secret="" data-invite-value={kind} data-invite-dead={dead ? "" : undefined}>
+        {shown?.value ?? "\u00a0"}
       </p>
       <div className="invite-copy-row">
-        <button type="button" className="hud-chip is-solid invite-copy-hud" onClick={copy} disabled={!value || dead}>
-          {done ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
-          {done ? "Copied" : "Copy"}
+        <button type="button" className="hud-chip is-solid invite-copy-hud" onClick={onCopy} aria-busy={phase === "busy"}>
+          {phase === "busy" ? <span className="copy-spin" aria-hidden /> : phase === "copied" ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+          {phase === "copied" ? "Copied" : "Copy"}
         </button>
-        {updated ? (
+        {updated && phase !== "copied" ? (
           <span className="invite-updated mono" role="status" data-invite-updated="">
             Updated
           </span>
         ) : null}
       </div>
+      {phase === "failed" ? <p className="hud-quiet">Couldn&apos;t copy. Select and copy it.</p> : null}
+      {children}
     </div>
   );
 }
 
 /**
- * v21 Invite menu (owner only). Opening it mints a fresh pair: an agent invite line (Writer's v20 wording)
- * and a watch link for a person. Both live 1 minute. While the menu is open and the tab is visible it
- * mints a new pair every 50 s, so a fresh one is always ready before the old one expires; an unused
- * older pair still works until its own minute is up.
+ * v21 r2 Invite menu (owner only): MINT ON COPY.
+ *   - Each Copy tap mints a fresh code (agent line or watch link) and copies it in the same tap (iPhone-safe);
+ *     the code is live for a full minute from that tap. Two taps, two codes.
+ *   - Opening the menu shows a line and a link (one request). While the menu stays open and the tab is
+ *     visible, a shown code that reaches its minute is replaced (one request for that field).
+ *   - Nothing runs while the menu is closed (this component is unmounted) or the tab is hidden: no timers,
+ *     no rotation, no background minting. Coming back to a visible tab refreshes an expired line once.
  */
 export function InviteSection({ model }: { model: HudModel }) {
   void model;
   const me = useMe();
-  const [pair, setPair] = useState<Pair | null>(null);
+  const [shown, setShown] = useState<Record<Kind, Shown | null>>({ line: null, watch: null });
+  const [phase, setPhase] = useState<Record<Kind, Phase>>({ line: "idle", watch: "idle" });
+  const [updatedAt, setUpdatedAt] = useState<Record<Kind, number>>({ line: 0, watch: 0 });
+  const [dead, setDead] = useState<Record<Kind, boolean>>({ line: false, watch: false });
   const [note, setNote] = useState("");
+  const [revokeNote, setRevokeNote] = useState("");
   const [now, setNow] = useState(() => Date.now());
-  const busy = useRef(false);
-  const hadPair = useRef(false);
-  const [updatedAt, setUpdatedAt] = useState(0);
-  const [retry, setRetry] = useState(0);
-
-  const refresh = useCallback(async () => {
-    if (busy.current) return;
-    busy.current = true;
-    try {
-      const next = await mint();
-      setPair(next);
-      setNote("");
-      // A rotation (not the first pair): show "Updated" beside Copy for about 2 s.
-      if (hadPair.current) setUpdatedAt(Date.now());
-      hadPair.current = true;
-    } catch (error) {
-      setNote(error instanceof Error ? error.message : "The door didn't answer.");
-      // Try again shortly; meanwhile the countdown says the shown code is about to expire (or has).
-      window.setTimeout(() => setRetry((n) => n + 1), 8000);
-    } finally {
-      busy.current = false;
-    }
-  }, []);
+  const busy = useRef<Record<Kind, boolean>>({ line: false, watch: false });
+  const mounted = useRef(true);
+  const copiedTimer = useRef<Record<Kind, number | undefined>>({ line: undefined, watch: undefined });
 
   useEffect(() => {
-    const first = window.setTimeout(() => void refresh(), 0);
+    mounted.current = true;
+    const timers = copiedTimer.current;
+    return () => {
+      mounted.current = false;
+      window.clearTimeout(timers.line);
+      window.clearTimeout(timers.watch);
+    };
+  }, []);
+
+  const show = useCallback((got: Minted, updated: boolean) => {
+    if (!mounted.current) return;
+    setShown((cur) => ({ line: got.line ?? cur.line, watch: got.watch ?? cur.watch }));
+    setDead((cur) => ({ line: got.line ? false : cur.line, watch: got.watch ? false : cur.watch }));
+    if (updated) setUpdatedAt((cur) => ({ line: got.line ? Date.now() : cur.line, watch: got.watch ? Date.now() : cur.watch }));
+    setNote("");
+  }, []);
+
+  /** Replace an expired shown code (menu open, tab visible). */
+  const refresh = useCallback(
+    async (kinds: Kind[], updated: boolean) => {
+      const todo = kinds.filter((k) => !busy.current[k]);
+      if (!todo.length || !mounted.current || document.hidden) return;
+      for (const k of todo) busy.current[k] = true;
+      try {
+        show(await mint(todo.length === 2 ? "both" : todo[0]!), updated);
+      } catch (error) {
+        if (!mounted.current) return;
+        setDead((cur) => ({ ...cur, ...Object.fromEntries(todo.map((k) => [k, true])) }));
+        setNote(error instanceof Error ? error.message : MINT_FAILED);
+      } finally {
+        for (const k of todo) busy.current[k] = false;
+      }
+    },
+    [show],
+  );
+
+  // Opening the menu: one request for the line and the link it shows.
+  useEffect(() => {
+    const first = window.setTimeout(() => void refresh(["line", "watch"], false), 0);
     return () => window.clearTimeout(first);
   }, [refresh]);
 
+  // A shown code that reaches its minute is replaced, only while this menu is open and the tab visible.
   useEffect(() => {
-    const tick = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(tick);
-  }, []);
-
-  // Rotation: at rotateAt (50 s) while visible; on return to the tab, at once if the pair is due.
-  useEffect(() => {
-    if (!pair) return;
-    let timer: number | undefined;
+    const timers: number[] = [];
     const arm = () => {
-      window.clearTimeout(timer);
+      while (timers.length) window.clearTimeout(timers.pop());
       if (document.hidden) return;
-      timer = window.setTimeout(() => void refresh(), Math.max(0, pair.rotateAt - Date.now()));
+      for (const k of ["line", "watch"] as const) {
+        const s = shown[k];
+        if (!s || dead[k]) continue;
+        timers.push(
+          window.setTimeout(() => {
+            setNow(Date.now());
+            void refresh([k], true);
+          }, Math.max(0, s.expiresAt - Date.now())),
+        );
+      }
     };
-    const onVis = () => arm();
     arm();
-    document.addEventListener("visibilitychange", onVis);
+    document.addEventListener("visibilitychange", arm);
     return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVis);
+      while (timers.length) window.clearTimeout(timers.pop());
+      document.removeEventListener("visibilitychange", arm);
     };
-  }, [pair, refresh, retry]);
+  }, [shown, dead, refresh]);
 
-  const expired = pair ? pair.expiresAt <= now : false;
-  // After the 50 s mark the shown code has under 10 s left: say so plainly until the new one arrives.
-  const overdue = pair ? !expired && pair.rotateAt <= now : false;
-  const updated = updatedAt > 0 && now - updatedAt < 2000;
-  const countdown = pair ? (
-    <div className={`invite-countdown${overdue ? " is-warn" : ""}${expired ? " is-dead" : ""}`} data-invite-timer="" data-invite-phase={expired ? "expired" : overdue ? "expiring" : "live"}>
-      <p className="mono" aria-live="polite">
-        {expired
-          ? "Expired. Getting a new code…"
-          : overdue
-            ? `This code expires in ${secondsLeft(pair.expiresAt, now)}. Getting a new one…`
-            : `New code in ${secondsLeft(pair.rotateAt, now)}`}
-      </p>
-      {/* a thin bar that runs down to the 50 s rotation; restarts with each new pair */}
-      <span className="invite-bar" aria-hidden>
-        <i key={pair.line} style={{ animationDuration: `${pair.rotateAt - pair.receivedAt}ms` }} />
-      </span>
-    </div>
-  ) : null;
+  // "Updated" shows for about 2 s after a refresh.
+  useEffect(() => {
+    const last = Math.max(updatedAt.line, updatedAt.watch);
+    if (!last) return;
+    const t = window.setTimeout(() => setNow(Date.now()), Math.max(0, last + 2050 - Date.now()));
+    return () => window.clearTimeout(t);
+  }, [updatedAt]);
+
+  function copy(kind: Kind) {
+    if (phase[kind] === "busy") return;
+    setNote("");
+    setPhase((cur) => ({ ...cur, [kind]: "busy" }));
+    busy.current[kind] = true;
+    // Mint + copy start in this same tap (iPhone Safari): a fresh code, live for a full minute from now.
+    const minted = mint(kind);
+    const run = startCopy(minted.then((got) => got[kind]!.value));
+    void minted.then((got) => show(got, false), () => undefined);
+    void run.then(
+      (result) => {
+        busy.current[kind] = false;
+        if (!mounted.current) return;
+        setPhase((cur) => ({ ...cur, [kind]: result.copied ? "copied" : "failed" }));
+        if (!result.copied) return;
+        window.clearTimeout(copiedTimer.current[kind]);
+        copiedTimer.current[kind] = window.setTimeout(() => {
+          if (mounted.current) setPhase((cur) => ({ ...cur, [kind]: cur[kind] === "copied" ? "idle" : cur[kind] }));
+        }, 2000);
+      },
+      (error: unknown) => {
+        busy.current[kind] = false;
+        if (!mounted.current) return;
+        setPhase((cur) => ({ ...cur, [kind]: "idle" }));
+        setNote(error instanceof Error ? error.message : MINT_FAILED);
+      },
+    );
+  }
+
+  async function endWatchLinks() {
+    setRevokeNote("");
+    try {
+      const res = await fetch("/api/apartment/watch-revoke", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
+      if (!mounted.current) return;
+      if (!res.ok || !body.ok) {
+        setRevokeNote(body.error ?? "Couldn't end the watch links. Try again.");
+        return;
+      }
+      setDead((cur) => ({ ...cur, watch: true }));
+      setRevokeNote(body.message ?? "Watch links ended.");
+    } catch {
+      if (mounted.current) setRevokeNote(NO_CONNECTION);
+    }
+  }
+
+  const ready = Boolean(shown.line || shown.watch);
+  const isUpdated = (k: Kind) => updatedAt[k] > 0 && now - updatedAt[k] < 2000 && Date.now() - updatedAt[k] < 2000;
   return (
-    <div className="hud-stack invite-tab" data-invite-section="" data-invite-state={pair ? (expired ? "expired" : "live") : "loading"}>
-      <p className="hud-quiet invite-intro">Paste the line to an agent to invite it in. Send the watch link to a person so they can watch, read-only.</p>
-      {pair ? (
-        <>
-          <CopyField key={pair.line} label="Invite an agent" value={pair.line} kind="line" meta={countdown} updated={updated} dead={expired} />
-          <CopyField key={pair.watchLink} label="Watch link for a person" value={pair.watchLink} kind="watch" updated={updated} dead={expired} />
-          <p className="hud-quiet">Each works once, for 1 minute. A new pair is ready every 50 seconds while this is open.</p>
-        </>
-      ) : (
-        <p className="hud-quiet">Making a fresh invite…</p>
-      )}
-      {note ? <p className="hud-quiet" role="alert">{note}</p> : null}
+    <div className="hud-stack invite-tab" data-invite-section="" data-invite-state={ready ? "live" : note ? "error" : "loading"}>
+      <p className="hud-quiet invite-intro">Copy one and send it right away. Each works once.</p>
+      <CopyField label="Invite an agent" kind="line" shown={shown.line} phase={phase.line} updated={isUpdated("line")} dead={dead.line} onCopy={() => copy("line")} />
+      <CopyField label="Let a person watch" kind="watch" shown={shown.watch} phase={phase.watch} updated={isUpdated("watch")} dead={dead.watch} onCopy={() => copy("watch")}>
+        <button type="button" className="invite-revoke mono" onClick={() => void endWatchLinks()} data-watch-revoke="">
+          End all watch links
+        </button>
+        {revokeNote ? (
+          <p className="hud-quiet" role="status">
+            {revokeNote}
+          </p>
+        ) : null}
+      </CopyField>
+      {note ? (
+        <p className="hud-quiet" role="alert" data-invite-note="">
+          {note}
+        </p>
+      ) : null}
       <div className="hud-row invite-foot">
-        <span className="hud-quiet mono">{me?.role === "owner" ? me.email : ""}</span>
+        <span className="hud-quiet mono" data-account-email="">
+          {me?.role === "owner" ? me.email : ""}
+        </span>
         <button type="button" className="hud-chip" onClick={() => void signOut()}>
           Sign out
         </button>

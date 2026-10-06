@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 
 /** v21: who is looking at /room. Fetched once from /api/me (which provisions the owner's apartment). */
 export type Me =
-  | { role: "owner"; email: string; apartment: { legacy: boolean; created: boolean; claimedLegacy: boolean }; invite: { ttlMs: number; rotateMs: number } }
+  | { role: "owner"; email: string; apartment: { legacy: boolean; created: boolean; claimedLegacy: boolean }; invite: { ttlMs: number } }
   | { role: "watch" }
   | { role: "none" }
   | { role: "error"; message: string; retryAfter?: number };

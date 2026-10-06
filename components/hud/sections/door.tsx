@@ -44,7 +44,7 @@ export function DoorSection({ model }: { model: HudModel }) {
       },
       (error: unknown) => {
         setPhase("idle");
-        setNote(error instanceof Error ? error.message : "The door didn't answer.");
+        setNote(error instanceof Error ? error.message : "Couldn't make an invite. Try again.");
       },
     );
   }

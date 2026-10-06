@@ -150,15 +150,21 @@ export function DoorProvider({ children }: { children: ReactNode }) {
 type ActBody = Brief & { ok?: boolean; error?: string; code?: string; message?: string; line?: string };
 
 export async function doorAct(action: string, id = "") {
-  const res = await fetch("/api/door", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, id }),
-  });
-  const body = (await res.json()) as ActBody;
+  let res: Response;
+  try {
+    res = await fetch("/api/door", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, id }),
+    });
+  } catch {
+    return { ok: false as const, error: "Can't connect. Check your connection.", code: "network" };
+  }
+  const body = (await res.json().catch(() => ({}))) as ActBody;
   if (!res.ok || !body.ok) {
     if (body.code === "invites_paused" && data) applyBrief({ paused: true });
-    return { ok: false as const, error: body.error ?? "The door didn't answer.", code: body.code ?? "" };
+    const fallback = action === "invite" ? "Couldn't make an invite. Try again." : "The door didn't answer.";
+    return { ok: false as const, error: body.error ?? fallback, code: body.code ?? "" };
   }
   publish(shape(body), true);
   return { ok: true as const, message: body.message ?? "", line: body.line ?? "" };
