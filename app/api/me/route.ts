@@ -24,6 +24,7 @@ export const GET = guarded(async (req) => {
           ok: true,
           role: "owner",
           email: maskEmail(account.email),
+          passwordSet: account.passwordSet,
           apartment: { legacy: got.apartment.legacy, created: got.created, claimedLegacy: got.claimedLegacy },
           invite: { ttlMs: INVITE_TTL_MS },
         }),

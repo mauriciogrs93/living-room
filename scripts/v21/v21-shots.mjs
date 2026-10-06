@@ -42,8 +42,9 @@ try {
   // ---- check-your-email (request stubbed in the browser: nothing is sent) ----
   let otpCalls = 0;
   await p0.route("**/api/auth/otp", (route) => { otpCalls += 1; return route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }); });
+  await p0.click("[data-auth-control=magic]");
   await p0.fill("#signin-email", "someone@example.com");
-  await p0.click(".signin-submit");
+  await p0.click("[data-auth-control=magic-submit]");
   await p0.waitForSelector("[data-signin-sent]", { timeout: 10000 });
   const notes = await p0.locator("[data-signin-sent] .signin-note").evaluateAll((els) => els.map((e) => e.textContent.trim()));
   check("check-your-email main note + second line are Writer's exact strings", notes[0] === "Check your email and tap the link. Open it in this browser." && notes[1] === "It comes from Supabase. Not there? Check spam.", JSON.stringify(notes));

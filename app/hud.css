@@ -570,6 +570,7 @@
   align-self: flex-start; background: none; border: 0; padding: 4px 0; color: var(--hud-ink);
   font: 500 12.5px/1.2 var(--sans, inherit); text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
 }
+[data-auth-control="you-set-password"] { min-height: 44px; display: inline-flex; align-items: center; }
 .door-sub { margin: 0; }
 .door-line { user-select: all; -webkit-user-select: all; word-break: break-word; }
 .door-spin {
@@ -618,7 +619,17 @@
   font: 500 10px/1 var(--mono);
   letter-spacing: 0.12em;
 }
-.watch-badge button { text-decoration: underline; letter-spacing: 0.06em; cursor: pointer; }
+.watch-badge button {
+  min-height: 44px;
+  padding: 0 8px;
+  background: none;
+  border: 0;
+  color: inherit;
+  text-decoration: underline;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.watch-badge button:disabled { opacity: 0.45; cursor: default; }
 /* r1: on desktop the FIG. 1 caption owns the bottom-left corner (left 32px, bottom 24px, ~68px tall), so the
    chip stands just above it, on the caption's left edge. Wherever the caption is hidden or moved (card open,
    Tonight, a single floor, shot mode, short landscape phones, phones under 800px) the chip keeps the corner. */

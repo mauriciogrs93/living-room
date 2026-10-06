@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
-import { signOut, useMe } from "@/components/account/me";
+import { useMe } from "@/components/account/me";
 import { startCopy } from "@/components/invite-copy";
 import type { HudModel } from "../model";
 import { WATCH_REVOKE_BUTTON, WATCH_REVOKE_DONE } from "@/lib/apartments/copy";
@@ -270,9 +270,6 @@ export function InviteSection({ model }: { model: HudModel }) {
         <span className="hud-quiet mono" data-account-email="">
           {me?.role === "owner" ? me.email : ""}
         </span>
-        <button type="button" className="hud-chip" onClick={() => void signOut()}>
-          Sign out
-        </button>
       </div>
     </div>
   );

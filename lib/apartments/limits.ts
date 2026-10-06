@@ -24,6 +24,15 @@ export const LIMITS = {
   invitePerIp: { limit: 20, windowMs: MIN },
   /** Watch-link redemptions per IP (good or bad). */
   watchPerIp: { limit: 10, windowMs: 10 * MIN },
+  /** Password sign-in attempts per IP and per email (Security: 5 per 15 minutes), counted before Supabase. */
+  passwordPerIp: { limit: 5, windowMs: 15 * MIN },
+  passwordPerEmail: { limit: 5, windowMs: 15 * MIN },
+  /** Password sign-up. The route is 404 while PASSWORD_SIGNUP_ENABLED is false, before these run. */
+  signupPerIp: { limit: 5, windowMs: HOUR },
+  signupPerEmail: { limit: 5, windowMs: 15 * MIN },
+  signupGlobal: { limit: 60, windowMs: HOUR },
+  /** Set / change password. */
+  passwordUpdatePerIp: { limit: 5, windowMs: 15 * MIN },
 } satisfies Record<string, Limit>;
 
 /** Seconds for a Retry-After header (at least 1). */

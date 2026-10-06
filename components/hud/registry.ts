@@ -31,8 +31,12 @@ export const HUD_SECTIONS: HudSection[] = [
   { id: "door", title: "Door", icon: "door", order: 40, accountOnly: true, render: DoorSection },
 ];
 
-export function visibleSections(owner: boolean, account = false) {
-  return HUD_SECTIONS.filter((section) => (!section.ownerOnly || owner) && (!section.accountOnly || account)).sort((a, b) => a.order - b.order);
+/** You is the signed-in account's panel, even when the in-room owner presence flag is off. */
+export function visibleSections(owner: boolean, account = false, signedIn = false) {
+  return HUD_SECTIONS.filter((section) => {
+    if (section.id === "you") return owner || signedIn;
+    return (!section.ownerOnly || owner) && (!section.accountOnly || account);
+  }).sort((a, b) => a.order - b.order);
 }
 
 export function sectionKnown(id: string) {

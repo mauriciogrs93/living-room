@@ -100,3 +100,25 @@ Supabase project `naihkbwobufqasdfiubq` (shared by Auth, v20 `public` tables, `v
 - A branded magic-link email template (needs custom SMTP / a paid plan). Keep `{{ .ConfirmationURL }}`: the app
   signs in only through `/auth/callback` (PKCE); there is no token-hash route.
 - Delete test account v21t-legacy-owner@example.com before public go-live.
+
+## v21.1 password sign-in
+
+Password is the primary sign-in (`POST /api/auth/password`). The email link is unchanged: `POST /api/auth/otp`, then the same browser opens `/auth/callback?code=` (PKCE). There is no `/auth/confirm` route and no Continue page.
+
+`PASSWORD_SIGNUP_ENABLED` in `lib/auth/strings.ts` is one exported constant, left `true` on this branch. Founder turns sign-up off for production by setting that constant to `false` and rebuilding. No new environment variable. While it is false the sign-up route is 404 and the "New here? Create an account" control is not rendered.
+
+The "has a password" flag is `app_metadata.lr_password_set`, written only by the server with `auth.admin.updateUserById` (the existing `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY`). It is never read or written on `user_metadata`. The set-password offer shows after an email-link sign-in when the flag is not true.
+
+Sessions stay in HttpOnly Secure SameSite=Lax cookies (Max-Age about 400 days). The only localStorage key this cut adds is `lr-set-password-later`, a device dismissal for "Not now". Sign out is `POST /api/auth/signout` only: Supabase `signOut({ scope: "local" })` first, then the auth, owner, and watch cookies are cleared.
+
+Dashboard (Founder, not coded here): password minimum at least 12; leaked-password protection if the plan allows; Confirm email ON sends mail and uses the 2-per-hour built-in quota, OFF signs up in the same request; Secure password change stays OFF (the app checks the current password itself when the flag is already set); custom SMTP before public launch. No new redirect URL. The email link still uses `/auth/callback`.
+
+A password sign-up with Confirm email ON cannot be finished in the local stub without mail. The no-password offer is covered locally: `scripts/v21/v21_1-wiring.mjs` creates a `v21t-` user with no password flag, reads the code from the auth stub (no email), and opens `/auth/callback?code=` in that same browser. `scripts/v21/v21_1-live.mjs` is for a supervisor with a real project: it admin-creates `v21t-` users with `email_confirm: true` and never sends mail. Do not point it at living-room-psi.vercel.app. Run `node scripts/v21/v21_1-live.mjs --help` to see the steps. The offer after an email link still needs the local PKCE check above; this script cannot open that offer without sending mail.
+
+### Design
+
+- "Sign in" is a full-width primary button, at least 44px tall. "Email me a sign-in link" is a full-width outline button, at least 44px, under an "or" divider. Styles: `app/globals.css` (`.signin-submit`, `.signin-secondary`, `.signin-or`).
+- The sign-in card sits slightly above the vertical centre on both a phone and a desktop window: `.signin-page` / `.signin-main` centers the card and adds about `18vh` of padding under it.
+- Hints ("At least 12 characters." and the lines under the sent states) use `#655E52` (`.signin-hint`).
+- "Sign out" is a text button, at least 44px tall, not red, beside an OWNER badge. Watchers see "Leave" on the same chip. Styles: `app/hud.css` (`.watch-badge` / `.owner-badge`).
+- "Set a password" reuses the sign-in card (`.password-offer` + `.signin-card`). "Save password" is the primary button. "Not now" is a text button. The You panel link (`.door-link`, `data-auth-control=you-set-password`) opens that card for any signed-in owner.

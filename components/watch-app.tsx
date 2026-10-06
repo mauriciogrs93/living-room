@@ -11,6 +11,7 @@ import { DoorProvider, useDoorAccess, useKnockCount } from "./room/door-client";
 import { OwnerMailProvider } from "./room/owner-notes";
 import { useRoom } from "./use-room";
 import { signOut } from "./account/me";
+import { OWNER_BADGE, SIGN_OUT, WATCH_LEAVE } from "@/lib/auth/strings";
 import { HudChrome } from "./hud/chrome";
 import { useHudHash } from "./hud/hash";
 import type { HudModel } from "./hud/model";
@@ -47,6 +48,7 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
   const [readerOpen, setReaderOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [shot, setShot] = useState(false);
+  const [busyOut, setBusyOut] = useState(false);
   const doorAccess = useDoorAccess();
   const ownerKnocks = useKnockCount();
 
@@ -153,8 +155,15 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
         {role === "watch" ? (
           <p className="watch-badge mono" data-watch-badge="">
             WATCHING · READ-ONLY
-            <button type="button" onClick={() => void signOut()}>
-              Stop
+            <button type="button" data-auth-control="leave" disabled={busyOut} onClick={() => { setBusyOut(true); void signOut(); }}>
+              {WATCH_LEAVE}
+            </button>
+          </p>
+        ) : role === "owner" ? (
+          <p className="owner-badge watch-badge mono" data-owner-badge="">
+            {OWNER_BADGE}
+            <button type="button" data-signout="" data-auth-control="sign-out" disabled={busyOut} onClick={() => { setBusyOut(true); void signOut(); }}>
+              {SIGN_OUT}
             </button>
           </p>
         ) : null}

@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 
 /** v21: who is looking at /room. Fetched once from /api/me (which provisions the owner's apartment). */
 export type Me =
-  | { role: "owner"; email: string; apartment: { legacy: boolean; created: boolean; claimedLegacy: boolean }; invite: { ttlMs: number } }
+  | { role: "owner"; email: string; passwordSet?: boolean; apartment: { legacy: boolean; created: boolean; claimedLegacy: boolean }; invite: { ttlMs: number } }
   | { role: "watch" }
   | { role: "none" }
   | { role: "error"; message: string; retryAfter?: number };
@@ -44,8 +44,22 @@ export function useMe() {
   return useSyncExternalStore(subscribe, () => me, () => null);
 }
 
+let signingOut = false;
+
+/** POST only. Navigates home even when the request fails, and never stores the session in localStorage. */
 export async function signOut() {
-  await fetch("/api/auth/signout", { method: "POST" }).catch(() => undefined);
-  await fetch("/api/watch/end", { method: "POST" }).catch(() => undefined);
-  window.location.assign("/room");
+  if (signingOut) return;
+  signingOut = true;
+  let ok = false;
+  try {
+    const res = await fetch("/api/auth/signout", { method: "POST", signal: AbortSignal.timeout(8000) });
+    ok = res.ok;
+  } catch {
+    ok = false;
+  }
+  me = null;
+  pending = null;
+  // Full load: the in-memory account has to die with the cookies. A client router push would keep it.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.assign(`/room?signin=${ok ? "out" : "out-failed"}`);
 }

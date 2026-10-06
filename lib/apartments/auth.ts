@@ -1,13 +1,19 @@
 import { createServerClient } from "@supabase/ssr";
 import { createHash } from "node:crypto";
+import { EMAIL_LIMIT_COPY } from "@/lib/auth/strings";
 import { baseUrl, cookieValue } from "@/lib/http";
+
+export { EMAIL_LIMIT_COPY };
 
 /**
  * v21 accounts: Supabase Auth email sign-in, server side only. The browser never gets a Supabase key:
  * every auth call goes through our routes with the publishable key, and the session lives in Supabase's
  * own HttpOnly cookies (sb-<ref>-auth-token*). The service-role key is never used for auth.
  */
-export type Account = { id: string; email: string; emailVerified: boolean };
+export type Account = { id: string; email: string; emailVerified: boolean; passwordSet: boolean };
+
+/** Supabase's cookie lifetime (400 days). Used when a write arrives without Max-Age, so a session is never a session cookie. */
+export const AUTH_COOKIE_MAX_AGE = 400 * 24 * 60 * 60;
 
 export function authConfig(): { url: string; key: string } | null {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim().replace(/\/$/, "");
@@ -37,12 +43,18 @@ function parseCookies(req: Request) {
   return out;
 }
 
-function serialize(cookie: PendingCookie) {
-  const o = cookie.options as { maxAge?: number; path?: string; sameSite?: string | boolean; secure?: boolean; httpOnly?: boolean; expires?: Date };
+/**
+ * Same flags the auth routes already set: the library's Max-Age (default 400 days) and Path,
+ * forced HttpOnly, Secure, SameSite=Lax. A non-empty cookie with no Max-Age gets 400 days
+ * so it cannot become a browser session cookie. Clearing (Max-Age 0) is left alone.
+ */
+export function serializeAuthCookie(cookie: { name: string; value: string; options?: Record<string, unknown> }) {
+  const o = (cookie.options ?? {}) as { maxAge?: number; path?: string; expires?: Date };
   const parts = [`${cookie.name}=${cookie.value}`, `Path=${o.path ?? "/"}`];
-  if (typeof o.maxAge === "number") parts.push(`Max-Age=${Math.floor(o.maxAge)}`);
+  let maxAge = typeof o.maxAge === "number" ? Math.floor(o.maxAge) : undefined;
+  if (maxAge === undefined && cookie.value) maxAge = AUTH_COOKIE_MAX_AGE;
+  if (typeof maxAge === "number") parts.push(`Max-Age=${maxAge}`);
   if (o.expires instanceof Date) parts.push(`Expires=${o.expires.toUTCString()}`);
-  // v21: auth cookies are always HttpOnly + Secure + SameSite=Lax (the browser never reads them).
   parts.push("HttpOnly", "Secure", "SameSite=Lax");
   return parts.join("; ");
 }
@@ -64,7 +76,7 @@ export function authClient(req: Request) {
   return {
     client,
     /** Set-Cookie values to add to the response (session refresh / sign-in / sign-out). */
-    setCookies: () => pending.map(serialize),
+    setCookies: () => pending.map(serializeAuthCookie),
   };
 }
 
@@ -80,6 +92,11 @@ const USER_CACHE_MS = 30_000;
  * The signed-in account, verified with Supabase Auth (getUser), cached per access token for 30 s so a
  * polling tab doesn't call Auth every second. Returns the cookies to set when the session was refreshed.
  */
+/** Drop cached accounts so a password-flag change is visible on the next /api/me. */
+export function forgetCachedUser(userId: string) {
+  for (const [key, hit] of userCache) if (hit.account.id === userId) userCache.delete(key);
+}
+
 export async function currentAccount(req: Request): Promise<{ account: Account | null; setCookies: string[] }> {
   if (!hasAuthCookie(req)) return { account: null, setCookies: [] };
   const auth = authClient(req);
@@ -93,10 +110,12 @@ export async function currentAccount(req: Request): Promise<{ account: Account |
     if (hit && Date.now() - hit.at < USER_CACHE_MS) return { account: hit.account, setCookies: auth.setCookies() };
     const { data: got, error } = await auth.client.auth.getUser(token);
     if (error || !got.user) return { account: null, setCookies: auth.setCookies() };
+    const meta = (got.user.app_metadata ?? {}) as { lr_password_set?: unknown };
     const account: Account = {
       id: got.user.id,
       email: (got.user.email ?? "").toLowerCase(),
       emailVerified: Boolean(got.user.email_confirmed_at),
+      passwordSet: meta.lr_password_set === true,
     };
     userCache.set(key, { account, at: Date.now() });
     if (userCache.size > 2000) userCache.delete(userCache.keys().next().value!);
@@ -113,9 +132,6 @@ export async function currentAccount(req: Request): Promise<{ account: Account |
 export function signInRedirectUrl(req: Request) {
   return `${baseUrl(req)}/auth/callback`;
 }
-
-/** Writer (r2): the one line for every sign-in email limit, ours or Supabase's (2 emails an hour by default). */
-export const EMAIL_LIMIT_COPY = "Too many emails for now. Try again in an hour.";
 
 /** Supabase's own email limit: HTTP 429, or the over_email_send_rate_limit / over_request_rate_limit codes. */
 export function isEmailRateLimit(error: { status?: number; code?: string } | null | undefined) {

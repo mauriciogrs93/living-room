@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useMe } from "@/components/account/me";
 import { useDoorAccess, useKnockCount } from "@/components/room/door-client";
 import { useOwnerChecked, useOwnerPresent, useUnseenReplies } from "@/components/room/owner-notes";
 import { useAtmosphere } from "@/components/room/atmosphere";
@@ -22,12 +23,16 @@ export function HudChrome({
   night: boolean;
 }) {
   const owner = useOwnerPresent();
+  const me = useMe();
+  const signedIn = me?.role === "owner";
   const checked = useOwnerChecked();
   const unseen = useUnseenReplies();
   const knocks = useKnockCount();
   const doorAccess = useDoorAccess();
   const hash = useHudHash(sectionKnown);
-  const sections = visibleSections(owner, doorAccess);
+  const sections = visibleSections(owner, doorAccess, signedIn);
+  const hashSection = hash.section;
+  const closeHash = hash.close;
   // The first tab (Now) stays the default card; Invite is opened by its own button or tab.
   const firstSection = sections.find((section) => section.id !== "invite") ?? sections[0];
   const active = sections.find((section) => section.id === hash.section) ?? null;
@@ -38,8 +43,8 @@ export function HudChrome({
 
   useEffect(() => {
     if (!checked) return;
-    if (hash.section && !visibleSections(owner, doorAccess).some((section) => section.id === hash.section)) hash.close();
-  }, [checked, owner, doorAccess, hash.section, hash.close]);
+    if (hashSection && !visibleSections(owner, doorAccess, signedIn).some((section) => section.id === hashSection)) closeHash();
+  }, [checked, owner, doorAccess, signedIn, hashSection, closeHash]);
 
   const marks = readBadges({ agents: model.snapshot?.agents.length ?? 0, unseen, owner });
   const live = marks.find((mark) => mark.id === "live")?.mark;
@@ -138,6 +143,7 @@ export function HudChrome({
                 type="button"
                 role="tab"
                 aria-selected={section.id === active.id}
+                data-hud-tab={section.id}
                 className={section.id === active.id ? "is-on" : ""}
                 onClick={() => hash.open(section.id)}
               >

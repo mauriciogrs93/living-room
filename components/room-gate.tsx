@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { WatchApp } from "./watch-app";
 import { SignIn } from "./account/sign-in";
+import { PasswordOffer } from "./account/password-offer";
+import { usePasswordOfferOpen } from "./account/password-offer-state";
 import { WATCH_ENDED_COPY } from "@/lib/apartments/copy";
 import { useMe } from "./account/me";
 import { useWatchEnded } from "./account/watch-ended";
@@ -23,6 +25,8 @@ function WatchEnded({ message }: { message: string }) {
 export function RoomGate({ origin = "" }: { origin?: string }) {
   const me = useMe();
   const watchEnded = useWatchEnded();
+  const passwordSet = me?.role === "owner" ? Boolean(me.passwordSet) : true;
+  const offerOpen = usePasswordOfferOpen(passwordSet);
   const [watchWhileSignedIn] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.hash.replace(/^#/, "")).has("watch"));
   useEffect(() => {
     if (me?.role !== "owner") return;
@@ -55,6 +59,7 @@ export function RoomGate({ origin = "" }: { origin?: string }) {
         </p>
       ) : null}
       <WatchApp origin={origin} role={me.role} />
+      {me.role === "owner" && offerOpen ? <PasswordOffer passwordSet={Boolean(me.passwordSet)} /> : null}
     </>
   );
 }
