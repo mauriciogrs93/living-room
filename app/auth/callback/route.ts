@@ -20,15 +20,41 @@ export async function GET(req: Request) {
   if (!code || code.length > 512) return redirect("/room?signin=invalid", []);
   const auth = authClient(req);
   if (!auth) return redirect("/room?signin=unavailable", []);
-  let failed = false;
-  try {
-    const { error } = await auth.client.auth.exchangeCodeForSession(code);
-    failed = Boolean(error);
-  } catch {
-    failed = true;
+  let failed = !(await exchange(auth.client, code));
+  // "Send it again" starts a second PKCE flow and the default verifier follows the newest one, so an earlier
+  // email's link would fail. This browser keeps up to 5 pending verifiers (one per request it made); try those
+  // too. Only verifiers this browser holds can work, so another browser still can't use the link.
+  if (failed) {
+    for (const flowId of pendingFlowIds(req)) {
+      if (await exchange(auth.client, code, flowId)) {
+        failed = false;
+        break;
+      }
+    }
   }
   if (failed) return redirect("/room?signin=expired", auth.setCookies());
   return redirect(next, auth.setCookies());
+}
+
+type AuthClient = NonNullable<ReturnType<typeof authClient>>["client"];
+
+async function exchange(client: AuthClient, code: string, flowId?: string) {
+  try {
+    const { error } = await client.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/** Flow ids of this browser's pending PKCE verifiers (sb-<ref>-auth-token-flow-<id>-code-verifier), newest last. */
+function pendingFlowIds(req: Request) {
+  const ids: string[] = [];
+  for (const part of (req.headers.get("cookie") ?? "").split(";")) {
+    const m = /^\s*sb-[a-z0-9]+-auth-token-flow-([A-Za-z0-9_-]{8,64})-code-verifier=/.exec(part);
+    if (m && !ids.includes(m[1]!)) ids.push(m[1]!);
+  }
+  return ids.reverse().slice(0, 5);
 }
 
 function redirect(location: string, cookies: string[]) {
