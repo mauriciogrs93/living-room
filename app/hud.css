@@ -633,9 +633,7 @@
   .watch-badge { left: var(--hud-edge) !important; bottom: var(--hud-edge-bottom) !important; }
 }
 /* r2: mint on Copy. No countdown and no rotation; "Copied" on the button and "Updated" beside it for ~2 s
-   after an expired line is replaced while the menu is open. An expired line is struck through (Copy still
-   works: every Copy mints a fresh code). */
-.invite-tab .invite-value.is-dead { opacity: 0.45; text-decoration: line-through; }
+   after an expired line is replaced while the menu is open. The expired code is removed, not struck through. */
 .invite-copy-row { display: flex; align-items: center; gap: 12px; }
 .invite-updated { color: var(--hud-muted); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; animation: invite-updated 2s ease forwards; }
 @keyframes invite-updated { 0% { opacity: 0; } 10%, 80% { opacity: 1; } 100% { opacity: 0; } }

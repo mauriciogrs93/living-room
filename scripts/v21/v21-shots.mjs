@@ -84,9 +84,12 @@ try {
   await page.waitForSelector("[data-invite-section][data-invite-state=live]", { timeout: 15000 });
   await page.waitForTimeout(400);
   check("opening the menu makes ONE request for the shown line + link", mints.length === 1 && mints[0] === "{}", JSON.stringify(mints));
+  // Freeze the page clock so a slow screenshot can't burn the minute and refresh a code mid-check.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   check("Invite intro is Writer's line", (await text(page, ".invite-intro")) === "Copy one and send it right away. Each works once.");
   const labels = await page.locator("[data-invite-field] .hud-kicker").evaluateAll((els) => els.map((e) => e.textContent.trim()));
   check("labels: 'Invite an agent' and 'Let a person watch' (no 'Watch link for a person')", labels[0] === "Invite an agent" && labels[1] === "Let a person watch", JSON.stringify(labels));
+  check("the watch button reads Stop all watching", (await text(page, "[data-watch-revoke]")) === "Stop all watching");
   const card = await page.locator("[data-hud-card]").evaluate((el) => el.textContent);
   check("no countdown, run-down bar, timer, 0:50 warning or 50-second sentence", !ROTATION_WORDS.test(card) && (await page.locator(".invite-bar, .invite-countdown, [data-invite-timer]").count()) === 0);
   check("the signed-in email badge shows (masked) beside Sign out", /@/.test(await text(page, "[data-account-email]")) && !/v21t-r1-bgq2mz@example\.com/.test(await text(page, "[data-account-email]")));
@@ -97,8 +100,8 @@ try {
   const shown1 = await text(page, "[data-invite-value=line]");
   check("Copy tap mints a fresh line ({kind:line}) and copies exactly the line now shown", mints.length === 2 && mints[1] === '{"kind":"line"}' && LINE_RE.test(clip1) && clip1 === shown1 && shown1 !== shown0, JSON.stringify(mints.slice(1)));
   check("'Copied' on the button", (await text(page, "[data-invite-field=line] button.invite-copy-hud")) === "Copied");
-  await shot(page, "03-invite-after-copy-r2.png");
-  await page.waitForTimeout(2200);
+  await shot(page, "03-invite-after-copy-r2.png", { animations: "disabled" });
+  await page.clock.runFor(2200);
   await press(page, "[data-invite-field=line] button.invite-copy-hud");
   await page.waitForSelector("[data-invite-field=line][data-copy-state=copied]", { timeout: 15000 });
   const clip2 = await page.evaluate(() => navigator.clipboard.readText());
@@ -108,20 +111,37 @@ try {
   const clipW = await page.evaluate(() => navigator.clipboard.readText());
   const shownW = await text(page, "[data-invite-value=watch]");
   check("Copy on 'Let a person watch' mints a fresh watch link ({kind:watch}) and copies it", mints.length === 4 && mints[3] === '{"kind":"watch"}' && WATCH_RE.test(clipW) && clipW === shownW, JSON.stringify({ mints: mints.slice(3), copiedIsLink: WATCH_RE.test(clipW), shownIsLink: WATCH_RE.test(shownW), same: clipW === shownW }));
-  await page.locator("[data-invite-field=watch]").screenshot({ path: `${OUT}/04-watch-link-line-r2.png`, timeout: 90000 });
-  // an expired line is replaced while the menu is open
-  await page.waitForTimeout(2200);
+  await page.locator("[data-invite-field=watch]").screenshot({ path: `${OUT}/04-watch-link-line-r2.png`, timeout: 90000, animations: "disabled" });
+  // an expired line is replaced while the menu is open.
+  // "Updated" fades out in ~2s and starts at opacity 0, so a visibility wait can miss it. Latch the moment it
+  // is in the DOM, before the clock jumps, and require the new line (never the blank gap, never the dead code).
+  await page.clock.runFor(2200);
   const beforeLine = await text(page, "[data-invite-value=line]");
   const m0 = mints.length;
+  await page.evaluate(() => {
+    window.__inviteUpdated = false;
+    const mark = () => {
+      if (document.querySelector("[data-invite-field=line] [data-invite-updated]")) window.__inviteUpdated = true;
+    };
+    mark();
+    new MutationObserver(mark).observe(document.body, { childList: true, subtree: true });
+  });
   await page.clock.fastForward(61_000);
-  await page.waitForFunction((v) => document.querySelector("[data-invite-value=line]")?.textContent.trim() !== v, beforeLine, { timeout: 15000 });
-  await page.waitForSelector("[data-invite-field=line] [data-invite-updated]", { timeout: 5000 }).catch(() => {});
+  await page.clock.resume();
+  await page.waitForFunction(
+    (v) => {
+      const t = document.querySelector("[data-invite-value=line]")?.textContent.trim() ?? "";
+      return t !== v && /^Read .+\/skill\.md and join the Living Room with invite [a-z2-7]{26}\. Use it now; it works once\.$/.test(t) && window.__inviteUpdated === true;
+    },
+    beforeLine,
+    { timeout: 15000 },
+  );
   const refreshedBodies = mints.slice(m0);
-  const updatedShown = (await page.locator("[data-invite-field=line] [data-invite-updated]").count()) === 1;
-  check("menu open: when the shown line reaches its minute it is replaced (one request per expired field) and 'Updated' shows", LINE_RE.test(await text(page, "[data-invite-value=line]")) && refreshedBodies.includes('{"kind":"line"}') && refreshedBodies.length <= 2 && updatedShown, JSON.stringify(refreshedBodies));
-  await page.clock.pauseAt(Date.now() + 120_000).catch(() => {});
+  const updatedShown = await page.evaluate(() => window.__inviteUpdated === true);
+  check("menu open: when the shown line reaches its minute it is replaced (one request per expired field) and 'Updated' shows", LINE_RE.test(await text(page, "[data-invite-value=line]")) && (await text(page, "[data-invite-value=line]")) !== beforeLine && refreshedBodies.includes('{"kind":"line"}') && refreshedBodies.length <= 2 && updatedShown, JSON.stringify(refreshedBodies));
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   await page.locator("[data-hud-card]").screenshot({ path: `${OUT}/05-invite-expired-refreshed-r2.png`, timeout: 90000, animations: "disabled" });
-  await page.clock.resume().catch(() => {});
+  await page.clock.resume();
   // hidden tab: nothing is minted in the background; coming back refreshes expired fields once
   await page.waitForTimeout(500);
   const m1 = mints.length;
@@ -164,6 +184,28 @@ try {
     await shot(gp, name);
     await g.close();
   }
+
+  // Owner cuts off a watcher. A fresh page (no fake clock) so the stream and the button are on real time.
+  const endCtx = await blurred(DESK, { permissions: ["clipboard-read", "clipboard-write"] });
+  await endCtx.addCookies([...session.jar.map].map(([name, value]) => ({ name, value, url: BASE, httpOnly: true, secure: BASE.startsWith("https"), sameSite: "Lax" })));
+  const endPage = await endCtx.newPage();
+  await endPage.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
+  await endPage.waitForSelector("[data-hud=invite]", { timeout: 60000 });
+  await press(endPage, "[data-hud=invite]");
+  await endPage.waitForSelector("[data-watch-revoke]", { timeout: 15000 });
+  const endLink = await endPage.evaluate(async () => (await (await fetch("/api/apartment/invite", { method: "POST", headers: { "content-type": "application/json" }, body: '{"kind":"watch"}' })).json()).watchLink);
+  const endGuest = await browser.newContext(opts(DESK));
+  const endGuestPage = await endGuest.newPage();
+  await endGuestPage.goto(String(endLink).replace(/^https?:\/\/[^/]+/, BASE), { waitUntil: "domcontentloaded" });
+  await endGuestPage.waitForSelector("[data-watch-badge]", { timeout: 60000 });
+  await press(endPage, "[data-watch-revoke]");
+  await endPage.waitForFunction(() => document.body.innerText.includes("Done. No one is watching now."), null, { timeout: 10000 });
+  check("after Stop all watching the owner sees 'Done. No one is watching now.'", (await endPage.locator("[data-invite-field=watch] .hud-quiet").last().innerText()) === "Done. No one is watching now.");
+  await endGuestPage.waitForSelector("[data-watch-ended]", { timeout: 20000 });
+  check("a watcher cut off sees 'The owner ended this watch. Ask them for a new link.'", (await text(endGuestPage, "[data-watch-ended]")) === "The owner ended this watch. Ask them for a new link.");
+  await shot(endGuestPage, "07-watch-ended-r2.png");
+  await endGuest.close();
+  await endCtx.close();
 } catch (e) {
   check("browser run completed", false, String(e.message || e).split("\n")[0]);
 } finally {

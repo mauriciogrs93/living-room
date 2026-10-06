@@ -5,6 +5,7 @@ import { Check, Copy } from "lucide-react";
 import { signOut, useMe } from "@/components/account/me";
 import { startCopy } from "@/components/invite-copy";
 import type { HudModel } from "../model";
+import { WATCH_REVOKE_BUTTON, WATCH_REVOKE_DONE } from "@/lib/apartments/copy";
 import { INVITE_TTL_MS } from "@/lib/room/invite-ttl";
 
 type Kind = "line" | "watch";
@@ -53,7 +54,6 @@ function CopyField({
   shown,
   phase,
   updated,
-  dead,
   onCopy,
   children,
 }: {
@@ -62,14 +62,13 @@ function CopyField({
   shown: Shown | null;
   phase: Phase;
   updated: boolean;
-  dead: boolean;
   onCopy: () => void;
   children?: React.ReactNode;
 }) {
   return (
     <div className="invite-field" data-invite-field={kind} data-copy-state={phase}>
       <p className="hud-kicker">{label}</p>
-      <p className={`invite-line invite-value${dead ? " is-dead" : ""}`} data-secret="" data-invite-value={kind} data-invite-dead={dead ? "" : undefined}>
+      <p className="invite-line invite-value" data-secret="" data-invite-value={kind}>
         {shown?.value ?? "\u00a0"}
       </p>
       <div className="invite-copy-row">
@@ -77,7 +76,7 @@ function CopyField({
           {phase === "busy" ? <span className="copy-spin" aria-hidden /> : phase === "copied" ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
           {phase === "copied" ? "Copied" : "Copy"}
         </button>
-        {updated && phase !== "copied" ? (
+        {updated ? (
           <span className="invite-updated mono" role="status" data-invite-updated="">
             Updated
           </span>
@@ -94,7 +93,8 @@ function CopyField({
  *   - Each Copy tap mints a fresh code (agent line or watch link) and copies it in the same tap (iPhone-safe);
  *     the code is live for a full minute from that tap. Two taps, two codes.
  *   - Opening the menu shows a line and a link (one request). While the menu stays open and the tab is
- *     visible, a shown code that reaches its minute is replaced (one request for that field).
+ *     visible, a shown code that reaches its minute is cleared at once (so it can't be seen or copied) and
+ *     replaced (one request for that field).
  *   - Nothing runs while the menu is closed (this component is unmounted) or the tab is hidden: no timers,
  *     no rotation, no background minting. Coming back to a visible tab refreshes an expired line once.
  */
@@ -103,8 +103,7 @@ export function InviteSection({ model }: { model: HudModel }) {
   const me = useMe();
   const [shown, setShown] = useState<Record<Kind, Shown | null>>({ line: null, watch: null });
   const [phase, setPhase] = useState<Record<Kind, Phase>>({ line: "idle", watch: "idle" });
-  const [updatedAt, setUpdatedAt] = useState<Record<Kind, number>>({ line: 0, watch: 0 });
-  const [dead, setDead] = useState<Record<Kind, boolean>>({ line: false, watch: false });
+  const [freshUntil, setFreshUntil] = useState<Record<Kind, number>>({ line: 0, watch: 0 });
   const [note, setNote] = useState("");
   const [revokeNote, setRevokeNote] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -125,8 +124,12 @@ export function InviteSection({ model }: { model: HudModel }) {
   const show = useCallback((got: Minted, updated: boolean) => {
     if (!mounted.current) return;
     setShown((cur) => ({ line: got.line ?? cur.line, watch: got.watch ?? cur.watch }));
-    setDead((cur) => ({ line: got.line ? false : cur.line, watch: got.watch ? false : cur.watch }));
-    if (updated) setUpdatedAt((cur) => ({ line: got.line ? Date.now() : cur.line, watch: got.watch ? Date.now() : cur.watch }));
+    if (updated) {
+      const until = Date.now() + 2000;
+      setFreshUntil((cur) => ({ line: got.line ? until : cur.line, watch: got.watch ? until : cur.watch }));
+      // "Copied" belonged to the code that just expired.
+      setPhase((cur) => ({ line: got.line ? "idle" : cur.line, watch: got.watch ? "idle" : cur.watch }));
+    }
     setNote("");
   }, []);
 
@@ -140,7 +143,12 @@ export function InviteSection({ model }: { model: HudModel }) {
         show(await mint(todo.length === 2 ? "both" : todo[0]!), updated);
       } catch (error) {
         if (!mounted.current) return;
-        setDead((cur) => ({ ...cur, ...Object.fromEntries(todo.map((k) => [k, true])) }));
+        // Keep the expired code off the screen. Copy mints a new one; there is nothing dead to select.
+        setShown((cur) => {
+          const next = { ...cur };
+          for (const k of todo) next[k] = null;
+          return next;
+        });
         setNote(error instanceof Error ? error.message : MINT_FAILED);
       } finally {
         for (const k of todo) busy.current[k] = false;
@@ -163,9 +171,12 @@ export function InviteSection({ model }: { model: HudModel }) {
       if (document.hidden) return;
       for (const k of ["line", "watch"] as const) {
         const s = shown[k];
-        if (!s || dead[k]) continue;
+        if (!s) continue;
         timers.push(
           window.setTimeout(() => {
+            if (!mounted.current || document.hidden) return;
+            // Drop the code the moment it expires so it is never still sitting there to read or copy.
+            setShown((cur) => (cur[k]?.expiresAt === s.expiresAt ? { ...cur, [k]: null } : cur));
             setNow(Date.now());
             void refresh([k], true);
           }, Math.max(0, s.expiresAt - Date.now())),
@@ -178,15 +189,15 @@ export function InviteSection({ model }: { model: HudModel }) {
       while (timers.length) window.clearTimeout(timers.pop());
       document.removeEventListener("visibilitychange", arm);
     };
-  }, [shown, dead, refresh]);
+  }, [shown, refresh]);
 
   // "Updated" shows for about 2 s after a refresh.
   useEffect(() => {
-    const last = Math.max(updatedAt.line, updatedAt.watch);
-    if (!last) return;
-    const t = window.setTimeout(() => setNow(Date.now()), Math.max(0, last + 2050 - Date.now()));
+    const soon = Math.min(...[freshUntil.line, freshUntil.watch].filter((t) => t > Date.now()));
+    if (!Number.isFinite(soon)) return;
+    const t = window.setTimeout(() => setNow(Date.now()), Math.max(0, soon - Date.now() + 20));
     return () => window.clearTimeout(t);
-  }, [updatedAt]);
+  }, [freshUntil]);
 
   function copy(kind: Kind) {
     if (phase[kind] === "busy") return;
@@ -227,22 +238,22 @@ export function InviteSection({ model }: { model: HudModel }) {
         setRevokeNote(body.error ?? "Couldn't end the watch links. Try again.");
         return;
       }
-      setDead((cur) => ({ ...cur, watch: true }));
-      setRevokeNote(body.message ?? "Watch links ended.");
+      setShown((cur) => ({ ...cur, watch: null }));
+      setRevokeNote(body.message ?? WATCH_REVOKE_DONE);
     } catch {
       if (mounted.current) setRevokeNote(NO_CONNECTION);
     }
   }
 
   const ready = Boolean(shown.line || shown.watch);
-  const isUpdated = (k: Kind) => updatedAt[k] > 0 && now - updatedAt[k] < 2000 && Date.now() - updatedAt[k] < 2000;
+  const isUpdated = (k: Kind) => freshUntil[k] > now && freshUntil[k] > Date.now();
   return (
     <div className="hud-stack invite-tab" data-invite-section="" data-invite-state={ready ? "live" : note ? "error" : "loading"}>
       <p className="hud-quiet invite-intro">Copy one and send it right away. Each works once.</p>
-      <CopyField label="Invite an agent" kind="line" shown={shown.line} phase={phase.line} updated={isUpdated("line")} dead={dead.line} onCopy={() => copy("line")} />
-      <CopyField label="Let a person watch" kind="watch" shown={shown.watch} phase={phase.watch} updated={isUpdated("watch")} dead={dead.watch} onCopy={() => copy("watch")}>
+      <CopyField label="Invite an agent" kind="line" shown={shown.line} phase={phase.line} updated={isUpdated("line")} onCopy={() => copy("line")} />
+      <CopyField label="Let a person watch" kind="watch" shown={shown.watch} phase={phase.watch} updated={isUpdated("watch")} onCopy={() => copy("watch")}>
         <button type="button" className="invite-revoke mono" onClick={() => void endWatchLinks()} data-watch-revoke="">
-          End all watch links
+          {WATCH_REVOKE_BUTTON}
         </button>
         {revokeNote ? (
           <p className="hud-quiet" role="status">
