@@ -32,7 +32,7 @@ export const GET = guarded(async (req) => {
       );
     }
     if (await watchApartment(req)) return withCookies(ownerJson({ ok: true, role: "watch" }), setCookies);
-    if (hasWatchCookie(req)) return watchEndedResponse(setCookies);
+    if (hasWatchCookie(req)) return watchEndedResponse(req, setCookies);
     return withCookies(ownerJson({ ok: true, role: "none" }), setCookies);
   } catch (error) {
     const failure = roomFailure(error);

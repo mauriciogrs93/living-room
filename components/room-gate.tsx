@@ -5,7 +5,7 @@ import { WatchApp } from "./watch-app";
 import { SignIn } from "./account/sign-in";
 import { PasswordOffer } from "./account/password-offer";
 import { usePasswordOfferOpen } from "./account/password-offer-state";
-import { WATCH_ENDED_COPY } from "@/lib/apartments/copy";
+import { LEFT_APARTMENT, WATCH_ENDED_COPY, WATCH_EXPIRED_COPY } from "@/lib/apartments/copy";
 import { useMe } from "./account/me";
 import { useWatchEnded } from "./account/watch-ended";
 
@@ -39,7 +39,7 @@ export function RoomGate({ origin = "", signupEnabled = false }: { origin?: stri
   if (!me) return <div className="landing min-h-dvh" aria-busy="true" data-gate="loading" />;
   if (me.role === "none") return <SignIn signupEnabled={signupEnabled} />;
   if (me.role === "error") {
-    if (me.message === WATCH_ENDED_COPY) return <WatchEnded message={me.message} />;
+    if (me.message === WATCH_ENDED_COPY || me.message === WATCH_EXPIRED_COPY || me.message === LEFT_APARTMENT) return <WatchEnded message={me.message} />;
     return (
       <div className="landing min-h-dvh signin-page" data-gate="error">
         <main className="signin-main">

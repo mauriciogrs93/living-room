@@ -1,3 +1,5 @@
+import { LEFT_APARTMENT } from "@/lib/apartments/copy";
+
 /**
  * Writer's auth copy (v21.1). Change wording here.
  * Forgot-password lines are kept for a later cut and are not rendered.
@@ -79,4 +81,5 @@ export const SIGNIN_NOTES: Record<string, string> = {
   unavailable: UNAVAILABLE,
   out: SIGNED_OUT,
   "out-failed": SIGN_OUT_FAILED,
+  left: LEFT_APARTMENT,
 };

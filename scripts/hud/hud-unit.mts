@@ -2,7 +2,7 @@
 //   npx tsx scripts/hud/hud-unit.mts
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { houseClockLabel, sunriseTime, sunsetTime } from "../../lib/house-clock";
+import { HOUSE_ZONE_SHORT, houseClockLabel, sunriseTime, sunsetTime } from "../../lib/house-clock";
 import { doorLeafAnchor } from "../../components/room/maquette/door-mesh";
 import { anchorLift, windowAnchor } from "../../lib/room/anchor-heights";
 import { HUD_CONTROLS, houseControls, yoursCards, yoursControls } from "../../components/hud/frame/controls";
@@ -10,7 +10,7 @@ import { cleanHud, httpLink, httpsUrl } from "../../components/hud/frame/sanitiz
 import * as strings from "../../components/hud/frame/strings";
 import { FALLBACK_STATIONS } from "../../lib/room/house";
 import { forecastUrlAllowed } from "../../lib/room/house-sky";
-import { watchEmbed } from "../../lib/room/watch-live";
+import { acceptPlayerEvent, watchEmbed, YT_ORIGIN } from "../../lib/room/watch-live";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -59,7 +59,13 @@ check("watch live copy is the ship line", strings.WATCH_LIVE === "Watch live" &&
 check("watcher title uses a display name or The apartment", strings.apartmentTitle(null) === "The apartment" && strings.apartmentTitle("  ") === "The apartment" && strings.apartmentTitle("Ada") === "Ada's apartment" && strings.apartmentTitle("Ada Lovelace") === "Ada Lovelace's apartment");
 check("watcher title never uses an email", strings.apartmentTitle("ada@example.com") === "The apartment" && strings.apartmentTitle("ada@example.com's apartment") === "The apartment");
 const embed = watchEmbed(5);
-check("watch embed is the nocookie host", embed.startsWith("https://www.youtube-nocookie.com/embed/") && !embed.includes("ytimg") && !embed.includes("www.youtube.com/"));
+check("watch embed is the nocookie host", embed.startsWith("https://www.youtube-nocookie.com/embed/") && !embed.includes("ytimg") && !embed.includes("www.youtube.com/") && embed.includes("enablejsapi=1"));
+check("mute=1 is added only when Room sound is off", watchEmbed(1, { muted: true, origin: "http://127.0.0.1:3921" }).includes("&mute=1") && watchEmbed(1, { muted: true }).includes("enablejsapi=1") && !watchEmbed(1, { muted: false, origin: "http://127.0.0.1:3921" }).includes("mute=1") && watchEmbed(1, { muted: false, origin: "http://127.0.0.1:3921" }).includes("origin="));
+const frame = { id: "player" };
+const other = { id: "other" };
+check("player messages accept only the nocookie frame", acceptPlayerEvent(YT_ORIGIN, frame, frame) && !acceptPlayerEvent("https://evil.test", frame, frame) && !acceptPlayerEvent(YT_ORIGIN, other, frame) && !acceptPlayerEvent(YT_ORIGIN, null, frame));
+check("a possessive title keeps the apartment suffix", strings.fitApartmentTitle("Ada Lovelace's apartment", 18) === "Ada's apartment" && strings.fitApartmentTitle("The apartment", 4) === "The apartment" && strings.fitApartmentTitle("Ada's apartment", 40) === "Ada's apartment");
+check("phone zone short form is ET", HOUSE_ZONE_SHORT === "ET");
 check("unknown channels do not invent an embed", watchEmbed(0) === "" && watchEmbed(9) === "");
 check("forecast hosts stay on the weather service", forecastUrlAllowed("https://api.weather.gov/gridpoints/OKX/33,37/forecast") && !forecastUrlAllowed("http://api.weather.gov/forecast") && !forecastUrlAllowed("https://evil.example/forecast"));
 check("curated stations are https and not SomaFM", FALLBACK_STATIONS.length >= 2 && FALLBACK_STATIONS.every((station) => station.url.startsWith("https://") && !/somafm/i.test(station.url + station.name)));
@@ -104,6 +110,14 @@ for (const file of files) {
   if (body.includes(bannedTitle)) check("shipped source has no hardcoded apartment name", false, path.relative(root, file));
 }
 check("shipped source scan finished", files.length > 20, `${files.length} files`);
+const hudCss = readFileSync(path.join(root, "app/hud-frame.css"), "utf8");
+const iconSource = readFileSync(path.join(root, "components/hud/frame/icons.tsx"), "utf8");
+const frameSource = readFileSync(path.join(root, "components/hud/frame/watch-frame.tsx"), "utf8");
+check("HUD css has no backdrop-filter or filter", !hudCss.includes("backdrop-filter") && !/(^|[^-\w])filter\s*:/.test(hudCss));
+check("title and zone pills are not ellipsized", !/\.hudf-title-pill[^{]*\{[^}]*ellipsis/.test(hudCss) && !/\.hudf-zone[^{]*\{[^}]*ellipsis/.test(hudCss));
+check("scrim stays a flat wash", hudCss.includes("rgba(43, 45, 49, 0.28)") && !/\.hudf-scrim[^{]*\{[^}]*blur/.test(hudCss));
+check("icons are bundled SVG components", iconSource.includes("<path") && !iconSource.includes("dangerouslySetInnerHTML") && !iconSource.includes("innerHTML"));
+check("player commands never use a wildcard target", frameSource.includes("YT_ORIGIN") && !frameSource.includes("'*'") && !frameSource.includes('"*"'));
 
 const failed = results.filter((ok) => !ok).length;
 console.log(`${results.length - failed}/${results.length}`);

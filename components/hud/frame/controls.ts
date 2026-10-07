@@ -94,9 +94,11 @@ export const HUD_CONTROLS: Record<string, HudControl> = {
 
 for (let i = 0; i < 8; i += 1) {
   HUD_CONTROLS[`radio-row-${i}`] = { roles: owner, effect: `request:/api/radio {intent:tune,station:${i}}` };
+  HUD_CONTROLS[`radio-row-watch-${i}`] = { roles: watch, effect: "device:owner-only-station" };
 }
 for (let n = 1; n <= 5; n += 1) {
   HUD_CONTROLS[`tv-chip-${n}`] = { roles: owner, effect: `request:/api/tap {id:tv,channel:${n}}` };
+  HUD_CONTROLS[`tv-chip-watch-${n}`] = { roles: watch, effect: "device:owner-only-channel" };
 }
 
 /** Yours cards render only for the owner, and only when the flag is on. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { WATCH_ENDED_COPY } from "@/lib/apartments/copy";
+import { WATCH_EXPIRED_COPY } from "@/lib/apartments/copy";
 import { setWatchEnded } from "./account/watch-ended";
 import type { Snapshot } from "@/lib/room/types";
 
@@ -42,7 +42,7 @@ export function useRoom() {
       if (poll) clearInterval(poll);
       poll = undefined;
       if (retry) clearTimeout(retry);
-      setWatchEnded(message || WATCH_ENDED_COPY);
+      setWatchEnded(message || WATCH_EXPIRED_COPY);
     };
     const pull = async () => {
       try {

@@ -1,7 +1,6 @@
 import { preflight } from "@/lib/http";
 import { roomFailure, type RoomPort } from "@/lib/room/access";
-import { WATCH_ENDED_COPY } from "@/lib/apartments/copy";
-import { forbiddenViewer, ownerContext, viewerContext, watchApartment } from "@/lib/apartments/resolve";
+import { forbiddenViewer, ownerContext, viewerContext, watchApartment, watchEndCopy } from "@/lib/apartments/resolve";
 import { diffSnapshot } from "@/lib/room/sse-diff";
 import type { Snapshot } from "@/lib/room/types";
 
@@ -136,7 +135,7 @@ export async function GET(req: Request) {
           return;
         }
         if (watch && !(await watchApartment(req))) {
-          raw(`event: bye\ndata: ${JSON.stringify({ reason: "watch_ended", error: WATCH_ENDED_COPY })}\n\n`);
+          raw(`event: bye\ndata: ${JSON.stringify({ reason: "watch_ended", error: await watchEndCopy(req) })}\n\n`);
           stop();
           return;
         }

@@ -196,13 +196,13 @@ if (LOCAL && process.env.WATCH_SESSION_MS) {
   const ms = Number(process.env.WATCH_SESSION_MS);
   await waitUntil(W1.sent + 55_000 + ms + 2_000);
   const expired = await call("GET", "/api/state", { jar: globalThis.watcher2 });
-  check(`watch session ends after WATCH_SESSION_MS (${ms / 1000}s) -> 403`, expired.status === 403, `status ${expired.status}`);
+  check(`watch session ends after WATCH_SESSION_MS (${ms / 1000}s) -> 403`, expired.status === 403 && expired.json?.error === "This link has ended. Ask the owner for a new one.", `status ${expired.status} ${expired.json?.error || ""}`);
 }
 
 // ---------- every write from a watch session is a clean 403 watch_read_only ----------
 const writes = [
   ["/api/tap", { id: "lamp" }], ["/api/tap", { objectId: "lamp" }], ["/api/tap", {}],
-  ["/api/dog", {}], ["/api/radio", { action: "on" }], ["/api/door", { action: "pause" }],
+  ["/api/dog", {}], ["/api/radio", { action: "on" }], ["/api/radio", { intent: "tune", station: 1 }], ["/api/tap", { id: "tv", channel: 2 }], ["/api/door", { action: "pause" }],
   ["/api/apartment/invite", {}], ["/api/apartment/invite", { kind: "line" }], ["/api/apartment/invite", { kind: "watch" }],
   ["/api/apartment/watch-revoke", {}], ["/api/act", { action: "say", message: "hi" }], ["/api/leave", {}],
   ["/api/note", { text: "hi" }], ["/api/owner/leave", { agentId: "x" }],
@@ -239,6 +239,10 @@ const revoke = await call("POST", "/api/apartment/watch-revoke", { jar: B.jar, i
 const afterRevokeLink = await call("POST", "/api/watch/redeem", { jar: new Jar(), body: { code: capTaps[2].code } });
 const afterRevokeSession = await call("GET", "/api/state", { jar: bWatcher });
 check("owner ends all watch links -> unused links cancelled and open watch sessions end (403)", revoke.status === 200 && revoke.json?.message === "Done. No one is watching now." && afterRevokeLink.status === 403 && afterRevokeLink.json?.code === "watch_cancelled" && afterRevokeSession.status === 403 && afterRevokeSession.json?.code === "watch_ended" && afterRevokeSession.json?.error === "The owner ended this watch. Ask them for a new link.", `revoke ${revoke.status} ${revoke.json?.message || ""}, link ${afterRevokeLink.status} ${afterRevokeLink.json?.code}, session ${afterRevokeSession.status} ${afterRevokeSession.json?.code}`);
+const ghost = new Jar();
+ghost.map.set("__Host-lr_watch", `wss_${"cd".repeat(32)}`);
+const ghostState = await call("GET", "/api/state", { jar: ghost });
+check("an unknown watch cookie uses the ended-link line", ghostState.status === 403 && ghostState.json?.code === "watch_ended" && ghostState.json?.error === "This link has ended. Ask the owner for a new one.", `${ghostState.status} ${ghostState.json?.code || ""} ${ghostState.json?.error || ""}`);
 
 // ---------- rate limits: 429 + Retry-After ----------
 if (!SKIP_LIMITS) {

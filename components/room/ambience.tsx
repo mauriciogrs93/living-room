@@ -203,7 +203,22 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
     toggleMute: () => {
       const next = !readMuted();
       writeMuted(next);
-      if (next) audioRef.current?.pause();
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (next) {
+        audio.pause();
+        return;
+      }
+      if (audio.getAttribute("src")) {
+        void audio.play().catch(() => undefined);
+        return;
+      }
+      const url = snapshot?.radio.on && snapshot.radio.url.startsWith("https://") ? snapshot.radio.url : "";
+      if (!url) return;
+      heardUrl.current = url;
+      audio.src = url;
+      setHearing(true);
+      void audio.play().catch(() => setHearing(false));
     },
     hear: (url: string) => {
       const audio = audioRef.current;

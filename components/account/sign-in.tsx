@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { LEFT_APARTMENT } from "@/lib/apartments/copy";
 import { refreshMe } from "./me";
 import { passwordIssue } from "@/lib/auth/password";
 import {
@@ -271,7 +272,7 @@ export function SignIn({ signupEnabled = false }: { signupEnabled?: boolean }) {
             </form>
           )}
           {note ? (
-            <p className="signin-note is-error" role="alert">
+            <p className={note === LEFT_APARTMENT ? "signin-note" : "signin-note is-error"} role={note === LEFT_APARTMENT ? "status" : "alert"} {...(note === LEFT_APARTMENT ? { "data-left-apartment": "" } : {})}>
               {note}
             </p>
           ) : null}

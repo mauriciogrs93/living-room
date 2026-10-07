@@ -18,6 +18,10 @@ const { directory } = await import("../../lib/apartments/directory");
 const { freshApartmentState, mintWatch, redeemWatch, WATCH_COOKIE, roomFor } = await import("../../lib/apartments/resolve");
 const { POST: radioPost } = await import("../../app/api/radio/route");
 const { POST: tapPost } = await import("../../app/api/tap/route");
+const { GET: meGet } = await import("../../app/api/me/route");
+const { sha256 } = await import("../../lib/room/door");
+const { WATCH_ENDED_COPY, WATCH_EXPIRED_COPY } = await import("../../lib/apartments/copy");
+const { MemoryDirectory } = await import("../../lib/apartments/directory");
 
 const engine = new RoomEngine();
 const internals = engine as unknown as {
@@ -86,9 +90,31 @@ if (redeemed.ok) {
       body: JSON.stringify({ id: "tv", channel: 2 }),
     }),
   );
+  const watchBody = (await watch.json()) as { code?: string };
+  const tapBody = (await tap.json()) as { code?: string };
   const after = await room.snapshot();
-  check("watcher radio and channel are 403", watch.status === 403 && tap.status === 403);
+  check("watcher radio and channel are 403", watch.status === 403 && tap.status === 403 && watchBody.code === "watch_read_only" && tapBody.code === "watch_read_only");
   check("watcher changes nothing", after.radio.on === before.radio.on && after.radio.index === before.radio.index && after.objects.find((object) => object.id === "tv")?.state.channel === before.objects.find((object) => object.id === "tv")?.state.channel);
+  const mem = directory();
+  if (mem instanceof MemoryDirectory) {
+    const expiredMint = await mintWatch(created.id);
+    const expiredRedeem = await redeemWatch(expiredMint.code);
+    if (expiredRedeem.ok) {
+      const hash = sha256(`lr-watch-session|${expiredRedeem.token}`);
+      const row = mem.watchSessions.get(hash);
+      if (row) row.exp = Date.now() - 1000;
+      const expired = await meGet(new Request("http://127.0.0.1/api/me", { headers: { cookie: `${WATCH_COOKIE}=${expiredRedeem.token}` } }));
+      const expiredBody = (await expired.json()) as { error?: string; code?: string };
+      check("an expired watch session uses the ended-link line", expired.status === 403 && expiredBody.code === "watch_ended" && expiredBody.error === WATCH_EXPIRED_COPY);
+    }
+    await mem.watchRevoke(created.id, true);
+    const revoked = await meGet(new Request("http://127.0.0.1/api/me", { headers: { cookie: `${WATCH_COOKIE}=${redeemed.token}` } }));
+    const revokedBody = (await revoked.json()) as { error?: string; code?: string };
+    check("an owner revoke uses the owner-ended line", revoked.status === 403 && revokedBody.code === "watch_ended" && revokedBody.error === WATCH_ENDED_COPY);
+  }
+  const unknown = await meGet(new Request("http://127.0.0.1/api/me", { headers: { cookie: `${WATCH_COOKIE}=wss_${"ab".repeat(32)}` } }));
+  const unknownBody = (await unknown.json()) as { error?: string; code?: string };
+  check("an unknown watch session uses the ended-link line", unknown.status === 403 && unknownBody.code === "watch_ended" && unknownBody.error === WATCH_EXPIRED_COPY);
 }
 
 const failed = results.filter((ok) => !ok).length;

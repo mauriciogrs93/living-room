@@ -57,9 +57,11 @@ export async function signOut() {
   } catch {
     ok = false;
   }
+  const leftWatch = me?.role === "watch";
   me = null;
   pending = null;
   // Full load: the in-memory account has to die with the cookies. A client router push would keep it.
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-  window.location.assign(`/room?signin=${ok ? "out" : "out-failed"}`);
+  const why = ok ? (leftWatch ? "left" : "out") : "out-failed";
+  window.location.assign(`/room?signin=${why}`);
 }

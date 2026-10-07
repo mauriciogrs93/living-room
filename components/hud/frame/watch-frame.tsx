@@ -1,13 +1,37 @@
 "use client";
 
-import { watchEmbed } from "@/lib/room/watch-live";
+import { useEffect, useRef } from "react";
+import { acceptPlayerEvent, playerCommand, watchEmbed, YT_ORIGIN } from "@/lib/room/watch-live";
 
-/** Mounts the embed. Unmounting this node removes the iframe from the DOM. */
-export function WatchFrame({ channelId }: { channelId: number }) {
-  const src = watchEmbed(channelId);
+/** Mounts the embed once. Later mute changes post a command and leave src alone. */
+export function WatchFrame({ channelId, muted }: { channelId: number; muted: boolean }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const srcRef = useRef<string | null>(null);
+  if (srcRef.current === null) {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    srcRef.current = watchEmbed(channelId, { muted, origin });
+  }
+  const src = srcRef.current;
+
+  useEffect(() => {
+    const frame = frameRef.current?.contentWindow;
+    if (!frame || !src) return;
+    frame.postMessage(playerCommand(muted ? "mute" : "unMute"), YT_ORIGIN);
+  }, [muted, src]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const frame = frameRef.current?.contentWindow ?? null;
+      if (!acceptPlayerEvent(event.origin, event.source, frame)) return;
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
   if (!src) return null;
   return (
     <iframe
+      ref={frameRef}
       className="hudf-watch"
       title="Watch live"
       src={src}

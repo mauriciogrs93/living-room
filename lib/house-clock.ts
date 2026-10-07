@@ -4,6 +4,7 @@
  */
 export const HOUSE_TZ = process.env.NEXT_PUBLIC_HOUSE_TZ || "America/New_York";
 export const HOUSE_ZONE_LABEL = process.env.NEXT_PUBLIC_HOUSE_ZONE_LABEL || "Eastern Time";
+export const HOUSE_ZONE_SHORT = process.env.NEXT_PUBLIC_HOUSE_ZONE_SHORT || "ET";
 /** A coarse reference point for the sun in the owner's zone (New York). Not a visitor location. */
 const HOUSE_LAT = Number(process.env.NEXT_PUBLIC_HOUSE_LAT || 40.71);
 const HOUSE_LON = Number(process.env.NEXT_PUBLIC_HOUSE_LON || -74.01);

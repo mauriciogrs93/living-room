@@ -36,12 +36,16 @@ export function setCardTaps(on: boolean, open?: (id: "tv" | "sky" | "computer" |
   opener = open ?? null;
 }
 
-function showOwnerToast() {
-  for (const listener of toastListeners) listener(OWNER_ONLY);
+export function showNotice(text: string) {
+  for (const listener of toastListeners) listener(text);
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     for (const listener of toastListeners) listener(null);
   }, 2500);
+}
+
+function showOwnerToast() {
+  showNotice(OWNER_ONLY);
 }
 
 /** Returns false when the tap must not change the object (watcher, or the card handles it). */

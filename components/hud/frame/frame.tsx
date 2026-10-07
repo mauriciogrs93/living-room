@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { signOut } from "@/components/account/me";
 import { useAmbience } from "@/components/room/ambience";
 import { useAtmosphere } from "@/components/room/atmosphere";
@@ -13,13 +13,15 @@ import { DoorSection } from "@/components/hud/sections/door";
 import { InviteSection } from "@/components/hud/sections/invite";
 import { YouSection } from "@/components/hud/sections/you";
 import { OWNER_BADGE, SIGN_OUT, WATCH_LEAVE } from "@/lib/auth/strings";
-import { houseClockLabel, houseDateKey, sunriseTime, sunsetTime } from "@/lib/house-clock";
+import { HOUSE_ZONE_SHORT, houseClockLabel, houseDateKey, sunriseTime, sunsetTime } from "@/lib/house-clock";
 import { CHANNELS, channelById, outsideView } from "@/lib/room/content";
 import type { PublicAgent } from "@/lib/room/types";
 import { clearWatch, holdWatch } from "./one-player";
 import { cleanHud, httpLink, httpsUrl } from "./sanitize";
 import { YOURS_CARDS, yoursCards } from "./controls";
+import { HudIcon, type HudIconName } from "./icons";
 import { WatchFrame } from "./watch-frame";
+import { showNotice } from "@/components/room/viewer-tap";
 import {
   ACTION_FAIL,
   ACTIVITY,
@@ -40,6 +42,10 @@ import {
   NEXT,
   NIGHT,
   OFFLINE,
+  OWNER_CHANNEL,
+  OWNER_STATION,
+  SOUND_OFF,
+  SOUND_ON,
   OPENS_NEW_TAB,
   PLAY,
   PLAYING,
@@ -54,6 +60,7 @@ import {
   SUNSET,
   TITLE_OWNER,
   apartmentTitle,
+  fitApartmentTitle,
   TODAY_EMPTY,
   TURN_OFF,
   TURN_ON,
@@ -114,6 +121,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const [sheet, setSheet] = useState(false);
   const [tablet, setTablet] = useState(false);
   const [short, setShort] = useState(false);
+  const [narrow, setNarrow] = useState(false);
   const [tucked, setTucked] = useState(false);
   const [allowTuck, setAllowTuck] = useState(false);
   const [hot, setHot] = useState(false);
@@ -127,6 +135,8 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const opener = useRef<HTMLElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const wellRef = useRef<HTMLDivElement>(null);
+  const [liveBox, setLiveBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const nowRef = useRef(model.now);
@@ -191,12 +201,21 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
 
   const watchToken = `tv:${tv.channelId}:${tv.power ? 1 : 0}`;
   const watchOn = shown === "tv" && tv.power && watchKey === watchToken;
+  const watchLive = Boolean(shown && tv.power && watchKey === watchToken);
 
   useEffect(() => {
-    if (!watchOn) return;
+    if (!watchLive) return;
     holdWatch(() => setWatchKey(null));
     return () => clearWatch();
-  }, [watchOn]);
+  }, [watchLive]);
+
+  useLayoutEffect(() => {
+    if (!watchOn) return;
+    const node = wellRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setLiveBox({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+  }, [watchOn, sheet, short, narrow]);
 
   useEffect(() => {
     if (shown !== "today" || !latest) return;
@@ -223,6 +242,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       setSheet(asSheet);
       setTablet(asSheet && width >= 720);
       setShort(height <= 700 && width < 720);
+      setNarrow(width < 720);
     };
     read();
     window.addEventListener("resize", read);
@@ -468,10 +488,14 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
                   <button key={name + index} type="button" data-ctl={`radio-row-${index}`} className={index === radio?.index ? "is-on" : ""} onClick={() => tapRadio("tune", index)}>
                     {name}
                   </button>
-                ) : (
+                ) : owner ? (
                   <div key={name + index} className="is-info">
                     {name}
                   </div>
+                ) : (
+                  <button key={name + index} type="button" data-ctl={`radio-row-watch-${index}`} className="is-info" onClick={() => showNotice(OWNER_STATION)}>
+                    {name}
+                  </button>
                 ),
               )}
             </div>
@@ -479,10 +503,8 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         )}
         {shown === "tv" && (
           <>
-            <div className="hudf-screen hudf-well" style={{ ["--a" as string]: channel.accent, ["--c" as string]: channel.color }}>
-              {watchOn && tv.power ? (
-                <WatchFrame channelId={channel.id} />
-              ) : (
+            <div ref={wellRef} className={`hudf-screen hudf-well${watchOn ? " is-watching" : ""}`} style={{ ["--a" as string]: channel.accent, ["--c" as string]: channel.color }}>
+              {watchOn ? null : (
                 <>
                   <b>{tv.name || channel.name}</b>
                   {!tv.power ? <em>{TV_OFF}</em> : null}
@@ -512,10 +534,14 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
                   <button key={item.id} type="button" data-ctl={`tv-chip-${item.id}`} className={item.id === tv.channelId && tv.power ? "is-on" : ""} onClick={() => void postTap({ id: "tv", channel: item.id })}>
                     {item.name}
                   </button>
-                ) : (
+                ) : owner ? (
                   <span key={item.id} className={`is-info${item.id === tv.channelId && tv.power ? " is-on" : ""}`}>
                     {item.name}
                   </span>
+                ) : (
+                  <button key={item.id} type="button" data-ctl={`tv-chip-watch-${item.id}`} className={`is-info${item.id === tv.channelId && tv.power ? " is-on" : ""}`} onClick={() => showNotice(OWNER_CHANNEL)}>
+                    {item.name}
+                  </button>
                 ),
               )}
             </div>
@@ -563,7 +589,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
             {owner ? <YouSection /> : <p className="is-info hudf-quiet">{WATCH_YOU}</p>}
             <button type="button" className="hudf-switch" role="switch" aria-checked={!muted} data-ctl="room-sound" onClick={toggleMute}>
               <span>{ROOM_SOUND}</span>
-              <span>{muted ? MUTE : UNMUTE}</span>
+              <span>{owner ? (muted ? MUTE : UNMUTE) : muted ? SOUND_OFF : SOUND_ON}</span>
             </button>
             {owner ? <SignForm ctl="you-signout" label={SIGN_OUT} /> : <SignForm ctl="you-leave" label={WATCH_LEAVE} />}
           </>
@@ -611,18 +637,20 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       ) : null}
       <header className="hudf-top" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <div className="hudf-title is-info">
-          <b>{owner ? TITLE_OWNER : apartmentTitle(null)}</b>
-          <span>
-            {place}
-            {clock ? ` · ${clock}` : ""}
-          </span>
+          <TitlePill title={owner ? TITLE_OWNER : apartmentTitle(null)} />
         </div>
-        <span className={`hudf-badge is-info${owner ? "" : " is-watch"}`} {...(owner ? { "data-owner-badge": "" } : { "data-watch-badge": "" })}>
-          {owner ? OWNER_BADGE : BADGE_WATCH}
+        <span className="hudf-zone is-info" data-zone-pill="">
+          {narrow ? HOUSE_ZONE_SHORT : place}
+          {clock ? ` · ${clock}` : ""}
         </span>
-        <button type="button" className="hudf-count" data-ctl="here-count" onClick={(event) => toggle("here", event)}>
-          {agents.length} here
-        </button>
+        <span className={`hudf-badge is-info${owner ? "" : " is-watch"}`} {...(owner ? { "data-owner-badge": "" } : { "data-watch-badge": "" })}>
+          {owner ? OWNER_BADGE : narrow ? "Watching" : BADGE_WATCH}
+        </span>
+        {narrow ? null : (
+          <button type="button" className="hudf-count" data-ctl="here-count" onClick={(event) => toggle("here", event)}>
+            {agents.length} here
+          </button>
+        )}
         {owner ? <SignForm ctl="signout" label={SIGN_OUT} /> : <SignForm ctl="leave" label={WATCH_LEAVE} />}
       </header>
       <div
@@ -646,35 +674,42 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         ))}
       </div>
       <button type="button" className="hudf-here" data-chrome="" data-ctl="here-tab" onClick={(event) => toggle("here", event)}>
-        {HERE}
-        <span>{agents.length}</span>
+        <span className="hudf-here-count">{agents.length}</span>
+        <span className="hudf-here-label">{HERE}</span>
       </button>
       <div className="hudf-bot" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <div className="hudf-strips">
           <button type="button" className="hudf-strip is-task" data-ctl="strip-task" onClick={(event) => go("activity", event)}>
+            <HudIcon name="task" size={16} />
             <span>{tasks[taskPage] || TODAY_EMPTY}</span>
             {tasks.length ? <em className="is-info">{taskPage + 1}/{tasks.length}</em> : null}
           </button>
           <button type="button" className="hudf-strip is-chat" data-ctl="strip-chat" onClick={(event) => go("activity", event)}>
-            <span>{ACTIVITY}</span>
+            <HudIcon name="chat" size={16} />
+            <span>{latest ? cleanHud(latest.text, 80) : ACTIVITY}</span>
           </button>
         </div>
         <nav className="hudf-nav">
           <button type="button" data-ctl="nav-room" className={!shown ? "is-on" : ""} onClick={(event) => { remember(event); close(); }}>
+            <HudIcon name="house" size={22} />
             Room
           </button>
           <button type="button" data-ctl="nav-activity" className={shown === "activity" ? "is-on" : ""} onClick={(event) => toggle("activity", event)}>
+            <HudIcon name="activity" size={22} />
             Activity
           </button>
           {owner ? (
             <button type="button" data-ctl="nav-invite" className={shown === "invite" ? "is-on" : ""} onClick={(event) => toggle("invite", event)}>
+              <HudIcon name="invite" size={22} />
               Invite
             </button>
           ) : null}
           <button type="button" data-ctl="nav-people" className={shown === "people" ? "is-on" : ""} onClick={(event) => toggle("people", event)}>
+            <HudIcon name="people" size={22} />
             People
           </button>
           <button type="button" data-ctl="nav-you" className={shown === "you" ? "is-on" : ""} onClick={(event) => toggle("you", event)}>
+            <HudIcon name="me" size={22} />
             You
           </button>
         </nav>
@@ -704,6 +739,14 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
           </button>
         ) : null}
       </div>
+      {watchLive ? (
+        <div
+          className={`hudf-watch-slot${watchOn ? " is-live" : " is-parked"}`}
+          style={watchOn && liveBox ? { left: liveBox.left, top: liveBox.top, width: liveBox.width, height: liveBox.height } : undefined}
+        >
+          <WatchFrame channelId={channel.id} muted={muted} />
+        </div>
+      ) : null}
       {ring ? <div className="hudf-ring" style={{ left: ring.x, top: ring.y }} /> : null}
       {model.status === "offline" ? <p className="hud-offline is-info">{OFFLINE}</p> : null}
       {overlay ? <div className="hudf-overlay">{overlay}</div> : null}
@@ -728,18 +771,52 @@ function Rail({
   ctl?: string;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
+  const icon = railIcon(id);
   return (
     <button type="button" data-ctl={ctl ?? `rail-${id}`} className={on ? "is-on" : ""} aria-label={label} onClick={onClick}>
-      {dot ? <i className="hudf-dot" /> : null}
-      {bars ? (
-        <span className="hudf-eq" aria-hidden>
-          <i />
-          <i />
-          <i />
-        </span>
-      ) : null}
+      <span className="hudf-medal">
+        {bars ? (
+          <span className="hudf-eq" aria-hidden>
+            <i />
+            <i />
+            <i />
+          </span>
+        ) : (
+          <HudIcon name={icon} size={22} />
+        )}
+        {dot ? <i className="hudf-dot" /> : null}
+      </span>
       <small>{label}</small>
     </button>
+  );
+}
+
+function railIcon(id: string): HudIconName {
+  if (id === "today" || id === "radio" || id === "tv" || id === "sky" || id === "computer") return id;
+  if (id === "yours-packages") return "box";
+  if (id === "yours-music") return "music";
+  if (id === "yours-city") return "city";
+  return "house";
+}
+
+function TitlePill({ title }: { title: string }) {
+  const ref = useRef<HTMLElement>(null);
+  const [shown, setShown] = useState(title);
+  const possessive = title.endsWith("'s apartment");
+  useLayoutEffect(() => {
+    setShown(title);
+  }, [title]);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node || !possessive) return;
+    if (node.scrollWidth <= node.clientWidth + 1) return;
+    if (!shown.endsWith("'s apartment") || shown.length <= "'s apartment".length + 1) return;
+    setShown(fitApartmentTitle(shown, shown.length - 1));
+  }, [shown, title, possessive]);
+  return (
+    <b ref={ref} className={possessive ? "hudf-title-pill is-fit" : "hudf-title-pill"} data-title-pill="">
+      {shown}
+    </b>
   );
 }
 

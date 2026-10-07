@@ -217,7 +217,8 @@ try {
       await clickCtl(page, "tv-watch", "owner", name);
       await page.waitForSelector("iframe.hudf-watch", { timeout: 4000 });
       const src = await page.locator("iframe.hudf-watch").getAttribute("src");
-      check("phone: Watch live uses the nocookie host", Boolean(src && src.startsWith("https://www.youtube-nocookie.com/embed/") && !src.includes("ytimg") && !src.includes("www.youtube.com/")), src || "");
+      const pageOrigin = new URL(page.url()).origin;
+      check("phone: Watch live uses the nocookie host", Boolean(src && src.startsWith("https://www.youtube-nocookie.com/embed/") && src.includes("enablejsapi=1") && src.includes(`origin=${encodeURIComponent(pageOrigin)}`) && !src.includes("ytimg") && !src.includes("www.youtube.com/") && !src.includes("mute=1")), src || "");
       const canvasHeld = await canvasBox(page);
       const stageHeld = await stageOf();
       check("phone: Watch live does not resize the canvas", Boolean(canvasLive && canvasHeld && canvasLive.w === canvasHeld.w && canvasLive.h === canvasHeld.h), `${canvasLive?.w}x${canvasLive?.h} -> ${canvasHeld?.w}x${canvasHeld?.h}`);
@@ -304,6 +305,38 @@ try {
   await watcher.keyboard.press("Escape");
   await clickCtl(watcher, "nav-you", "watch", "phone");
   check("watcher: You says they are watching and offers Leave", (await watcher.locator(".hudf-card").innerText()).includes("You're watching") && (await watcher.locator("[data-ctl=you-leave]").count()) === 1);
+  const soundLabel = await watcher.locator("[data-ctl=room-sound]").innerText();
+  check("watcher: Room sound stays labeled and shows on or off", soundLabel.includes("Room sound") && !soundLabel.includes("Unmute") && /\b(On|Off)\b/.test(soundLabel), soundLabel);
+  const zoneText = await watcher.locator("[data-zone-pill]").innerText();
+  const titleText = await watcher.locator("[data-title-pill]").innerText();
+  check("watcher: phone zone pill is ET and neither pill ellipsizes", zoneText.startsWith("ET") && !zoneText.includes("Eastern Time") && !zoneText.endsWith("…") && !titleText.endsWith("…") && titleText.endsWith("apartment"), `${titleText} | ${zoneText}`);
+  await watcher.keyboard.press("Escape");
+  const beforeStation = apiBefore();
+  await clickCtl(watcher, "rail-radio", "watch", "phone");
+  await clickCtl(watcher, "radio-row-watch-0", "watch", "phone");
+  await watcher.waitForSelector(".hudf-toast", { timeout: 4000 }).catch(() => null);
+  const stationToast = (await watcher.locator(".hudf-toast").count()) ? await watcher.locator(".hudf-toast").innerText() : "";
+  check("watcher: a station row says only the owner can change it", stationToast === "Only the owner can change the station.", stationToast);
+  check("watcher: a station row sends no radio request", !watchBag.api.slice(beforeStation).some((line) => line.includes("/api/radio")), watchBag.api.slice(beforeStation).join(" "));
+  await watcher.keyboard.press("Escape");
+  const beforeChannel = apiBefore();
+  await clickCtl(watcher, "rail-tv", "watch", "phone");
+  await clickCtl(watcher, "tv-chip-watch-1", "watch", "phone");
+  await watcher.waitForSelector(".hudf-toast", { timeout: 4000 }).catch(() => null);
+  const channelToast = (await watcher.locator(".hudf-toast").count()) ? await watcher.locator(".hudf-toast").innerText() : "";
+  check("watcher: a channel pill says only the owner can change it", channelToast === "Only the owner can change the channel.", channelToast);
+  check("watcher: a channel pill sends no tap", !watchBag.api.slice(beforeChannel).some((line) => line.includes("/api/tap")), watchBag.api.slice(beforeChannel).join(" "));
+  if ((await watcher.locator("[data-ctl=tv-watch]").count()) === 1) {
+    await clickCtl(watcher, "tv-watch", "watch", "phone");
+    await watcher.waitForSelector("iframe.hudf-watch", { timeout: 4000 });
+    const liveSrc = await watcher.locator("iframe.hudf-watch").getAttribute("src");
+    await clickCtl(watcher, "nav-you", "watch", "phone");
+    for (let i = 0; i < 3; i += 1) await clickCtl(watcher, "room-sound", "watch", "phone");
+    const heldSrc = await watcher.locator("iframe.hudf-watch").getAttribute("src");
+    check("watcher: Room sound toggles leave the player src unchanged", Boolean(liveSrc && heldSrc === liveSrc && (await watcher.locator("iframe.hudf-watch").count()) === 1), heldSrc || "");
+  } else {
+    check("watcher: Room sound toggles leave the player src unchanged", false, "tv-watch missing");
+  }
   const geoW = await watcher.evaluate(() => window.__geoCalls || 0);
   check("watcher: geolocation was not called", geoW === 0);
   await watchCtx.close();

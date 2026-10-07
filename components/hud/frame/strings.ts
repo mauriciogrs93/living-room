@@ -9,6 +9,18 @@ export function apartmentTitle(name?: string | null): string {
   if (!/^[\p{L}][\p{L}\p{M}'’.-]*(?: [\p{L}][\p{L}\p{M}'’.-]*)*$/u.test(clean)) return TITLE_WATCH;
   return `${clean}'s apartment`;
 }
+
+const APARTMENT_SUFFIX = "'s apartment";
+
+/** When a possessive title cannot fit, shorten the name and keep the suffix whole. */
+export function fitApartmentTitle(title: string, maxChars = 80): string {
+  if (!title.endsWith(APARTMENT_SUFFIX) || title.length <= maxChars) return title;
+  const room = Math.max(1, maxChars - APARTMENT_SUFFIX.length);
+  let name = title.slice(0, -APARTMENT_SUFFIX.length).slice(0, room).trimEnd();
+  const cut = name.lastIndexOf(" ");
+  if (cut > 0) name = name.slice(0, cut);
+  return `${name || title.slice(0, 1)}${APARTMENT_SUFFIX}`;
+}
 export const BADGE_WATCH = "WATCHING · READ-ONLY";
 export const HERE = "Here";
 export const HERE_EMPTY = "No one's home right now.";
@@ -43,6 +55,10 @@ export const CLOSE = "Close";
 export const ROOM_SOUND = "Room sound";
 export const WATCH_YOU = "You're watching. Only the owner can change things here.";
 export const OWNER_ONLY = "Only the owner can change things here.";
+export const OWNER_STATION = "Only the owner can change the station.";
+export const OWNER_CHANNEL = "Only the owner can change the channel.";
+export const SOUND_ON = "On";
+export const SOUND_OFF = "Off";
 export const COMING_SOON = "Coming soon.";
 export const HOUSE = "House";
 export const DAY = "Day";

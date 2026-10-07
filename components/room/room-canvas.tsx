@@ -592,7 +592,7 @@ function GlWatch({ onLost }: { onLost: () => void }) {
 export type Grade = { exposure: number; sun: string; sunI: number; sky: string; ground: string; hemiI: number; fill: string; fillI: number; paper: string | null; fog: string | null; shadowR: number; drift: number };
 export function lightGrade(hour: number, sky: string, night: boolean): Grade {
   let g: Grade;
-  if (night) g = { exposure: 0.9, sun: "#AFC0DD", sunI: 0.45 / Math.PI, sky: "#6F7F9C", ground: "#5A4A3C", hemiI: 0.36, fill: "#6A7A96", fillI: 0.09, paper: null, fog: null, shadowR: 6, drift: 0 };
+  if (night) g = { exposure: 0.9, sun: "#AFC0DD", sunI: 0.45 / Math.PI, sky: "#6F7F9C", ground: "#5A4A3C", hemiI: 0.36, fill: "#6A7A96", fillI: 0.09, paper: "#D0CDC6", fog: null, shadowR: 6, drift: 0 };
   else if (hour < 10) g = { exposure: 0.86, sun: "#FFE3C4", sunI: 1.5, sky: "#D3DEEE", ground: "#B9AE9F", hemiI: 0.25, fill: "#D6E0F0", fillI: 0.16, paper: "#E3E2DE", fog: null, shadowR: 4.5, drift: 0 };
   else if (hour < 16) g = { exposure: 0.84, sun: "#FFEEDA", sunI: 1.8, sky: "#D9E2F0", ground: "#BFB3A2", hemiI: 0.24, fill: "#DCE4F2", fillI: 0.15, paper: "#E2DDD4", fog: null, shadowR: 4, drift: 0 };
   else if (hour < 19) g = { exposure: 0.86, sun: "#FFB676", sunI: 1.6, sky: "#E2CDB8", ground: "#A98F75", hemiI: 0.2, fill: "#C9B9C9", fillI: 0.12, paper: "#E4D7C6", fog: null, shadowR: 4.5, drift: 0 };

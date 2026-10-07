@@ -14,6 +14,7 @@ import type { InviteChanges } from "@/lib/room/store/persist";
  */
 export type Apartment = { id: string; kind: "private" | "shared"; legacy: boolean };
 export type WatchRedeem = { ok: true; apartmentId: string; expiresMs: number } | { ok: false; code: string };
+export type WatchEndReason = "revoke" | "expired" | "unknown";
 
 export interface Directory {
   readonly kind: "supabase" | "memory";
@@ -30,6 +31,8 @@ export interface Directory {
   watchMint(apartmentId: string, hash: string, expMs: number, maxUnused: number): Promise<void>;
   watchRedeem(hash: string, sessionHash: string, sessionMs: number): Promise<WatchRedeem>;
   watchSession(sessionHash: string): Promise<string | null>;
+  /** Why a dead session ended. Live sessions are not asked. Unknown covers a missing row. */
+  watchEndReason(sessionHash: string): Promise<WatchEndReason>;
   watchRevoke(apartmentId: string, sessions: boolean): Promise<{ codes: number; sessions: number }>;
 }
 
@@ -99,6 +102,9 @@ class SupabaseDirectory implements Directory {
     const raw = await this.rpc("watch_session", { p_session_hash: sessionHash });
     return typeof raw === "string" && raw ? raw : null;
   }
+  async watchEndReason(_sessionHash: string): Promise<WatchEndReason> {
+    return "unknown";
+  }
   async watchRevoke(apartmentId: string, sessions: boolean) {
     const raw = (await this.rpc("watch_revoke", { p_apartment: apartmentId, p_sessions: sessions })) as { codes?: number; sessions?: number };
     return { codes: Number(raw?.codes ?? 0), sessions: Number(raw?.sessions ?? 0) };
@@ -118,6 +124,7 @@ export class MemoryDirectory implements Directory, MemoryIndex {
   invites = new Map<string, MemCode>();
   watchCodes = new Map<string, MemCode>();
   watchSessions = new Map<string, { apartmentId: string; exp: number }>();
+  revokedSessions = new Set<string>();
   private global = new MemoryPersist(GLOBAL_SCOPE, null);
   globalStore() {
     return this.global;
@@ -221,6 +228,12 @@ export class MemoryDirectory implements Directory, MemoryIndex {
     const row = this.watchSessions.get(sessionHash);
     return row && row.exp > Date.now() ? row.apartmentId : null;
   }
+  async watchEndReason(sessionHash: string): Promise<WatchEndReason> {
+    if (this.revokedSessions.has(sessionHash)) return "revoke";
+    const row = this.watchSessions.get(sessionHash);
+    if (row && row.exp <= Date.now()) return "expired";
+    return "unknown";
+  }
   async watchRevoke(apartmentId: string, sessions: boolean) {
     let codes = 0;
     let ended = 0;
@@ -233,7 +246,9 @@ export class MemoryDirectory implements Directory, MemoryIndex {
     if (sessions) {
       for (const [hash, row] of this.watchSessions) {
         if (row.apartmentId === apartmentId) {
+          this.revokedSessions.add(hash);
           this.watchSessions.delete(hash);
+          if (this.revokedSessions.size > 500) this.revokedSessions.delete(this.revokedSessions.values().next().value!);
           ended += 1;
         }
       }

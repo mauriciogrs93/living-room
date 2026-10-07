@@ -38,7 +38,7 @@ type News = { title: string; source: string };
 const CSS = `
 .room-root .hud-fab, .room-root .hud-card, .room-root .global-tape-meta { display: none !important; }
 .room-root .global-tape { height: 30px; background: transparent !important; border-bottom: 1px solid var(--hud-rule) !important;
-  box-shadow: none !important; transition: opacity 700ms ease; backdrop-filter: none !important; }
+  box-shadow: none !important; transition: opacity 700ms ease; }
 .room-root .global-tape-flag { border: 0 !important; background: transparent !important; font-size: 10px; }
 .room-root .global-tape-line { font-size: 13px; }
 html.mini-idle .room-root .global-tape { opacity: 0.2; }

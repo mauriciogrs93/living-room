@@ -9,7 +9,7 @@ import { INVITE_TTL_MS } from "@/lib/room/invite-ttl";
 import { directory, type Apartment } from "./directory";
 import { currentAccount, type Account } from "./auth";
 import { accountIdentity, ownerSecret } from "./identity";
-import { WATCH_ENDED_COPY } from "./copy";
+import { WATCH_ENDED_COPY, WATCH_EXPIRED_COPY } from "./copy";
 import { LIMITS, retryAfterSeconds, type Limit } from "./limits";
 
 /**
@@ -191,9 +191,17 @@ export async function watchApartment(req: Request) {
   return directory().watchSession(sessionHash(token));
 }
 
+/** Owner revoke keeps the owner-ended line. Expiry and anything we cannot tell use the ended-link line. */
+export async function watchEndCopy(req: Request) {
+  const token = cookieValue(req, WATCH_COOKIE);
+  if (!WATCH_RE.test(token)) return WATCH_EXPIRED_COPY;
+  const reason = await directory().watchEndReason(sessionHash(token));
+  return reason === "revoke" ? WATCH_ENDED_COPY : WATCH_EXPIRED_COPY;
+}
+
 /** A well-formed watch cookie whose session is gone: the owner ended it, or it expired. */
-export function watchEndedResponse(setCookies: string[] = []) {
-  return withCookies(ownerJson({ ok: false, code: "watch_ended", error: WATCH_ENDED_COPY }, 403), setCookies);
+export async function watchEndedResponse(req: Request, setCookies: string[] = []) {
+  return withCookies(ownerJson({ ok: false, code: "watch_ended", error: await watchEndCopy(req) }, 403), setCookies);
 }
 
 export function hasWatchCookie(req: Request) {
@@ -216,7 +224,7 @@ export async function viewerContext(req: Request): Promise<ViewerContext | null 
   if (hasWatchCookie(req)) {
     const watched = await watchApartment(req);
     if (watched) return { apartmentId: watched, role: "watch", room: roomFor(watched), setCookies };
-    return watchEndedResponse(setCookies);
+    return watchEndedResponse(req, setCookies);
   }
   return null;
 }
