@@ -101,7 +101,7 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
     window.dispatchEvent(new Event("maquette-layout"));
   }, [hud.section]);
 
-  function selectAgent(id: string | null) {
+  const selectAgent = useCallback((id: string | null) => {
     if (!id) {
       setSelectedId(null);
       if (hud.section) hud.close();
@@ -110,7 +110,7 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
     setShot(false);
     setSelectedId((current) => (current === id ? null : id));
     hud.open("activity");
-  }
+  }, [hud]);
 
   // 3D front door: derived from the public door field the room snapshot already carries (no extra requests).
   // Unlocked reads as "open"; pending knocks animate the leaf. Owners get the exact knock count from the Door

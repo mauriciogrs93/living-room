@@ -12,7 +12,7 @@ import { FALLBACK_STATIONS } from "../../lib/room/house";
 import { forecastUrlAllowed } from "../../lib/room/house-sky";
 import { lineupCount, lineupDraws, lineupEnabled } from "../../lib/room/lineup";
 import { acceptPlayerEvent, embedOrigin, watchEmbed, YT_ORIGIN } from "../../lib/room/watch-live";
-import { AWAY_LABEL, placeTags, plainName, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
+import { joinToast, placeTags, plainName, stackLabel, tagCopy, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -190,15 +190,26 @@ check("join rows name the person", walkedInLine("Ada Lovelace") === "Ada Lovelac
 const view: TagRect = { l: 0, t: 0, r: 400, b: 320 };
 const blocks: TagRect[] = [{ l: 0, t: 260, r: 400, b: 320 }];
 const order = new Uint16Array(8);
-const fresh = (): TagOut[] => Array.from({ length: 8 }, () => ({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "" }));
+const fresh = (): TagOut[] => Array.from({ length: 8 }, () => ({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "", who: "", ids: "" }));
 const idleOut = fresh();
 const idle: TagPoint[] = [{ id: "ada", x: 120, y: 90, depth: 1, name: "Ada", idle: true, color: "#888" }];
-check("an idle agent is labelled Away", placeTags(idle, 1, blocks, 0, view, order, idleOut) === 1 && idleOut[0]?.text === AWAY_LABEL && idleOut[0]?.label === "Ada, Away");
+check("an idle tag keeps the name", placeTags(idle, 1, blocks, 0, view, order, idleOut) === 1 && idleOut[0]?.text === "Ada · Away" && idleOut[0]?.label === "Ada · Away" && tagCopy("Ada", true).text === "Ada · Away");
 const crowd: TagPoint[] = [0, 1, 2, 3].map((i) => ({ id: `a${i}`, x: 160, y: 100, depth: i + 1, name: `Agent ${i}`, idle: false, color: "#888" }));
 const crowdOut = fresh();
 const shown = placeTags(crowd, 4, blocks, 0, view, order, crowdOut);
 const more = crowdOut.find((slot) => slot.more > 0);
 check("colliding tags keep the nearest and collapse the rest", shown >= 2 && more !== undefined && more.more >= 1 && crowdOut[0]?.id === "a0");
+check("a stack label lists the hidden names", stackLabel(3, ["Ada", "Bea"]) === "3 more: Ada, Bea" && more !== undefined && more.label.startsWith(`${more.more} more:`));
+check("join toast names the person", joinToast("Ada just walked in") === "Ada walked in." && joinToast("just walked in") === "Someone walked in." && joinToast("<b></b> just walked in") === "Someone walked in.");
+check("the watch badge is sentence case", strings.BADGE_WATCH === "Watching" && hudFrame.includes("BADGE_WATCH") && !hudFrame.includes("WATCHING"));
+check("desktop does not render the Here tab", hudFrame.includes("narrow ? (") && hudFrame.includes('data-ctl="here-tab"'));
+check("name tags use zero letter spacing", /\.agent-tag \{[^}]*letter-spacing:\s*0;/.test(globals));
+check("a stack opens a plain-text name list", tagLayer.includes("data-stack-pick") && tagLayer.includes("textContent") && tagLayer.includes('event.key === "Escape"') && !tagLayer.includes("innerHTML"));
+check("the mute control cannot grow with the sheet", /\.hudf-body > \.hudf-play\[data-ctl="radio-mute"\] \{[^}]*max-height:\s*44px/.test(hudCss));
+check("the playing meter is 14px ink bars", hudCss.includes(".hudf-now .hudf-eq i { width: 3px; height: 14px; background: var(--ink); }"));
+check("the house icon is cached for a year", nextConfig.includes('source: "/icon.svg"') && nextConfig.includes("max-age=31536000"));
+const avatarSource = readFileSync(path.join(root, "components/room/avatar.tsx"), "utf8");
+check("tag placement does not read layout after writing", !avatarSource.includes("label.getBoundingClientRect") && avatarSource.includes("hostMeasures"));
 
 const failed = results.filter((ok) => !ok).length;
 console.log(`${results.length - failed}/${results.length}`);

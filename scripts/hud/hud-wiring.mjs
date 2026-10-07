@@ -229,6 +229,35 @@ try {
     } else {
       await page.keyboard.press("Escape");
       check("desk: Escape closes the card", (await page.locator(".hudf-card").count()) === 0);
+      check("desk: the Here tab is gone", (await page.locator("[data-ctl=here-tab]").count()) === 0);
+      const stack = await page.evaluate(() => {
+        const layer = document.querySelector("[data-name-tags]");
+        if (!layer) return { opened: false, labels: [], links: -1 };
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "agent-tag";
+        btn.dataset.nameTag = "";
+        btn.dataset.stackIds = "agent-ada\nagent-bea";
+        btn.dataset.stackNames = "Ada\nBea";
+        btn.dataset.tagKey = "stack-test";
+        btn.setAttribute("aria-label", "2 more: Ada, Bea");
+        btn.textContent = "+2";
+        btn.style.left = "420px";
+        btn.style.top = "360px";
+        layer.append(btn);
+        btn.click();
+        const menu = layer.querySelector("[data-name-stack]");
+        const labels = [...(menu?.querySelectorAll("button") ?? [])].map((node) => node.textContent);
+        return { opened: Boolean(menu), labels, links: menu ? menu.querySelectorAll("a").length : -1, label: btn.getAttribute("aria-label") };
+      });
+      check("desk: +N opens the names in that stack", stack.opened && stack.labels.join(",") === "Ada,Bea" && stack.links === 0 && stack.label === "2 more: Ada, Bea", JSON.stringify(stack));
+      await page.keyboard.press("Escape");
+      check("desk: Escape closes the stack list", (await page.locator("[data-name-stack]").count()) === 0);
+      await page.evaluate(() => document.querySelector("[data-name-tags] button[data-stack-ids]")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      await page.locator("[data-stack-pick='agent-ada']").click();
+      await page.waitForSelector(".hudf-card h2");
+      check("desk: tapping a stacked name focuses that agent", (await page.locator(".hudf-card h2").innerText()) === "Activity");
+      await page.keyboard.press("Escape");
     }
 
     if (name === "phone") {
@@ -313,6 +342,9 @@ try {
       check("phone: owner Room sound shows On or Off", ownerSound.includes("Room sound") && !/Mute|Unmute/.test(ownerSound) && /\b(On|Off)\b/.test(ownerSound), ownerSound);
       const soundSize = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-ctl=room-sound]")).fontSize));
       check("phone: Room sound label is at least 13px", soundSize >= 13, String(soundSize));
+      await clickCtl(page, "rail-radio", "owner", name);
+      await clickCtl(page, "radio-play", "owner", name);
+      await page.waitForTimeout(400);
     }
     if (name === "short") {
       await clickCtl(page, "rail-tv", "owner", name);
@@ -340,6 +372,14 @@ try {
   await watcher.goto(watchLink.includes("debug=1") ? watchLink : watchLink.replace("/room#", "/room?debug=1#"), { waitUntil: "domcontentloaded" });
   await watcher.waitForSelector("[data-watch-badge]", { timeout: 25000 });
   check("watcher: title is The apartment", (await watcher.locator(".hudf-title b").innerText()) === "The apartment");
+  check("watcher: the header pill says Watching", (await watcher.locator(".hudf-badge[data-watch-badge]").innerText()).trim() === "Watching");
+  await clickCtl(watcher, "rail-radio", "watch", "phone");
+  await watcher.waitForSelector("[data-ctl=radio-mute]", { timeout: 8000 });
+  const muteBox = await watcher.locator("[data-ctl=radio-mute]").boundingBox();
+  check("phone: radio mute stays under 48px tall", Boolean(muteBox && muteBox.height <= 48 && muteBox.height >= 44), muteBox ? `${Math.round(muteBox.width)}x${Math.round(muteBox.height)}` : "missing");
+  const eqBox = await watcher.locator(".hudf-now .hudf-eq").boundingBox();
+  check("phone: the playing meter is about 14px tall", Boolean(eqBox && eqBox.height >= 12 && eqBox.height <= 16), eqBox ? String(Math.round(eqBox.height)) : "missing");
+  await watcher.keyboard.press("Escape");
   check("watcher: Invite is not in the nav", (await watcher.locator("[data-ctl=nav-invite]").count()) === 0);
   check("watcher: no outside request on load", watchBag.outside.length === 0, watchBag.outside.join(" "));
   await watcher.waitForFunction(() => window.__anchors && window.__anchors["object:lamp"], null, { timeout: 20000 });

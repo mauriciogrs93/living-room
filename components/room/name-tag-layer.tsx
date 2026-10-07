@@ -16,12 +16,39 @@ const BLOCKS: TagRect[] = [];
 const SIG = new Int32Array(MAX * 3 + 8);
 for (let i = 0; i < MAX; i += 1) {
   POINTS.push({ id: "", x: 0, y: 0, depth: 0, name: "", idle: false, color: "" });
-  OUTS.push({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "" });
+  OUTS.push({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "", who: "", ids: "" });
 }
 for (let i = 0; i < 24; i += 1) BLOCKS.push({ l: 0, t: 0, r: 0, b: 0 });
 
 const head = new Vector3();
 const VIEW: TagRect = { l: 8, t: 8, r: 0, b: 0 };
+
+function openStack(layer: HTMLElement, btn: HTMLButtonElement, closeMenu: () => void) {
+  closeMenu();
+  const ids = (btn.dataset.stackIds || "").split("\n").filter(Boolean);
+  const names = (btn.dataset.stackNames || "").split("\n");
+  if (!ids.length) return;
+  const menu = document.createElement("div");
+  menu.className = "tag-stack";
+  menu.dataset.nameStack = "";
+  menu.setAttribute("role", "dialog");
+  menu.setAttribute("aria-label", btn.getAttribute("aria-label") || "More people");
+  menu.dataset.returnFocus = btn.dataset.tagKey || "";
+  ids.forEach((id, index) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.dataset.stackPick = id;
+    item.textContent = names[index] || "Someone";
+    menu.append(item);
+  });
+  const left = Number.parseFloat(btn.style.left) || 0;
+  const top = Number.parseFloat(btn.style.top) || 0;
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top + 32}px`;
+  layer.append(menu);
+  btn.setAttribute("aria-expanded", "true");
+  menu.querySelector("button")?.focus();
+}
 
 function bucket(n: number) {
   return (n * 20 + (n < 0 ? -0.5 : 0.5)) | 0;
@@ -60,16 +87,64 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
       dot.setAttribute("aria-hidden", "true");
       const span = document.createElement("span");
       btn.append(dot, span);
-      btn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const id = btn.dataset.agentId;
-        if (id) selectRef.current(id);
-      });
       layer.append(btn);
       buttons.push(btn);
       spans.push(span);
       dots.push(dot);
     }
+    const closeMenu = () => {
+      layer.querySelector("[data-name-stack]")?.remove();
+      layer.querySelectorAll("button[aria-expanded='true']").forEach((node) => node.setAttribute("aria-expanded", "false"));
+    };
+    const onDocPointer = (event: PointerEvent) => {
+      const menu = layer.querySelector("[data-name-stack]");
+      if (!menu) return;
+      if (event.target instanceof Node && menu.contains(event.target)) return;
+      if (event.target instanceof Element && event.target.closest("button[data-stack-ids]")) return;
+      closeMenu();
+    };
+    layer.addEventListener("click", (event) => {
+      const target = event.target as HTMLElement | null;
+      const pick = target?.closest("button[data-stack-pick]");
+      if (pick instanceof HTMLButtonElement && layer.contains(pick)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = pick.dataset.stackPick;
+        closeMenu();
+        if (id) selectRef.current(id);
+        return;
+      }
+      const btn = target?.closest("button[data-name-tag]");
+      if (!(btn instanceof HTMLButtonElement) || !layer.contains(btn)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (btn.dataset.stackIds) {
+        openStack(layer, btn, closeMenu);
+        return;
+      }
+      const id = btn.dataset.agentId;
+      if (id) selectRef.current(id);
+    });
+    layer.addEventListener("keydown", (event) => {
+      const menu = layer.querySelector<HTMLElement>("[data-name-stack]");
+      if (!menu) return;
+      const keys = menu.querySelectorAll<HTMLButtonElement>("button[data-stack-pick]");
+      const current = document.activeElement;
+      const index = [...keys].indexOf(current as HTMLButtonElement);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        const back = menu.dataset.returnFocus;
+        closeMenu();
+        if (back) layer.querySelector<HTMLButtonElement>(`button[data-tag-key="${back}"]`)?.focus();
+        return;
+      }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      const next = event.key === "ArrowDown" ? Math.min(keys.length - 1, index + 1) : Math.max(0, index - 1);
+      keys[index < 0 ? 0 : next]?.focus();
+    });
+    document.addEventListener("pointerdown", onDocPointer);
     host.append(layer);
     nodes.current = buttons;
     labels.current = spans;
@@ -81,6 +156,7 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
     observer.observe(root, { attributes: true, subtree: true, attributeFilter: ["class"] });
     return () => {
       observer.disconnect();
+      document.removeEventListener("pointerdown", onDocPointer);
       layer.remove();
       nodes.current = [];
     };
@@ -171,17 +247,24 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
       }
       const slot = OUTS[i]!;
       btn.hidden = false;
+      btn.dataset.tagKey = String(i);
       btn.classList.toggle("is-more", slot.more > 0);
-      btn.classList.toggle("is-away", slot.text === "Away");
+      btn.classList.toggle("is-away", slot.text.endsWith(" · Away"));
       btn.style.left = `${slot.x}px`;
       btn.style.top = `${slot.y}px`;
       btn.style.width = `${TAG_W}px`;
       btn.style.height = `${TAG_H}px`;
       if (slot.more > 0) {
         delete btn.dataset.agentId;
+        btn.dataset.stackIds = slot.ids;
+        btn.dataset.stackNames = slot.who;
+        btn.setAttribute("aria-haspopup", "dialog");
         dot.hidden = true;
       } else {
         btn.dataset.agentId = slot.id;
+        delete btn.dataset.stackIds;
+        delete btn.dataset.stackNames;
+        btn.removeAttribute("aria-haspopup");
         dot.hidden = false;
         dot.style.background = mutedHex(slot.color || "#8d99a6");
       }

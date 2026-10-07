@@ -21,7 +21,7 @@ export function fitApartmentTitle(title: string, maxChars = 80): string {
   if (cut > 0) name = name.slice(0, cut);
   return `${name || title.slice(0, 1)}${APARTMENT_SUFFIX}`;
 }
-export const BADGE_WATCH = "WATCHING · READ-ONLY";
+export const BADGE_WATCH = "Watching";
 export const HERE = "Here";
 export const HERE_EMPTY = "No one's home right now.";
 

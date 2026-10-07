@@ -23,6 +23,7 @@ import { YOURS_CARDS, yoursCards } from "./controls";
 import { HudIcon, type HudIconName } from "./icons";
 import { WatchFrame } from "./watch-frame";
 import { showNotice } from "@/components/room/viewer-tap";
+import { joinToast } from "@/lib/room/name-tags";
 import {
   ACTION_FAIL,
   ACTIVITY,
@@ -164,7 +165,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   }, [dateKey]);
   const tasks = useMemo(() => {
     return agents
-      .map((agent) => cleanHud(`${agent.name} ${agent.status}`.trim(), 140))
+      .map((agent) => cleanHud(joinToast(`${agent.name} ${agent.status}`.trim()), 140))
       .filter(Boolean)
       .slice(0, 3);
   }, [agents]);
@@ -484,7 +485,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
             {owner && !radio?.on && station ? <p className="is-info hudf-quiet">{PLAYS(station)}</p> : null}
             {radio?.on ? (
               <p className="is-info hudf-quiet hudf-now">
-                <span className="hudf-eq" data-eq="" aria-hidden>
+                <span className={`hudf-eq${muted ? " is-paused" : ""}`} data-eq="" aria-hidden>
                   <i />
                   <i />
                   <i />
@@ -657,7 +658,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
           {clock ? ` · ${clock}` : ""}
         </span>
         <span className={`hudf-badge is-info${owner ? "" : " is-watch"}`} {...(owner ? { "data-owner-badge": "" } : { "data-watch-badge": "" })}>
-          {owner ? OWNER_BADGE : narrow ? "Watching" : BADGE_WATCH}
+          {owner ? OWNER_BADGE : BADGE_WATCH}
         </span>
         {narrow ? null : (
           <button type="button" className="hudf-count" data-ctl="here-count" onClick={(event) => toggle("here", event)}>
@@ -686,10 +687,12 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
           <Rail key={card.id} id={card.id} ctl={card.id} label={card.title} on={shown === card.id} onClick={(event) => toggle(card.id, event)} />
         ))}
       </div>
-      <button type="button" className="hudf-here" data-chrome="" data-ctl="here-tab" onClick={(event) => toggle("here", event)}>
-        <span className="hudf-here-count">{agents.length}</span>
-        <span className="hudf-here-label">{HERE}</span>
-      </button>
+      {narrow ? (
+        <button type="button" className="hudf-here" data-chrome="" data-ctl="here-tab" onClick={(event) => toggle("here", event)}>
+          <span className="hudf-here-count">{agents.length}</span>
+          <span className="hudf-here-label">{HERE}</span>
+        </button>
+      ) : null}
       <div className="hudf-bot" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <div className="hudf-strips">
           <button type="button" className="hudf-strip is-task" data-ctl="strip-task" onClick={(event) => go("activity", event)}>

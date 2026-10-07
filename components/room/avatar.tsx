@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Bone, Box3, BoxGeometry, BufferAttribute, type Camera, type Object3D, Matrix4, Mesh, MeshBasicMaterial, Quaternion, SRGBColorSpace, Skeleton, SkinnedMesh, Uint16BufferAttribute, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, LatheGeometry, MeshPhysicalMaterial, MeshStandardMaterial, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, type BufferGeometry, type Group, type Material } from "three";
@@ -220,6 +220,30 @@ function noteObstacles(host: HTMLElement, label: HTMLElement, selfId: string, sc
     });
   }
   return out.concat(AVOID.rects);
+}
+
+type HostMeasure = { left: number; top: number; right: number; bottom: number; width: number; height: number; tape: number };
+const hostMeasures = new WeakMap<HTMLElement, HostMeasure>();
+
+/** One read per resize. The frame loop uses the cache and never writes, then reads. */
+function watchHost(host: HTMLElement) {
+  if (hostMeasures.has(host)) return;
+  const read = () => {
+    const box = host.getBoundingClientRect();
+    const tape = host.ownerDocument.querySelector<HTMLElement>(".room-root .global-tape");
+    hostMeasures.set(host, {
+      left: box.left,
+      top: box.top,
+      right: box.right,
+      bottom: box.bottom,
+      width: box.width,
+      height: box.height,
+      tape: tape && tape.offsetParent ? tape.getBoundingClientRect().bottom - box.top + 8 : 0,
+    });
+  };
+  read();
+  const observer = new ResizeObserver(read);
+  observer.observe(host);
 }
 const PORTRAIT = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "agent";
 const PORTRAIT_WHO = PORTRAIT ? (new URLSearchParams(window.location.search).get("who") ?? "").toLowerCase() : "";
@@ -470,7 +494,7 @@ function lerpAngle(a: number, b: number, t: number) {
   return a + diff * t;
 }
 
-export function AgentAvatar({
+export const AgentAvatar = memo(function AgentAvatar({
   agent,
   skew,
   focused = false,
@@ -616,11 +640,18 @@ export function AgentAvatar({
       if (onScreen) {
         const px = (projected.x * 0.5 + 0.5) * size.width;
         const py = (-projected.y * 0.5 + 0.5) * size.height;
-        label.style.left = `${px}px`;
-        label.style.top = `${py}px`;
-        label.style.transform = "translate(-50%, -100%)";
-        const rect = label.getBoundingClientRect();
-        const bounds = host.getBoundingClientRect();
+        watchHost(host);
+        const measured = hostMeasures.get(host);
+        const sw = Number(label.dataset.sw) || 148;
+        const sh = Number(label.dataset.sh) || 44;
+        const bounds = {
+          left: measured?.left ?? 0,
+          top: measured?.top ?? 0,
+          right: measured?.right ?? size.width,
+          bottom: measured?.bottom ?? size.height,
+          width: measured?.width ?? size.width,
+          height: measured?.height ?? size.height,
+        };
         const narrow = bounds.width < 800;
         // this figure's screen rect (head anchor down to the feet), for the speech-note placer
         _feet.set(group.position.x, lift, group.position.z).project(camera);
@@ -631,24 +662,28 @@ export function AgentAvatar({
         else FIGURE_RECTS.set(agent.id, { l: bounds.left + px - half, t: headY, r: bounds.left + px + half, b: feetY });
         const margin = 8;
         // tags and notes stay at least 8 px under the ticker bar in every fit (portrait, landscape, desktop)
-        const tape = document.querySelector<HTMLElement>(".room-root .global-tape");
-        const tapeBottom = tape && tape.offsetParent ? tape.getBoundingClientRect().bottom - bounds.top + 8 : 0;
-        const top = Math.max(narrow ? 46 : 12, tapeBottom);
+        const top = Math.max(narrow ? 46 : 12, measured?.tape ?? 0);
         const bottom = narrow ? deck.bottom : 16;
+        const left = bounds.left + px - sw / 2;
+        const right = left + sw;
+        const tagTop = bounds.top + py - sh;
+        const tagBottom = bounds.top + py;
         let dx = 0;
         let dy = 0;
-        if (rect.left < bounds.left + margin) dx = bounds.left + margin - rect.left;
-        if (rect.right > bounds.right - margin) dx = bounds.right - margin - rect.right;
-        if (rect.top < bounds.top + top) dy = bounds.top + top - rect.top;
-        if (rect.bottom > bounds.bottom - bottom) dy = bounds.bottom - bottom - rect.bottom;
-        if (dx !== 0 || dy !== 0) label.style.transform = `translate(calc(-50% + ${dx}px), calc(-100% + ${dy}px))`;
+        if (left < bounds.left + margin) dx = bounds.left + margin - left;
+        if (right > bounds.right - margin) dx = bounds.right - margin - right;
+        if (tagTop < bounds.top + top) dy = bounds.top + top - tagTop;
+        if (tagBottom > bounds.bottom - bottom) dy = bounds.bottom - bottom - tagBottom;
+        label.style.left = `${px}px`;
+        label.style.top = `${py}px`;
+        label.style.transform = dx || dy ? `translate(calc(-50% + ${dx}px), calc(-100% + ${dy}px))` : "translate(-50%, -100%)";
         // speech note (draft 5): score a few placements and take the clearest. Order of preference: beside the
         // head on the open side, the other side, a little lower, hanging upwards, above the tag, then pinned to the
         // screen margin. Each candidate is clamped inside the free area and charged for what it would cover: other
         // name tags, any figure (the speaker's too), the TV and the top of each stair flight.
         const bubble = label.querySelector<HTMLElement>(".agent-bubble");
         if (bubble) {
-          const tagRect = label.getBoundingClientRect();
+          const tagRect = { left: left + dx, right: right + dx, top: tagTop + dy, bottom: tagBottom + dy };
           const cap = Math.min(bounds.width * (narrow ? 0.6 : 0.34), 300);
           bubble.style.position = "absolute";
           bubble.style.top = "0px";
@@ -661,7 +696,7 @@ export function AgentAvatar({
           const b0 = bubble.getBoundingClientRect();
           const bw = b0.width;
           const bh = b0.height;
-          const obstacles = noteObstacles(host, label, agent.id, scene, camera, bounds);
+          const obstacles = noteObstacles(host, label, agent.id, scene, camera, bounds as DOMRect);
           const L = tagRect.left;
           const R = tagRect.right;
           const T = tagRect.top;
@@ -797,7 +832,13 @@ export function AgentAvatar({
     stack.current = el;
     const root = createRoot(el);
     labelRoot.current = root;
+    const measure = new ResizeObserver(() => {
+      el.dataset.sw = String(Math.round(el.offsetWidth));
+      el.dataset.sh = String(Math.round(el.offsetHeight));
+    });
+    measure.observe(el);
     return () => {
+      measure.disconnect();
       stack.current = null;
       labelRoot.current = null;
       root.unmount();
@@ -862,7 +903,7 @@ export function AgentAvatar({
       </group>
     </>
   );
-}
+});
 
 /** True while a plan z sits between two floor bands (on a stair flight). */
 function inStairGap(z: number) {

@@ -31,6 +31,10 @@ export type TagOut = {
   label: string;
   more: number;
   color: string;
+  /** Newline-separated plain names held in a +N stack. */
+  who: string;
+  /** Newline-separated agent ids for that stack. */
+  ids: string;
 };
 
 /** Registered spelling, with markup, control characters, and bidi marks removed. */
@@ -44,11 +48,27 @@ export function walkedInLine(name: string): string {
   return clean ? `${clean} walked in.` : "Someone walked in.";
 }
 
-/** Idle agents (still in the room, marked away) show "Away". Everyone else shows the registered name. */
+/** Idle agents keep the registered name and add Away. Everyone else shows the name. */
 export function tagCopy(name: string, idle: boolean): { text: string; label: string } {
   const clean = plainName(name);
-  if (idle) return { text: AWAY_LABEL, label: clean ? `${clean}, ${AWAY_LABEL}` : AWAY_LABEL };
+  if (idle) {
+    const text = clean ? `${clean} · ${AWAY_LABEL}` : AWAY_LABEL;
+    return { text, label: text };
+  }
   return { text: clean, label: clean };
+}
+
+/** Join toast and task line. "just walked in" never reaches the screen. */
+export function joinToast(text: string): string {
+  const match = /^(.*?)(?:\s+)?just walked in\.?$/.exec(text.trim());
+  if (!match) return text;
+  return walkedInLine(match[1] ?? "");
+}
+
+/** Accessible name for a collapsed stack: "3 more: Ada, Bea". */
+export function stackLabel(count: number, names: string[]): string {
+  const clean = names.map((name) => plainName(name)).filter(Boolean);
+  return clean.length ? `${count} more: ${clean.join(", ")}` : `${count} more`;
 }
 
 function overlaps(ax: number, ay: number, bx: number, by: number) {
@@ -67,6 +87,16 @@ function hitsBlock(x: number, y: number, blocks: TagRect[], blockCount: number) 
 
 function inside(x: number, y: number, view: TagRect) {
   return x >= view.l && y >= view.t && x + TAG_W <= view.r && y + TAG_H <= view.b;
+}
+
+/** Pull a tag fully into the view so the scene edge cannot clip it. */
+function clearOfEdge(x: number, y: number, view: TagRect) {
+  const maxX = Math.max(view.l, view.r - TAG_W);
+  const maxY = Math.max(view.t, view.b - TAG_H);
+  return {
+    x: Math.round(Math.min(maxX, Math.max(view.l, x))),
+    y: Math.round(Math.min(maxY, Math.max(view.t, y))),
+  };
 }
 
 function fits(x: number, y: number, blocks: TagRect[], blockCount: number, view: TagRect, out: TagOut[], placed: number) {
@@ -104,18 +134,28 @@ export function placeTags(
   let collapsed = 0;
   let ax = 0;
   let ay = 0;
+  const pileId: string[] = [];
+  const pileName: string[] = [];
+  const hold = (id: string, name: string, x: number, y: number) => {
+    if (collapsed === 0) {
+      ax = x;
+      ay = y;
+    }
+    pileId.push(id);
+    pileName.push(plainName(name) || "Someone");
+    collapsed += 1;
+  };
   for (let k = 0; k < n; k += 1) {
     const point = points[order[k]!]!;
-    const x = Math.round(point.x - TAG_W / 2);
-    const y = Math.round(point.y - TAG_H - 10);
+    const rawX = Math.round(point.x - TAG_W / 2);
+    const rawY = Math.round(point.y - TAG_H - 10);
     if (point.x < view.l - 20 || point.x > view.r + 20 || point.y < view.t - 20 || point.y > view.b + 20) continue;
-    if (!inside(x, y, view) || hitsBlock(x, y, blocks, blockCount)) continue;
-    if (!fits(x, y, blocks, blockCount, view, out, placed)) {
-      if (collapsed === 0) {
-        ax = x;
-        ay = y;
-      }
-      collapsed += 1;
+    const nudged = clearOfEdge(rawX, rawY, view);
+    const x = nudged.x;
+    const y = nudged.y;
+    if (hitsBlock(x, y, blocks, blockCount)) continue;
+    if (!inside(x, y, view) || !fits(x, y, blocks, blockCount, view, out, placed)) {
+      hold(point.id, point.name, x, y);
       continue;
     }
     const copy = tagCopy(point.name, point.idle);
@@ -127,6 +167,8 @@ export function placeTags(
     slot.label = copy.label;
     slot.more = 0;
     slot.color = point.color;
+    slot.who = "";
+    slot.ids = "";
     placed += 1;
   }
   if (collapsed > 0 && placed < out.length) {
@@ -143,18 +185,22 @@ export function placeTags(
         }
       }
       if (home >= 0 || placed === 0) break;
+      const dropped = out[placed - 1]!;
+      hold(dropped.id, dropped.text, dropped.x, dropped.y);
       placed -= 1;
-      collapsed += 1;
     }
     if (home >= 0) {
+      const homeBox = clearOfEdge(ax, ay, view);
       const slot = out[placed]!;
       slot.id = "+";
-      slot.x = ax;
-      slot.y = ay;
+      slot.x = homeBox.x;
+      slot.y = homeBox.y;
       slot.text = `+${collapsed}`;
-      slot.label = `+${collapsed}`;
+      slot.label = stackLabel(collapsed, pileName);
       slot.more = collapsed;
       slot.color = "";
+      slot.who = pileName.join("\n");
+      slot.ids = pileId.join("\n");
       placed += 1;
     }
   }

@@ -36,7 +36,12 @@ const nextConfig: NextConfig = {
     VERCEL_ENV: process.env.VERCEL_ENV ?? "",
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    const iconCache = { key: "Cache-Control", value: "public, max-age=31536000, immutable" };
+    return [
+      { source: "/icon.svg", headers: [...securityHeaders, iconCache] },
+      { source: "/icon", headers: [...securityHeaders, iconCache] },
+      { source: "/:path*", headers: securityHeaders },
+    ];
   },
   async rewrites() {
     return [{ source: "/skill.md", destination: "/api/skill" }];

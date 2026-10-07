@@ -632,6 +632,25 @@ function GroundPlane({ grade }: { grade: Grade }) {
   );
 }
 
+/** Compile house shaders while the main thread is idle, so the first name-tag tap does not pay that cost. */
+function WarmHouse() {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    let idle = 0;
+    let timer = 0;
+    const run = () => {
+      gl.compile(scene, camera);
+    };
+    if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(run, { timeout: 800 });
+    else timer = window.setTimeout(run, 400);
+    return () => {
+      if (idle) window.cancelIdleCallback(idle);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [gl, scene, camera]);
+  return null;
+}
+
 function Picture({ grade }: { grade: Grade }) {
   const gl = useThree((state) => state.gl);
   const scene = useThree((state) => state.scene);
@@ -1102,6 +1121,7 @@ export function RoomCanvas({
                   if (mini) setFloor(null);
                 }}
               >
+                <WarmHouse />
                 <Picture grade={grade} />
                 <LightRig night={night} phone={phone} mapSize={budget.shadow} grade={grade} />
                 <HouseMaterials night={night}>

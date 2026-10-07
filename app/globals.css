@@ -187,6 +187,8 @@
 }
 
 .room-stage canvas {
+  position: relative;
+  z-index: 0;
   display: block;
   transform: translateZ(0);
 }
@@ -229,7 +231,7 @@
   color: var(--hud-ink);
   box-shadow: var(--hud-shadow);
   font: 500 11px/1 var(--mono);
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   text-transform: none;
   white-space: nowrap;
   cursor: pointer;
@@ -272,6 +274,34 @@
 
 .agent-tag.is-away {
   opacity: 0.8;
+}
+
+.tag-stack {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  min-width: 132px;
+  max-width: 200px;
+  padding: 4px;
+  background: var(--hud-paper);
+  border: 1px solid var(--hud-tag-rule);
+  border-radius: 4px;
+  pointer-events: auto;
+}
+
+.tag-stack button {
+  pointer-events: auto;
+  text-align: left;
+  min-height: 36px;
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  color: var(--hud-ink);
+  font: 500 13px/1.2 var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
 }
 
 .agent-away,
