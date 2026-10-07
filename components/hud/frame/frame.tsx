@@ -122,7 +122,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const [actionNote, setActionNote] = useState("");
   const [seenToday, setSeenToday] = useState(0);
   const [ring, setRing] = useState<{ x: number; y: number } | null>(null);
-  const [watchOn, setWatchOn] = useState(false);
+  const [watchKey, setWatchKey] = useState<string | null>(null);
   const [skyReport, setSkyReport] = useState<{ summary: string | null; temp: string | null; rain: boolean } | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -189,13 +189,12 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
     };
   }, []);
 
-  useEffect(() => {
-    setWatchOn(false);
-  }, [shown, tv.power, tv.channelId]);
+  const watchToken = `tv:${tv.channelId}:${tv.power ? 1 : 0}`;
+  const watchOn = shown === "tv" && tv.power && watchKey === watchToken;
 
   useEffect(() => {
     if (!watchOn) return;
-    holdWatch(() => setWatchOn(false));
+    holdWatch(() => setWatchKey(null));
     return () => clearWatch();
   }, [watchOn]);
 
@@ -386,7 +385,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
 
   function goLive() {
     stopRadio();
-    setWatchOn(true);
+    setWatchKey(watchToken);
   }
 
   const skyWord = night ? NIGHT : dusk ? DUSK : DAY;
