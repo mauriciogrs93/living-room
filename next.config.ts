@@ -11,6 +11,7 @@ const reportOnlyCsp = [
   "media-src 'self' https: blob:",
   "font-src 'self' data:",
   "worker-src 'self' blob:",
+  "frame-src https://www.youtube-nocookie.com",
   "frame-ancestors 'none'",
   "base-uri 'none'",
   "object-src 'none'",

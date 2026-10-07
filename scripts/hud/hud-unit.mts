@@ -12,7 +12,7 @@ import { FALLBACK_STATIONS } from "../../lib/room/house";
 import { forecastUrlAllowed } from "../../lib/room/house-sky";
 import { lineupCount, lineupDraws, lineupEnabled } from "../../lib/room/lineup";
 import { acceptPlayerEvent, embedOrigin, watchEmbed, YT_ORIGIN } from "../../lib/room/watch-live";
-import { joinToast, placeTags, plainName, stackLabel, tagCopy, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
+import { fitTagBoxes, joinToast, placeTags, plainName, stackLabel, tagCopy, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -190,7 +190,7 @@ check("join rows name the person", walkedInLine("Ada Lovelace") === "Ada Lovelac
 const view: TagRect = { l: 0, t: 0, r: 400, b: 320 };
 const blocks: TagRect[] = [{ l: 0, t: 260, r: 400, b: 320 }];
 const order = new Uint16Array(8);
-const fresh = (): TagOut[] => Array.from({ length: 8 }, () => ({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "", who: "", ids: "" }));
+const fresh = (): TagOut[] => Array.from({ length: 8 }, () => ({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "", who: "", ids: "", dots: "" }));
 const idleOut = fresh();
 const idle: TagPoint[] = [{ id: "ada", x: 120, y: 90, depth: 1, name: "Ada", idle: true, color: "#888" }];
 check("an idle tag keeps the name", placeTags(idle, 1, blocks, 0, view, order, idleOut) === 1 && idleOut[0]?.text === "Ada · Away" && idleOut[0]?.label === "Ada · Away" && tagCopy("Ada", true).text === "Ada · Away");
@@ -204,12 +204,41 @@ check("join toast names the person", joinToast("Ada just walked in") === "Ada wa
 check("the watch badge is sentence case", strings.BADGE_WATCH === "Watching" && hudFrame.includes("BADGE_WATCH") && !hudFrame.includes("WATCHING"));
 check("desktop does not render the Here tab", hudFrame.includes("narrow ? (") && hudFrame.includes('data-ctl="here-tab"'));
 check("name tags use zero letter spacing", /\.agent-tag \{[^}]*letter-spacing:\s*0;/.test(globals));
-check("a stack opens a plain-text name list", tagLayer.includes("data-stack-pick") && tagLayer.includes("textContent") && tagLayer.includes('event.key === "Escape"') && !tagLayer.includes("innerHTML"));
+check("a stack opens a plain-text name list", tagLayer.includes("data-stack-pick") && tagLayer.includes("plainName") && tagLayer.includes("textContent") && tagLayer.includes('event.key === "Escape"') && tagLayer.includes("data-stack-close") && !tagLayer.includes("innerHTML") && !tagLayer.includes("<a "));
+check("stack rows are 44px ink on plaster", globals.includes(".tag-stack-row {") && globals.includes("min-height: 44px") && globals.includes("rgba(43, 45, 49, 0.06)") && globals.includes("outline: 2px solid #2b2d31"));
+check("the watcher notice is the short sentence", strings.OWNER_ONLY === "Only the owner can change this." && strings.WATCH_YOU.includes("Only the owner can change this."));
 check("the mute control cannot grow with the sheet", /\.hudf-body > \.hudf-play\[data-ctl="radio-mute"\] \{[^}]*max-height:\s*44px/.test(hudCss));
 check("the playing meter is 14px ink bars", hudCss.includes(".hudf-now .hudf-eq i { width: 3px; height: 14px; background: var(--ink); }"));
 check("the house icon is cached for a year", nextConfig.includes('source: "/icon.svg"') && nextConfig.includes("max-age=31536000"));
 const avatarSource = readFileSync(path.join(root, "components/room/avatar.tsx"), "utf8");
 check("tag placement does not read layout after writing", !avatarSource.includes("label.getBoundingClientRect") && avatarSource.includes("hostMeasures"));
+const stairBlock: TagRect[] = [{ l: 0, t: 20, r: 120, b: 90 }];
+const cleared = fitTagBoxes([{ x: 20, y: 30, w: 90, h: 28, ax: 64, ay: 70 }], { l: 0, t: 0, r: 400, b: 320 }, stairBlock, 1);
+const clearBox = cleared[0]!;
+const stillCovered = clearBox.x < 120 && clearBox.x + 90 > 0 && clearBox.y < 90 && clearBox.y + 28 > 20;
+check("a covered name tag moves clear of the stairs", !stillCovered, `${clearBox.x},${clearBox.y}`);
+check("the +N list is plaster with ink text", globals.includes("background: #f7f4ee") && globals.includes("color: #2b2d31"));
+check("name tags are not ellipsized", /\.agent-tag span \{[^}]*text-overflow:\s*clip/.test(globals) && /\.name-tags \.agent-tag \{[^}]*width:\s*max-content/.test(globals));
+const tagLayerNow = tagLayer;
+const readAt = tagLayerNow.indexOf("btn.scrollWidth");
+const writeAt = tagLayerNow.indexOf("btn.style.left =");
+check("tag sizes are read before positions are written", readAt > 0 && writeAt > readAt);
+check("tag layout does not run from chrome class changes", !tagLayerNow.includes("MutationObserver"));
+check(
+  "report-only CSP allows only the nocookie frame",
+  nextConfig.includes("frame-src https://www.youtube-nocookie.com") &&
+    nextConfig.includes("script-src 'self' 'unsafe-inline'") &&
+    nextConfig.includes("connect-src 'self'") &&
+    nextConfig.includes("Content-Security-Policy-Report-Only"),
+);
+check(
+  "watchers see owner-only lines and cannot press stations or channels",
+  hudFrame.includes('data-owner-line="station"') && hudFrame.includes("OWNER_STATION") && hudFrame.includes('data-owner-line="channel"') && hudFrame.includes("OWNER_CHANNEL") && hudFrame.includes('aria-disabled="true"'),
+);
+check("the card close control is named Close", hudFrame.includes("aria-label={CLOSE}") && hudFrame.includes('aria-hidden="true">×</span>'));
+check("shader warm-up is idle and stays on our own meshes", canvasSource.includes("requestIdleCallback") && canvasSource.includes("gl.compile") && !canvasSource.includes("youtube") && !canvasSource.includes("preconnect"));
+check("the framed camera ignores stage changes", canvasSource.includes("window.innerWidth") && !canvasSource.includes('addEventListener("hud-stage"'));
+check("rail bars follow playback", hudFrame.includes("data-rail-eq") && hudFrame.includes("paused={Boolean(radio?.on && muted)}"));
 
 const failed = results.filter((ok) => !ok).length;
 console.log(`${results.length - failed}/${results.length}`);

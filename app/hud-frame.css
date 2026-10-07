@@ -304,8 +304,8 @@
 .hudf.is-sheet .hudf-tape { pointer-events: auto; }
 /* Phone sheet paints over the HOUSE medals. Rail hits stay off until the sheet closes. */
 .hudf.is-sheet .hudf-rail,
-.hudf.is-sheet .hudf-rail * { pointer-events: none; }
-.hudf.is-sheet .hudf-rail { z-index: 35; }
+.hudf.is-sheet .hudf-rail * { pointer-events: none; visibility: hidden; }
+.hudf.is-sheet .hudf-rail { z-index: 30; }
 .hudf.is-tucked .hudf-tape,
 .hudf.is-tucked .hudf-rail,
 .hudf.is-tucked .hudf-here,
@@ -322,7 +322,9 @@
 .hudf-card.is-float {
   top: 108px;
   right: 84px;
-  max-height: calc(100% - 250px);
+  bottom: 132px;
+  height: auto;
+  max-height: none;
 }
 .hudf-well {
   width: 100%;
@@ -345,7 +347,7 @@
   border-radius: 12px;
 }
 .hudf .hudf-play { flex: none; align-self: flex-start; min-height: 44px; height: 44px; max-height: 44px; flex-shrink: 0; width: auto; }
-.hudf-body > .hudf-play[data-ctl="radio-mute"] { flex: 0 0 auto; align-self: flex-start; width: auto; height: 44px; min-height: 44px; max-height: 44px; padding: 0 18px; }
+.hudf-body > .hudf-play[data-ctl="radio-mute"] { flex: 0 0 auto; align-self: flex-start; box-sizing: border-box; width: auto; height: 44px; min-height: 44px; max-height: 44px; padding: 0 18px; line-height: 44px; }
 .hudf .hudf-watch-btn {
   position: relative;
   z-index: 1;
@@ -405,4 +407,37 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .hudf-marquee span { animation: none; padding-left: 0; }
+}
+
+/* Watchers get the same chips and station rows, with no press affordance. */
+.hudf .hudf-list .is-info,
+.hudf .hudf-chips .is-info {
+  cursor: default;
+}
+.hudf .hudf-list .is-info:hover,
+.hudf .hudf-list .is-info:active,
+.hudf .hudf-chips .is-info:hover,
+.hudf .hudf-chips .is-info:active {
+  transform: none;
+}
+.hudf .hudf-chips .is-info:not(.is-on),
+.hudf .hudf-chips .is-info:not(.is-on):hover,
+.hudf .hudf-chips .is-info:not(.is-on):active {
+  background: #faf8f3;
+  color: var(--ink);
+}
+.hudf .hudf-chips .is-info.is-on,
+.hudf .hudf-chips .is-info.is-on:hover,
+.hudf .hudf-chips .is-info.is-on:active,
+.hudf .hudf-list .is-info.is-on,
+.hudf .hudf-list .is-info.is-on:hover,
+.hudf .hudf-list .is-info.is-on:active {
+  background: var(--ink);
+  color: #f5f2eb;
+}
+.hudf .hudf-list .is-info:not(.is-on),
+.hudf .hudf-list .is-info:not(.is-on):hover,
+.hudf .hudf-list .is-info:not(.is-on):active {
+  background: transparent;
+  color: var(--ink);
 }

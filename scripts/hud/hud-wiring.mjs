@@ -19,7 +19,7 @@ const check = (name, ok, detail = "") => {
 };
 const tag = Math.random().toString(36).slice(2, 8);
 const password = "correct-horse-1";
-let ipN = 20;
+let ipN = Number((process.hrtime.bigint() % 180n) + 60n);
 
 function contextOptions(width, height, touch) {
   ipN += 1;
@@ -116,6 +116,161 @@ async function clickCtl(page, ctl, role, size) {
   taps.push({ role, ctl, size, at: Date.now() });
 }
 
+async function assertCatalog(page, role, size) {
+  await clickCtl(page, "rail-radio", role, size);
+  await page.waitForSelector(".hudf-list [data-ctl^=radio-row]", { timeout: 8000 });
+  const radio = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".hudf-list [data-ctl^=radio-row]")];
+    const line = document.querySelector("[data-owner-line=station]");
+    return {
+      count: rows.length,
+      buttons: rows.filter((row) => row.tagName === "BUTTON").length,
+      disabled: rows.filter((row) => row.getAttribute("aria-disabled") === "true").length,
+      line: line ? line.textContent : "",
+      cursor: rows[0] ? getComputedStyle(rows[0]).cursor : "",
+    };
+  });
+  if (role === "watch") {
+    check(`${size}: watcher sees the station rows`, radio.count > 0 && radio.buttons === 0 && radio.disabled === radio.count, JSON.stringify(radio));
+    check(`${size}: watcher station line matches the phone`, radio.line === "Only the owner can change the station.", radio.line);
+    check(`${size}: watcher station rows are not pressable`, radio.cursor === "default", radio.cursor);
+  } else {
+    check(`${size}: owner can press the station rows`, radio.count > 0 && radio.buttons === radio.count && radio.disabled === 0 && radio.line === "", JSON.stringify(radio));
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await clickCtl(page, "rail-tv", role, size);
+  await page.waitForSelector(".hudf-chips [data-ctl^=tv-chip]", { timeout: 8000 });
+  const tv = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll(".hudf-chips [data-ctl^=tv-chip]")];
+    const line = document.querySelector("[data-owner-line=channel]");
+    const sample = chips[0];
+    if (sample) sample.classList.add("is-on");
+    const onFill = sample ? getComputedStyle(sample).backgroundColor : "";
+    if (sample) sample.classList.remove("is-on");
+    const plainFill = sample ? getComputedStyle(sample).backgroundColor : "";
+    return {
+      count: chips.length,
+      buttons: chips.filter((chip) => chip.tagName === "BUTTON").length,
+      disabled: chips.filter((chip) => chip.getAttribute("aria-disabled") === "true").length,
+      line: line ? line.textContent : "",
+      cursor: sample ? getComputedStyle(sample).cursor : "",
+      onFill,
+      plainFill,
+    };
+  });
+  if (role === "watch") {
+    check(`${size}: watcher sees the TV chips`, tv.count >= 5 && tv.buttons === 0 && tv.disabled === tv.count, JSON.stringify(tv));
+    check(`${size}: watcher channel line matches the phone`, tv.line === "Only the owner can change the channel.", tv.line);
+    check(`${size}: watcher chips stay ink or plain with no press`, tv.cursor === "default" && tv.onFill === "rgb(43, 45, 49)" && tv.plainFill === "rgb(250, 248, 243)", JSON.stringify(tv));
+  } else {
+    check(`${size}: owner can press the TV chips`, tv.count >= 5 && tv.buttons === tv.count && tv.disabled === 0 && tv.line === "", JSON.stringify(tv));
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+}
+
+async function stackRows(page, size) {
+  await page.evaluate(() => {
+    const layer = document.querySelector("[data-name-tags]");
+    if (!layer) return;
+    layer.querySelector("[data-stack-test]")?.remove();
+    layer.querySelector("[data-name-stack]")?.remove();
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "agent-tag";
+    btn.dataset.nameTag = "";
+    btn.dataset.stackTest = "";
+    btn.dataset.stackIds = "agent-ada\nagent-bea";
+    btn.dataset.stackNames = "Ada\nBea";
+    btn.dataset.stackColors = "#6fa35a\n#3c6d94";
+    btn.dataset.tagKey = "stack-test";
+    btn.setAttribute("aria-label", "2 more: Ada, Bea");
+    btn.textContent = "+2";
+    btn.style.left = "80px";
+    btn.style.top = "140px";
+    btn.style.pointerEvents = "auto";
+    layer.append(btn);
+    btn.click();
+  });
+  await page.waitForSelector("[data-stack-pick]", { timeout: 4000 });
+  const names = await page.locator("[data-stack-pick]").evaluateAll((rows) =>
+    rows.map((row) => ({
+      name: row.getAttribute("aria-label") || "",
+      text: row.querySelector("span")?.textContent || "",
+      h: row.getBoundingClientRect().height,
+      w: row.getBoundingClientRect().width,
+      tag: row.tagName,
+      chevron: row.querySelector("b")?.textContent || "",
+      links: row.querySelectorAll("a").length,
+    })),
+  );
+  check(`${size}: each stack row is a full-width name button`, names.length === 2 && names.every((row) => row.tag === "BUTTON" && row.h >= 44 && row.w > 100 && row.name === row.text && row.chevron === "›" && row.links === 0 && !/view|open/i.test(row.name)), JSON.stringify(names));
+  for (const row of names) {
+    await page.locator(`[data-stack-pick]`).filter({ hasText: row.name }).first().click();
+    await page.waitForSelector(".hudf-card h2", { timeout: 4000 });
+    const title = await page.locator(".hudf-card h2").innerText();
+    check(`${size}: ${row.name} opens that agent's sheet`, title === "Activity", title);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+    if ((await page.locator("[data-name-stack]").count()) === 0) {
+      await page.locator("[data-tag-key='stack-test']").click();
+      await page.waitForSelector("[data-stack-pick]", { timeout: 4000 });
+    }
+  }
+  await page.locator("[data-stack-close]").click();
+  const back = await page.evaluate(() => document.activeElement?.getAttribute("data-tag-key") || "");
+  check(`${size}: × closes the list and returns to the pill`, (await page.locator("[data-name-stack]").count()) === 0 && back === "stack-test", back);
+  await page.evaluate(() => document.querySelector("[data-stack-test]")?.remove());
+}
+
+async function missBesideTag(page, role, size, anchorKey, expect) {
+  await page.waitForFunction((key) => window.__anchors && window.__anchors[key], anchorKey, { timeout: 20000 });
+  const point = await page.evaluate((key) => {
+    const anchor = window.__anchors[key];
+    const root = document.querySelector(".room-root").getBoundingClientRect();
+    const layer = document.querySelector("[data-name-tags]");
+    layer?.querySelector("[data-miss-probe]")?.remove();
+    const probe = document.createElement("button");
+    probe.type = "button";
+    probe.className = "agent-tag";
+    probe.dataset.nameTag = "";
+    probe.dataset.missProbe = "";
+    probe.textContent = "Beside";
+    probe.style.pointerEvents = "auto";
+    probe.style.left = `${anchor.x - 48}px`;
+    probe.style.top = `${anchor.y - 48}px`;
+    layer.append(probe);
+    const tag = probe.getBoundingClientRect();
+    const x = root.left + anchor.x;
+    const y = root.top + anchor.y;
+    const hit = document.elementFromPoint(x, y);
+    return {
+      x,
+      y,
+      under: tag.bottom < y,
+      canvas: hit?.tagName === "CANVAS",
+      layer: getComputedStyle(layer).pointerEvents,
+      pill: getComputedStyle(probe).pointerEvents,
+    };
+  }, anchorKey);
+  check(`${size} ${role}: a miss beside a tag reaches the canvas`, point.canvas && point.under && point.layer === "none" && point.pill === "auto", JSON.stringify(point));
+  await page.mouse.click(point.x, point.y);
+  if (expect === "notice") {
+    await page.waitForSelector(".hudf-toast", { timeout: 4000 }).catch(() => null);
+    const toast = (await page.locator(".hudf-toast").count()) ? await page.locator(".hudf-toast").innerText() : "";
+    check(`${size}: a watcher miss says only the owner can change this`, toast === "Only the owner can change this.", toast);
+    await page.waitForSelector(".hudf-toast", { state: "detached", timeout: 4000 }).catch(() => null);
+  } else {
+    await page.waitForSelector(".hudf-card h2", { timeout: 4000 });
+    const title = await page.locator(".hudf-card h2").innerText();
+    check(`${size}: an owner miss opens the furniture card`, title.startsWith("TV"), title);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  }
+  await page.evaluate(() => document.querySelector("[data-miss-probe]")?.remove());
+}
+
 async function canvasBox(page) {
   const box = await page.locator("canvas").boundingBox();
   return box ? { w: Math.round(box.width), h: Math.round(box.height) } : null;
@@ -129,6 +284,7 @@ try {
     [768, 1024, true, "tablet"],
   ];
   let watchLink = "";
+  let deskWatchLink = "";
 
   for (const [width, height, touch, name] of sizes) {
     const ctx = await browser.newContext(contextOptions(width, height, touch));
@@ -139,6 +295,23 @@ try {
     const email = `hud-${name}-${tag}@example.com`;
     await signup(page, email);
     check(`${name}: frame is up`, (await page.locator(".hudf").count()) === 1);
+    if (name === "phone" || name === "desk") {
+      const zoomLoad = await page.evaluate(() => document.documentElement.dataset.roomZoom || "");
+      await page.waitForTimeout(700);
+      const zoomSettled = await page.evaluate(() => document.documentElement.dataset.roomZoom || "");
+      check(`${name}: roomZoom is stable from load`, zoomLoad !== "" && zoomLoad === zoomSettled, `${zoomLoad} -> ${zoomSettled}`);
+      for (const ctl of ["rail-tv", "rail-radio", "nav-you"]) {
+        await clickCtl(page, ctl, "owner", name);
+        await page.waitForSelector(".hudf-card", { timeout: 8000 });
+        const zoomOpen = await page.evaluate(() => document.documentElement.dataset.roomZoom || "");
+        check(`${name}: roomZoom stays ${zoomLoad} while ${ctl} is open`, zoomOpen === zoomLoad, `${zoomLoad} -> ${zoomOpen}`);
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+      }
+      await assertCatalog(page, "owner", name);
+      await stackRows(page, name);
+      await missBesideTag(page, "owner", name, "object:tv", "card");
+    }
     check(`${name}: owner title`, (await page.locator(".hudf-title b").innerText()) === "Your apartment");
     const loadedOutside = bag.outside.length;
     check(`${name}: no outside request on load`, loadedOutside === 0, bag.outside.join(" "));
@@ -247,10 +420,19 @@ try {
         layer.append(btn);
         btn.click();
         const menu = layer.querySelector("[data-name-stack]");
-        const labels = [...(menu?.querySelectorAll("button") ?? [])].map((node) => node.textContent);
-        return { opened: Boolean(menu), labels, links: menu ? menu.querySelectorAll("a").length : -1, label: btn.getAttribute("aria-label") };
+        const labels = [...(menu?.querySelectorAll("[data-stack-pick] span") ?? [])].map((node) => node.textContent);
+        const item = menu?.querySelector("button");
+        return {
+          opened: Boolean(menu),
+          labels,
+          links: menu ? menu.querySelectorAll("a").length : -1,
+          label: btn.getAttribute("aria-label"),
+          bg: menu ? getComputedStyle(menu).backgroundColor : "",
+          ink: item ? getComputedStyle(item).color : "",
+        };
       });
       check("desk: +N opens the names in that stack", stack.opened && stack.labels.join(",") === "Ada,Bea" && stack.links === 0 && stack.label === "2 more: Ada, Bea", JSON.stringify(stack));
+      check("desk: the +N list is plaster with ink text", stack.bg === "rgb(247, 244, 238)" && stack.ink === "rgb(43, 45, 49)", `${stack.bg} / ${stack.ink}`);
       await page.keyboard.press("Escape");
       check("desk: Escape closes the stack list", (await page.locator("[data-name-stack]").count()) === 0);
       await page.evaluate(() => document.querySelector("[data-name-tags] button[data-stack-ids]")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -258,6 +440,46 @@ try {
       await page.waitForSelector(".hudf-card h2");
       check("desk: tapping a stacked name focuses that agent", (await page.locator(".hudf-card h2").innerText()) === "Activity");
       await page.keyboard.press("Escape");
+      const tagFit = await page.evaluate(() => {
+        const layer = document.querySelector("[data-name-tags]");
+        if (!layer) return { ok: false, detail: "no-layer" };
+        const probe = document.createElement("button");
+        probe.type = "button";
+        probe.className = "agent-tag";
+        probe.dataset.nameTag = "";
+        const span = document.createElement("span");
+        span.textContent = "perf-test-04";
+        probe.append(span);
+        layer.append(probe);
+        const style = getComputedStyle(span);
+        const box = probe.getBoundingClientRect();
+        const result = {
+          ok: probe.scrollWidth <= probe.clientWidth && style.textOverflow !== "ellipsis" && span.textContent === "perf-test-04" && box.right <= window.innerWidth && box.bottom <= window.innerHeight && box.left >= 0 && box.top >= 0,
+          sw: probe.scrollWidth,
+          cw: probe.clientWidth,
+          ellipsis: style.textOverflow,
+          box: [Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom)],
+        };
+        probe.remove();
+        const live = [...document.querySelectorAll("[data-name-tag]")].filter((node) => !node.hidden);
+        const clipped = live.filter((node) => node.scrollWidth > node.clientWidth || (node.textContent || "").includes("…"));
+        const stats = window.__tagLayout;
+        return { ...result, clipped: clipped.map((node) => node.textContent), rate: stats && stats.frames ? stats.reads / stats.frames : 0, frames: stats?.frames || 0 };
+      });
+      check("desk: perf-test-04 is not truncated", tagFit.ok && tagFit.clipped.length === 0, JSON.stringify(tagFit));
+      const layoutBefore = await page.evaluate(() => {
+        const stats = window.__tagLayout;
+        return stats ? { frames: stats.frames, reads: stats.reads } : { frames: 0, reads: 0 };
+      });
+      await page.waitForTimeout(1200);
+      const layoutRate = await page.evaluate((before) => {
+        const stats = window.__tagLayout;
+        if (!stats) return -1;
+        const frames = stats.frames - before.frames;
+        if (frames < 1) return -1;
+        return (stats.reads - before.reads) / frames;
+      }, layoutBefore);
+      check("desk: name-tag layout reads stay at or under 0.13 per frame", layoutRate >= 0 && layoutRate <= 0.13, layoutRate.toFixed(3));
     }
 
     if (name === "phone") {
@@ -306,6 +528,21 @@ try {
         return { stolen, missed };
       });
       check("phone: TV sheet controls win taps over the rail", sheetHits.stolen.length === 0 && sheetHits.missed.length === 0, [...sheetHits.stolen, ...sheetHits.missed].join(" "));
+      const railHid = await page.evaluate(() => {
+        const rail = document.querySelector(".hudf-rail");
+        const closeBtn = document.querySelector("[data-ctl=card-close]");
+        const style = rail ? getComputedStyle(rail) : null;
+        const box = closeBtn?.getBoundingClientRect();
+        const beside = box ? document.elementFromPoint(Math.min(window.innerWidth - 2, box.right + 6), box.top + box.height / 2) : null;
+        return {
+          hidden: style?.visibility === "hidden",
+          beside: beside?.closest?.(".hudf-rail") ? "rail" : beside?.getAttribute?.("data-ctl") || beside?.tagName || "",
+          label: closeBtn?.getAttribute("aria-label") || "",
+          text: closeBtn?.innerText || "",
+        };
+      });
+      check("phone: the rail is hidden while the sheet is open", railHid.hidden && railHid.beside !== "rail", JSON.stringify(railHid));
+      check("phone: the TV close control is named Close", railHid.label === "Close" && !railHid.text.includes("Close"), railHid.text);
       await clickCtl(page, "tv-watch", "owner", name);
       await page.waitForSelector("iframe.hudf-watch", { timeout: 4000 });
       const src = await page.locator("iframe.hudf-watch").getAttribute("src");
@@ -336,6 +573,12 @@ try {
       });
       check("phone: owner can mint a watch link", minted.ok && minted.link.includes("#watch="));
       watchLink = minted.link;
+      const mintedDesk = await page.evaluate(async () => {
+        const res = await fetch("/api/apartment/invite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "watch" }) });
+        const body = await res.json();
+        return typeof body.watchLink === "string" ? body.watchLink : "";
+      });
+      deskWatchLink = mintedDesk;
       await clickCtl(page, "nav-you", "owner", name);
       check("phone: You offers Change password and sign out", (await page.locator("[data-ctl=you-set-password]").innerText()) === "Change password" && (await page.locator("[data-ctl=you-signout]").count()) === 1);
       const ownerSound = await page.locator("[data-ctl=room-sound]").innerText();
@@ -348,6 +591,35 @@ try {
         await clickCtl(page, "radio-play", "owner", name);
         await page.waitForSelector(".hudf-card .hudf-eq", { timeout: 8000 });
       }
+      await page.keyboard.press("Escape");
+      const moving = await page.evaluate(() => {
+        const bar = document.querySelector("[data-rail-eq] i");
+        return bar ? getComputedStyle(bar).animationPlayState : "missing";
+      });
+      check("phone: rail bars keep moving with the card closed", moving === "running", moving);
+      await clickCtl(page, "nav-you", "owner", name);
+      if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) === "true") {
+        await clickCtl(page, "room-sound", "owner", name);
+      }
+      const pausedBars = await page.evaluate(() => {
+        const eq = document.querySelector("[data-rail-eq]");
+        const bar = eq?.querySelector("i");
+        return `${eq?.className || "missing"} ${bar ? getComputedStyle(bar).animationPlayState : ""}`;
+      });
+      check("phone: rail bars pause when the room is muted", pausedBars.includes("is-paused") && pausedBars.includes("paused"), pausedBars);
+      const csp = await page.evaluate(async () => {
+        const res = await fetch(`${location.pathname}${location.search}`);
+        return {
+          report: res.headers.get("content-security-policy-report-only") || "",
+          enforced: res.headers.get("content-security-policy") || "",
+        };
+      });
+      check(
+        "phone: report-only CSP allows the nocookie player",
+        csp.report.includes("frame-src https://www.youtube-nocookie.com") && csp.report.includes("script-src 'self' 'unsafe-inline'") && csp.report.includes("connect-src 'self'") && !csp.enforced.includes("frame-src") && !csp.report.includes("*"),
+        csp.report,
+      );
+      await page.keyboard.press("Escape");
     }
     if (name === "short") {
       await clickCtl(page, "rail-tv", "owner", name);
@@ -366,6 +638,19 @@ try {
   }
 
   check("a watch link was minted", watchLink.startsWith(BASE));
+  const deskWatch = await browser.newContext(contextOptions(1440, 900, false));
+  await arm(deskWatch);
+  const deskWatcher = await deskWatch.newPage();
+  const deskBag = { outside: [], aborted: [], api: [] };
+  await watchNetwork(deskWatcher, deskBag);
+  const deskLink = deskWatchLink || watchLink;
+  await deskWatcher.goto(deskLink.includes("debug=1") ? deskLink : deskLink.replace("/room#", "/room?debug=1#"), { waitUntil: "domcontentloaded" });
+  await deskWatcher.waitForSelector("[data-watch-badge]", { timeout: 25000 });
+  await missBesideTag(deskWatcher, "watch", "desk", "object:lamp", "notice");
+  const beforeDesk = deskBag.api.length;
+  await assertCatalog(deskWatcher, "watch", "desk");
+  check("desk watcher: rows and chips send no radio or tap", !deskBag.api.slice(beforeDesk).some((line) => line.includes("/api/radio") || line.includes("/api/tap")), deskBag.api.slice(beforeDesk).join(" "));
+  await deskWatch.close();
   const watchCtx = await browser.newContext(contextOptions(390, 844, true));
   await arm(watchCtx);
   const watcher = await watchCtx.newPage();
@@ -374,12 +659,13 @@ try {
   const apiBefore = () => watchBag.api.length;
   await watcher.goto(watchLink.includes("debug=1") ? watchLink : watchLink.replace("/room#", "/room?debug=1#"), { waitUntil: "domcontentloaded" });
   await watcher.waitForSelector("[data-watch-badge]", { timeout: 25000 });
+  await missBesideTag(watcher, "watch", "phone", "object:lamp", "notice");
   check("watcher: title is The apartment", (await watcher.locator(".hudf-title b").innerText()) === "The apartment");
   check("watcher: the header pill says Watching", (await watcher.locator(".hudf-badge[data-watch-badge]").innerText()).trim() === "Watching");
   await clickCtl(watcher, "rail-radio", "watch", "phone");
   await watcher.waitForSelector("[data-ctl=radio-mute]", { timeout: 8000 });
   const muteBox = await watcher.locator("[data-ctl=radio-mute]").boundingBox();
-  check("phone: radio mute stays under 48px tall", Boolean(muteBox && muteBox.height <= 48 && muteBox.height >= 44), muteBox ? `${Math.round(muteBox.width)}x${Math.round(muteBox.height)}` : "missing");
+  check("phone: radio mute is at least 44px", Boolean(muteBox && muteBox.height >= 44 && muteBox.height <= 48), muteBox ? `${Math.round(muteBox.width)}x${Math.round(muteBox.height)}` : "missing");
   const eqBox = await watcher.locator(".hudf-now .hudf-eq").boundingBox();
   check("phone: the playing meter is about 14px tall", Boolean(eqBox && eqBox.height >= 12 && eqBox.height <= 16), eqBox ? String(Math.round(eqBox.height)) : "missing");
   await watcher.keyboard.press("Escape");
@@ -395,7 +681,7 @@ try {
   await watcher.mouse.click(lamp.x, lamp.y);
   await watcher.waitForSelector(".hudf-toast", { timeout: 4000 }).catch(() => null);
   const toast = (await watcher.locator(".hudf-toast").count()) ? await watcher.locator(".hudf-toast").innerText() : "";
-  check("watcher: lamp shows the owner-only toast", toast === "Only the owner can change things here.", toast);
+  check("watcher: lamp shows the owner-only toast", toast === "Only the owner can change this.", toast);
   check("watcher: lamp sends no tap or dog request", watchBag.api.length === beforeLamp, watchBag.api.slice(beforeLamp).join(" "));
   await watcher.waitForSelector(".hudf-toast", { state: "detached", timeout: 4000 }).catch(() => null);
   const beforeDoor = apiBefore();
@@ -430,20 +716,9 @@ try {
   check("watcher: phone zone pill is ET and neither pill ellipsizes", zoneText.startsWith("ET") && !zoneText.includes("Eastern Time") && !zoneText.endsWith("…") && !titleText.endsWith("…") && titleText.endsWith("apartment"), `${titleText} | ${zoneText}`);
   await watcher.keyboard.press("Escape");
   const beforeStation = apiBefore();
-  await clickCtl(watcher, "rail-radio", "watch", "phone");
-  await clickCtl(watcher, "radio-row-watch-0", "watch", "phone");
-  await watcher.waitForSelector(".hudf-toast", { timeout: 4000 }).catch(() => null);
-  const stationToast = (await watcher.locator(".hudf-toast").count()) ? await watcher.locator(".hudf-toast").innerText() : "";
-  check("watcher: a station row says only the owner can change it", stationToast === "Only the owner can change the station.", stationToast);
-  check("watcher: a station row sends no radio request", !watchBag.api.slice(beforeStation).some((line) => line.includes("/api/radio")), watchBag.api.slice(beforeStation).join(" "));
-  await watcher.keyboard.press("Escape");
-  const beforeChannel = apiBefore();
+  await assertCatalog(watcher, "watch", "phone");
+  check("watcher: station rows and chips send no radio or tap", !watchBag.api.slice(beforeStation).some((line) => line.includes("/api/radio") || line.includes("/api/tap")), watchBag.api.slice(beforeStation).join(" "));
   await clickCtl(watcher, "rail-tv", "watch", "phone");
-  await clickCtl(watcher, "tv-chip-watch-1", "watch", "phone");
-  await watcher.waitForSelector(".hudf-toast", { timeout: 4000 }).catch(() => null);
-  const channelToast = (await watcher.locator(".hudf-toast").count()) ? await watcher.locator(".hudf-toast").innerText() : "";
-  check("watcher: a channel pill says only the owner can change it", channelToast === "Only the owner can change the channel.", channelToast);
-  check("watcher: a channel pill sends no tap", !watchBag.api.slice(beforeChannel).some((line) => line.includes("/api/tap")), watchBag.api.slice(beforeChannel).join(" "));
   if ((await watcher.locator("[data-ctl=tv-watch]").count()) === 1) {
     await clickCtl(watcher, "tv-watch", "watch", "phone");
     await watcher.waitForSelector("iframe.hudf-watch", { timeout: 4000 });
@@ -472,11 +747,14 @@ try {
   await tuck.click("[data-auth-control=create-submit]");
   await tuck.waitForSelector("[data-hud-frame]", { timeout: 25000 });
   check("first paint is not tucked", (await tuck.locator(".hudf.is-tucked").count()) === 0);
+  const zoomOpen = await tuck.evaluate(() => document.documentElement.dataset.roomZoom || "");
   await tuck.clock.fastForward(9000);
   await tuck.waitForSelector(".hudf.is-tucked", { timeout: 4000 });
   check("the frame tucks after 8s once the room has been seen", (await tuck.locator(".hudf.is-tucked").count()) === 1);
   await tuck.keyboard.press("Escape");
   check("Escape untucks", (await tuck.locator(".hudf.is-tucked").count()) === 0);
+  const zoomUntucked = await tuck.evaluate(() => document.documentElement.dataset.roomZoom || "");
+  check("roomZoom does not change when the frame tucks or untucks", zoomOpen !== "" && zoomOpen === zoomUntucked, `${zoomOpen} -> ${zoomUntucked}`);
   await tuckCtx.close();
 
   const fresh = await browser.newContext(contextOptions(390, 844, true));

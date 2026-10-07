@@ -242,7 +242,7 @@ export async function watchWriteBlock(req: Request): Promise<Response | null> {
   if (account) return null;
   if (!(await directory().watchSession(sessionHash(token)))) return null;
   return withCookies(
-    ownerJson({ ok: false, code: "watch_read_only", error: "This is a read-only watch link. Only the owner can change things here." }, 403),
+    ownerJson({ ok: false, code: "watch_read_only", error: "This is a read-only watch link. Only the owner can change this." }, 403),
     setCookies,
   );
 }

@@ -35,6 +35,8 @@ export type TagOut = {
   who: string;
   /** Newline-separated agent ids for that stack. */
   ids: string;
+  /** Newline-separated swatch colors for that stack. */
+  dots: string;
 };
 
 /** Registered spelling, with markup, control characters, and bidi marks removed. */
@@ -136,13 +138,15 @@ export function placeTags(
   let ay = 0;
   const pileId: string[] = [];
   const pileName: string[] = [];
-  const hold = (id: string, name: string, x: number, y: number) => {
+  const pileColor: string[] = [];
+  const hold = (id: string, name: string, x: number, y: number, color: string) => {
     if (collapsed === 0) {
       ax = x;
       ay = y;
     }
     pileId.push(id);
     pileName.push(plainName(name) || "Someone");
+    pileColor.push(color || "#8d99a6");
     collapsed += 1;
   };
   for (let k = 0; k < n; k += 1) {
@@ -155,7 +159,7 @@ export function placeTags(
     const y = nudged.y;
     if (hitsBlock(x, y, blocks, blockCount)) continue;
     if (!inside(x, y, view) || !fits(x, y, blocks, blockCount, view, out, placed)) {
-      hold(point.id, point.name, x, y);
+      hold(point.id, point.name, x, y, point.color);
       continue;
     }
     const copy = tagCopy(point.name, point.idle);
@@ -169,6 +173,7 @@ export function placeTags(
     slot.color = point.color;
     slot.who = "";
     slot.ids = "";
+    slot.dots = "";
     placed += 1;
   }
   if (collapsed > 0 && placed < out.length) {
@@ -186,7 +191,7 @@ export function placeTags(
       }
       if (home >= 0 || placed === 0) break;
       const dropped = out[placed - 1]!;
-      hold(dropped.id, dropped.text, dropped.x, dropped.y);
+      hold(dropped.id, dropped.text, dropped.x, dropped.y, dropped.color);
       placed -= 1;
     }
     if (home >= 0) {
@@ -201,8 +206,65 @@ export function placeTags(
       slot.color = "";
       slot.who = pileName.join("\n");
       slot.ids = pileId.join("\n");
+      slot.dots = pileColor.join("\n");
       placed += 1;
     }
   }
   return placed;
+}
+
+export type MeasuredTag = { x: number; y: number; w: number; h: number; ax: number; ay: number };
+
+const SIDE_X = [0, 1, -1, 0, 0, 1, -1, 2, -2, 0, 1, -1];
+const SIDE_Y = [0, 0, 0, -1, 1, -1, 1, 0, 0, -2, -2, -2];
+
+function boxHits(x: number, y: number, w: number, h: number, blocks: TagRect[], blockCount: number) {
+  const r = x + w;
+  const b = y + h;
+  for (let i = 0; i < blockCount; i += 1) {
+    const box = blocks[i]!;
+    if (x < box.r && r > box.l && y < box.b && b > box.t) return true;
+  }
+  return false;
+}
+
+function boxHitsPlaced(x: number, y: number, w: number, h: number, placed: MeasuredTag[]) {
+  for (const prev of placed) {
+    if (x < prev.x + prev.w + TAG_GAP && x + w + TAG_GAP > prev.x && y < prev.y + prev.h + TAG_GAP && y + h + TAG_GAP > prev.y) return true;
+  }
+  return false;
+}
+
+/**
+ * Move each measured tag so the full label sits inside the view and off the
+ * obstacles (stair flights). The caller has already read every width.
+ */
+export function fitTagBoxes(boxes: MeasuredTag[], view: TagRect, blocks: TagRect[], blockCount: number): { x: number; y: number }[] {
+  const seated: MeasuredTag[] = [];
+  const out: { x: number; y: number }[] = [];
+  for (const box of boxes) {
+    const w = Math.max(1, box.w);
+    const h = Math.max(1, box.h);
+    const maxX = Math.max(view.l, view.r - w);
+    const maxY = Math.max(view.t, view.b - h);
+    let chosen = {
+      x: Math.round(Math.min(maxX, Math.max(view.l, box.x))),
+      y: Math.round(Math.min(maxY, Math.max(view.t, box.y))),
+    };
+    for (let i = 0; i < SIDE_X.length; i += 1) {
+      const side = SIDE_X[i]!;
+      const rawX = side === 0 ? box.x : side < 0 ? box.ax + side * (w + 8) : box.ax + 8 + (side - 1) * (w + 8);
+      const rawY = box.y + SIDE_Y[i]! * (h + 8);
+      const x = Math.round(Math.min(maxX, Math.max(view.l, rawX)));
+      const y = Math.round(Math.min(maxY, Math.max(view.t, rawY)));
+      if (x + w > view.r + 0.5 || y + h > view.b + 0.5) continue;
+      if (boxHits(x, y, w, h, blocks, blockCount)) continue;
+      if (boxHitsPlaced(x, y, w, h, seated)) continue;
+      chosen = { x, y };
+      break;
+    }
+    seated.push({ x: chosen.x, y: chosen.y, w, h, ax: box.ax, ay: box.ay });
+    out.push(chosen);
+  }
+  return out;
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
-import { PMREMGenerator, type Group } from "three";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { useThree } from "@react-three/fiber";
+import { PMREMGenerator, type Group, type Object3D } from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { disposeBuilt, mats, mergeStatic, setEnvTexture, type Mats } from "./maquette/kit";
 import type { Built } from "./maquette/pieces";
@@ -103,41 +103,36 @@ export function useBuilt(factory: () => Built, deps: readonly unknown[], opts: {
   return built;
 }
 
+type FurniturePick = { object: Object3D; tap: () => void };
+const FURNITURE: FurniturePick[] = [];
+
+/** Meshes a tap may hit. Hover and the frame loop never raycast this list. */
+export function furnitureMeshes(): Object3D[] {
+  return FURNITURE.map((row) => row.object);
+}
+
+export function furnitureTap(object: Object3D): (() => void) | null {
+  let node: Object3D | null = object;
+  while (node) {
+    for (const row of FURNITURE) if (row.object === node) return row.tap;
+    node = node.parent;
+  }
+  return null;
+}
+
 export function Tap({ onTap, children }: { onTap: () => void; children: ReactNode }) {
   const ref = useRef<Group>(null);
-  const hot = useRef(0);
-  useFrame((_, delta) => {
+  const tapRef = useRef(onTap);
+  tapRef.current = onTap;
+  useLayoutEffect(() => {
     const group = ref.current;
     if (!group) return;
-    const target = hot.current > 1 ? 0.985 : hot.current > 0 ? 1.012 : 1;
-    const next = group.scale.x + (target - group.scale.x) * Math.min(1, delta * 14);
-    group.scale.setScalar(next);
-  });
-  return (
-    <group
-      ref={ref}
-      onClick={(event) => {
-        event.stopPropagation();
-        onTap();
-      }}
-      onPointerOver={(event) => {
-        event.stopPropagation();
-        hot.current = Math.max(hot.current, 1);
-        document.body.style.cursor = "pointer";
-      }}
-      onPointerOut={() => {
-        hot.current = 0;
-        document.body.style.cursor = "";
-      }}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-        hot.current = 2;
-      }}
-      onPointerUp={() => {
-        if (hot.current > 1) hot.current = 1;
-      }}
-    >
-      {children}
-    </group>
-  );
+    const row: FurniturePick = { object: group, tap: () => tapRef.current() };
+    FURNITURE.push(row);
+    return () => {
+      const index = FURNITURE.indexOf(row);
+      if (index >= 0) FURNITURE.splice(index, 1);
+    };
+  }, []);
+  return <group ref={ref}>{children}</group>;
 }

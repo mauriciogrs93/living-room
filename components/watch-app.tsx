@@ -21,13 +21,14 @@ import { sectionKnown } from "./hud/registry";
 import { hudTokens } from "./hud/tokens";
 import { WhisperLayer } from "./hud/whispers";
 import { MAQUETTE } from "./room/maquette/config";
-import { OwnerOnlyToast, setCardTaps, setViewerRole, tapDog } from "./room/viewer-tap";
+import { furnitureGestureRecent, OwnerOnlyToast, setCardTaps, setViewerRole, tapDog } from "./room/viewer-tap";
 import type { DoorMeshProps } from "./room/maquette/door-mesh";
 
 const RoomCanvas = dynamic(() => import("@/components/room/room-canvas").then((mod) => mod.RoomCanvas), {
   ssr: false,
   loading: () => <HouseFallback />,
 });
+const frameZoom = import("./room/frame-zoom");
 
 export function WatchApp({ origin = "", role = "owner" }: { origin?: string; role?: "owner" | "watch" }) {
   return (
@@ -69,7 +70,19 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
   useLayoutEffect(() => {
     if (!MAQUETTE.hudFrame) return;
     document.documentElement.dataset.hudFrame = "1";
+    let timer = 0;
+    const apply = () => {
+      void frameZoom.then((mod) => mod.publishFrameZoom());
+    };
+    apply();
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(apply, 50);
+    };
+    window.addEventListener("resize", onResize);
     return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", onResize);
       delete document.documentElement.dataset.hudFrame;
     };
   }, []);
@@ -104,7 +117,7 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
   const selectAgent = useCallback((id: string | null) => {
     if (!id) {
       setSelectedId(null);
-      if (hud.section) hud.close();
+      if (hud.section && !furnitureGestureRecent()) hud.close();
       return;
     }
     setShot(false);

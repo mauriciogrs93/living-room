@@ -22,7 +22,6 @@ import { cleanHud, httpLink, httpsUrl } from "./sanitize";
 import { YOURS_CARDS, yoursCards } from "./controls";
 import { HudIcon, type HudIconName } from "./icons";
 import { WatchFrame } from "./watch-frame";
-import { showNotice } from "@/components/room/viewer-tap";
 import { joinToast } from "@/lib/room/name-tags";
 import {
   ACTION_FAIL,
@@ -134,6 +133,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const [ring, setRing] = useState<{ x: number; y: number } | null>(null);
   const [watchKey, setWatchKey] = useState<string | null>(null);
   const [skyReport, setSkyReport] = useState<{ summary: string | null; temp: string | null; rain: boolean } | null>(null);
+  const [warmSheet, setWarmSheet] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -175,6 +175,23 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
     shown === "radio" ? "object:radio" : shown === "tv" ? "object:tv" : shown === "sky" ? "object:window" : shown === "here" || shown === "people" ? "object:door" : null;
   const yours = yoursCards(MAQUETTE.yoursComingSoon, role);
   const yoursCard = yours.length ? YOURS_CARDS.find((card) => card.id === shown) : undefined;
+
+  useEffect(() => {
+    let idle = 0;
+    let second = 0;
+    const first = window.requestAnimationFrame(() => {
+      second = window.requestAnimationFrame(() => {
+        const run = () => setWarmSheet(true);
+        if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(run, { timeout: 2000 });
+        else idle = window.setTimeout(run, 400);
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(first);
+      window.cancelAnimationFrame(second);
+      if (typeof window.cancelIdleCallback === "function" && idle) window.cancelIdleCallback(idle);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -434,7 +451,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
           {cardTitle(shown, tv.name)}
         </h2>
         <button type="button" className="hudf-x" data-ctl="card-close" aria-label={CLOSE} onClick={close}>
-          ×
+          <span aria-hidden="true">×</span>
         </button>
       </div>
       <div className="hudf-body" ref={bodyRef}>
@@ -501,16 +518,17 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
                     {name}
                   </button>
                 ) : owner ? (
-                  <div key={name + index} className="is-info">
+                  <div key={name + index} className={`is-info${index === radio?.index ? " is-on" : ""}`}>
                     {name}
                   </div>
                 ) : (
-                  <button key={name + index} type="button" data-ctl={`radio-row-watch-${index}`} className="is-info" onClick={() => showNotice(OWNER_STATION)}>
+                  <div key={name + index} data-ctl={`radio-row-watch-${index}`} className={`is-info${index === radio?.index ? " is-on" : ""}`} aria-disabled="true">
                     {name}
-                  </button>
+                  </div>
                 ),
               )}
             </div>
+            {owner ? null : <p className="is-info hudf-quiet" data-owner-line="station">{OWNER_STATION}</p>}
           </>
         )}
         {shown === "tv" && (
@@ -551,12 +569,13 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
                     {item.name}
                   </span>
                 ) : (
-                  <button key={item.id} type="button" data-ctl={`tv-chip-watch-${item.id}`} className={`is-info${item.id === tv.channelId && tv.power ? " is-on" : ""}`} onClick={() => showNotice(OWNER_CHANNEL)}>
+                  <span key={item.id} data-ctl={`tv-chip-watch-${item.id}`} className={`is-info${item.id === tv.channelId && tv.power ? " is-on" : ""}`} aria-disabled="true">
                     {item.name}
-                  </button>
+                  </span>
                 ),
               )}
             </div>
+            {owner ? null : <p className="is-info hudf-quiet" data-owner-line="channel">{OWNER_CHANNEL}</p>}
             {actionNote ? <p className="is-info hudf-quiet">{actionNote}</p> : null}
           </>
         )}
@@ -680,7 +699,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       <div className="hudf-rail" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <p className="is-info mono">{HOUSE}</p>
         <Rail id="today" label="Today" on={shown === "today"} dot={dot} onClick={(event) => toggle("today", event)} />
-        <Rail id="radio" label="Radio" on={shown === "radio"} bars={Boolean(radio?.on)} onClick={(event) => toggle("radio", event)} />
+        <Rail id="radio" label="Radio" on={shown === "radio"} bars={Boolean(radio?.on)} paused={Boolean(radio?.on && muted)} onClick={(event) => toggle("radio", event)} />
         <Rail id="tv" label="TV" on={shown === "tv"} onClick={(event) => toggle("tv", event)} />
         <Rail id="sky" label="Sky" on={shown === "sky"} onClick={(event) => toggle("sky", event)} />
         {YOURS_CARDS.filter((card) => yours.includes(card.title)).map((card) => (
@@ -760,6 +779,11 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       {ring ? <div className="hudf-ring" style={{ left: ring.x, top: ring.y }} /> : null}
       {model.status === "offline" ? <p className="hud-offline is-info">{OFFLINE}</p> : null}
       {overlay ? <div className="hudf-overlay">{overlay}</div> : null}
+      {warmSheet ? (
+        <div hidden aria-hidden data-warm-sheet="" style={{ display: "none" }}>
+          <ActivitySection model={model} watcher={role !== "owner"} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -770,6 +794,7 @@ function Rail({
   on,
   dot,
   bars,
+  paused,
   ctl,
   onClick,
 }: {
@@ -778,6 +803,7 @@ function Rail({
   on: boolean;
   dot?: boolean;
   bars?: boolean;
+  paused?: boolean;
   ctl?: string;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
@@ -786,7 +812,7 @@ function Rail({
     <button type="button" data-ctl={ctl ?? `rail-${id}`} className={on ? "is-on" : ""} aria-label={label} onClick={onClick}>
       <span className="hudf-medal">
         {bars ? (
-          <span className="hudf-eq" aria-hidden>
+          <span className={`hudf-eq${paused ? " is-paused" : ""}`} data-rail-eq="" aria-hidden>
             <i />
             <i />
             <i />
