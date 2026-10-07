@@ -30,8 +30,10 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   poweredByHeader: false,
   // Baked into the client bundle. Production builds set "off", so no query can enable the figure lineup.
+  // VERCEL_ENV is inlined so a preview bundle can stay on while a self-hosted production build stays off.
   env: {
     NEXT_PUBLIC_FIGURE_LINEUP: process.env.VERCEL_ENV === "production" ? "off" : "on",
+    VERCEL_ENV: process.env.VERCEL_ENV ?? "",
   },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

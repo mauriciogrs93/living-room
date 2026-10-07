@@ -122,30 +122,47 @@ check(
   "an empty Here is a watcher line only",
   strings.hereEmptyCopy("watch", 0) === "No one's home right now." && strings.hereEmptyCopy("watch", 1) === "" && strings.hereEmptyCopy("owner", 0) === "",
 );
-const savedLineup = { env: process.env.VERCEL_ENV, flag: process.env.NEXT_PUBLIC_FIGURE_LINEUP };
+const savedLineup = { env: process.env.VERCEL_ENV, flag: process.env.NEXT_PUBLIC_FIGURE_LINEUP, node: process.env.NODE_ENV };
 const lineupQuery = "?debug=1&lineup=10";
+process.env.NODE_ENV = "production";
 process.env.VERCEL_ENV = "production";
 process.env.NEXT_PUBLIC_FIGURE_LINEUP = "on";
 check("production ignores every lineup query", !lineupEnabled() && lineupCount(lineupQuery) === 0 && lineupCount("?debug=1&lineup=1") === 0 && lineupCount("?lineup=4") === 0 && lineupDraws(3, lineupQuery) === 0);
 delete process.env.VERCEL_ENV;
+process.env.NODE_ENV = "development";
 process.env.NEXT_PUBLIC_FIGURE_LINEUP = "off";
 check("a production bundle flag stays off even if the server env is hidden", lineupCount("?debug=1&lineup=4") === 0);
+process.env.NODE_ENV = "production";
+process.env.NEXT_PUBLIC_FIGURE_LINEUP = "on";
+check("a self-hosted production build ignores the lineup query", !lineupEnabled() && lineupCount(lineupQuery) === 0 && lineupCount("?debug=1&lineup=1") === 0);
 process.env.VERCEL_ENV = "preview";
+process.env.NODE_ENV = "production";
 process.env.NEXT_PUBLIC_FIGURE_LINEUP = "on";
 check("preview still reads the lineup query", lineupCount("?debug=1&lineup=1") === 3 && lineupCount("?debug=1&lineup=4") === 4 && lineupCount("?lineup=10") === 0);
 check("a watcher with no agents draws nothing from the lineup", lineupDraws(0, "?debug=1&lineup=10") === 0 && lineupDraws(2, "?debug=1&lineup=10") === 2);
+process.env.NODE_ENV = "development";
+delete process.env.VERCEL_ENV;
+process.env.NEXT_PUBLIC_FIGURE_LINEUP = "on";
+check("local development still reads the lineup query", lineupEnabled() && lineupCount("?debug=1&lineup=4") === 4);
 if (savedLineup.env === undefined) delete process.env.VERCEL_ENV;
 else process.env.VERCEL_ENV = savedLineup.env;
 if (savedLineup.flag === undefined) delete process.env.NEXT_PUBLIC_FIGURE_LINEUP;
 else process.env.NEXT_PUBLIC_FIGURE_LINEUP = savedLineup.flag;
+if (savedLineup.node === undefined) delete process.env.NODE_ENV;
+else process.env.NODE_ENV = savedLineup.node;
 const canvasSource = readFileSync(path.join(root, "components/room/room-canvas.tsx"), "utf8");
 const lineupSource = readFileSync(path.join(root, "lib/room/lineup.ts"), "utf8");
 const nextConfig = readFileSync(path.join(root, "next.config.ts"), "utf8");
 check("the canvas does not read lineup on its own", canvasSource.includes("lineupAsked") && !canvasSource.includes('get("lineup")'));
 check(
   "production is compiled out of the lineup",
-  lineupSource.includes('process.env.VERCEL_ENV === "production"') && nextConfig.includes('NEXT_PUBLIC_FIGURE_LINEUP: process.env.VERCEL_ENV === "production" ? "off" : "on"'),
+  lineupSource.includes('process.env.VERCEL_ENV === "production"') &&
+    lineupSource.includes('process.env.NODE_ENV === "production"') &&
+    lineupSource.includes('process.env.VERCEL_ENV !== "preview"') &&
+    nextConfig.includes('NEXT_PUBLIC_FIGURE_LINEUP: process.env.VERCEL_ENV === "production" ? "off" : "on"'),
 );
+const hudFrame = readFileSync(path.join(root, "components/hud/frame/frame.tsx"), "utf8");
+check("Room sound shows On or Off for every role", hudFrame.includes("muted ? SOUND_OFF : SOUND_ON") && !hudFrame.includes("muted ? MUTE : UNMUTE"));
 check("icons are bundled SVG components", iconSource.includes("<path") && !iconSource.includes("dangerouslySetInnerHTML") && !iconSource.includes("innerHTML"));
 check("player commands never use a wildcard target", frameSource.includes("YT_ORIGIN") && !frameSource.includes("'*'") && !frameSource.includes('"*"'));
 

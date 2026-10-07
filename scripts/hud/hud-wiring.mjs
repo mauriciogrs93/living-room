@@ -159,7 +159,25 @@ try {
     const sheet = (await page.locator(".hudf.is-sheet").count()) > 0;
     const scrim = (await page.locator("[data-ctl=sheet-scrim]").count()) > 0;
     const floating = (await page.locator(".hudf-card.is-float").count()) > 0;
-    if (name === "desk") check("desk: card floats and has no scrim", floating && !sheet && !scrim);
+    if (name === "desk") {
+      check("desk: card floats and has no scrim", floating && !sheet && !scrim);
+      const top = await page.evaluate(() => {
+        const el = document.querySelector(".hudf-top");
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return {
+          w: Math.round(rect.width),
+          right: Math.round(rect.right),
+          radius: parseFloat(getComputedStyle(el).borderTopLeftRadius),
+          vw: window.innerWidth,
+        };
+      });
+      check(
+        "desk: top bar is a compact floating pill",
+        Boolean(top && top.w < top.vw * 0.6 && top.right < top.vw - 200 && top.radius >= 24),
+        JSON.stringify(top),
+      );
+    }
     else check(`${name}: card is a sheet over a scrim`, sheet && scrim && !floating);
     if (name === "phone") {
       const scrimBg = await page.evaluate(() => getComputedStyle(document.querySelector("[data-ctl=sheet-scrim]")).backgroundColor);
@@ -252,6 +270,8 @@ try {
       watchLink = minted.link;
       await clickCtl(page, "nav-you", "owner", name);
       check("phone: You offers Change password and sign out", (await page.locator("[data-ctl=you-set-password]").innerText()) === "Change password" && (await page.locator("[data-ctl=you-signout]").count()) === 1);
+      const ownerSound = await page.locator("[data-ctl=room-sound]").innerText();
+      check("phone: owner Room sound shows On or Off", ownerSound.includes("Room sound") && !/Mute|Unmute/.test(ownerSound) && /\b(On|Off)\b/.test(ownerSound), ownerSound);
     }
     if (name === "short") {
       await clickCtl(page, "rail-tv", "owner", name);
@@ -320,7 +340,7 @@ try {
   await clickCtl(watcher, "nav-you", "watch", "phone");
   check("watcher: You says they are watching and offers Leave", (await watcher.locator(".hudf-card").innerText()).includes("You're watching") && (await watcher.locator("[data-ctl=you-leave]").count()) === 1);
   const soundLabel = await watcher.locator("[data-ctl=room-sound]").innerText();
-  check("watcher: Room sound stays labeled and shows on or off", soundLabel.includes("Room sound") && !soundLabel.includes("Unmute") && /\b(On|Off)\b/.test(soundLabel), soundLabel);
+  check("watcher: Room sound stays labeled and shows on or off", soundLabel.includes("Room sound") && !/Mute|Unmute/.test(soundLabel) && /\b(On|Off)\b/.test(soundLabel), soundLabel);
   const zoneText = await watcher.locator("[data-zone-pill]").innerText();
   const titleText = await watcher.locator("[data-title-pill]").innerText();
   check("watcher: phone zone pill is ET and neither pill ellipsizes", zoneText.startsWith("ET") && !zoneText.includes("Eastern Time") && !zoneText.endsWith("…") && !titleText.endsWith("…") && titleText.endsWith("apartment"), `${titleText} | ${zoneText}`);

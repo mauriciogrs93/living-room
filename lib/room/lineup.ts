@@ -1,12 +1,14 @@
 /**
  * Design-only figure line-up (?debug=1&lineup=1|4|10).
  * The probe only repositions agents already in the snapshot. It never creates figures.
- * VERCEL_ENV==="production" is hard-off. next.config inlines NEXT_PUBLIC_FIGURE_LINEUP
- * from that env, so a production bundle returns 0 before it reads the query.
+ * VERCEL_ENV==="production" is hard-off, and so is NODE_ENV==="production" unless this is a
+ * Vercel preview. next.config inlines NEXT_PUBLIC_FIGURE_LINEUP and VERCEL_ENV, so a
+ * production bundle returns 0 before it reads the query. Preview stays on.
  */
 export function lineupEnabled(): boolean {
   if (process.env.VERCEL_ENV === "production") return false;
   if (process.env.NEXT_PUBLIC_FIGURE_LINEUP === "off") return false;
+  if (process.env.NODE_ENV === "production" && process.env.VERCEL_ENV !== "preview") return false;
   return true;
 }
 

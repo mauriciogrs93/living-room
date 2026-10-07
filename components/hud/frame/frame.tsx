@@ -591,7 +591,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
             {owner ? <YouSection /> : <p className="is-info hudf-quiet">{WATCH_YOU}</p>}
             <button type="button" className="hudf-switch" role="switch" aria-checked={!muted} data-ctl="room-sound" onClick={toggleMute}>
               <span>{ROOM_SOUND}</span>
-              <span>{owner ? (muted ? MUTE : UNMUTE) : muted ? SOUND_OFF : SOUND_ON}</span>
+              <span>{muted ? SOUND_OFF : SOUND_ON}</span>
             </button>
             {owner ? <SignForm ctl="you-signout" label={SIGN_OUT} /> : <SignForm ctl="you-leave" label={WATCH_LEAVE} />}
           </>
