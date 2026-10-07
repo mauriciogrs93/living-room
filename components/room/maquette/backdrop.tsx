@@ -71,7 +71,8 @@ export function crownGeo(seed = 1, lobes = 4) {
   ];
   for (let i = 0; i < lobes; i += 1) {
     const [x, y, z, rad] = base[i];
-    const g = new THREE.SphereGeometry(rad * (0.9 + r() * 0.2), 40, 26);
+    // 16×10 keeps the instanced crowns inside the phone triangle budget. The silhouette stays a cluster of lobes.
+    const g = new THREE.SphereGeometry(rad * (0.9 + r() * 0.2), 16, 10);
     g.translate(x * (0.9 + r() * 0.25), y, z * (0.9 + r() * 0.25));
     parts.push(g);
   }
