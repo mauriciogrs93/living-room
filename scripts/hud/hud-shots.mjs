@@ -128,7 +128,7 @@ try {
   });
   if (!minted) throw new Error("no watch link");
   // Two live canvases stall the screenshot. Park the owner while the watcher is on screen.
-  await owner.goto("about:blank");
+  await owner.goto("about:blank", { waitUntil: "commit" });
   const watchCtx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -147,13 +147,13 @@ try {
     await shot(watcher, width, height, "watch", "radio-idle");
     await watcher.keyboard.press("Escape");
   }
-  await watcher.goto("about:blank");
+  await watcher.goto("about:blank", { waitUntil: "commit" });
   await owner.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await owner.waitForSelector("[data-hud-frame]", { timeout: 25000 });
   await owner.click("[data-ctl=rail-radio]");
   await owner.click("[data-ctl=radio-play]");
   await owner.keyboard.press("Escape");
-  await owner.goto("about:blank");
+  await owner.goto("about:blank", { waitUntil: "commit" });
   await watcher.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await watcher.waitForSelector("[data-watch-badge]", { timeout: 25000 });
   await watcher.waitForTimeout(600);
@@ -171,7 +171,7 @@ try {
     await watcher.keyboard.press("Escape");
   }
 
-  await watcher.goto("about:blank");
+  await watcher.goto("about:blank", { waitUntil: "commit" });
   await owner.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await owner.evaluate(() => localStorage.setItem("lr-hud-seen", "1"));
   await owner.clock.install();
@@ -183,7 +183,7 @@ try {
     await owner.setViewportSize({ width, height });
     await shot(owner, width, height, "owner", "tucked");
   }
-  await owner.goto("about:blank");
+  await owner.goto("about:blank", { waitUntil: "commit" });
   await watcher.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await watcher.evaluate(() => localStorage.setItem("lr-hud-seen", "1"));
   await watcher.clock.install();
