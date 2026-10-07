@@ -1,0 +1,1618 @@
+{
+ "p390-idle": {
+  "vw": 390,
+  "vh": 844,
+  "docW": 390,
+  "house": {
+   "w": 280.8,
+   "h": 523.3,
+   "stage": [
+    0,
+    0,
+    390,
+    844
+   ],
+   "plate": "room-flatbg-portrait.jpg"
+  },
+  "overlapStage": [
+   "panel top F Your apartment L",
+   "panel here 2 Here",
+   "panel rail HOUSE TODAY RADIO"
+  ],
+  "panelOverlap": [],
+  "offscreen": [
+   "ticker-track SUNSET AT 6:30 PM.",
+   "ticker-item THE SPACE STATION",
+   "ticker-dot ·",
+   "ticker-item LIGHT RAIN OVERNIG",
+   "ticker-dot ·",
+   "ticker-item BASIL PUT ON JAZZ2",
+   "ticker-dot ·",
+   "ticker-item FERRY SCHEDULE HOL"
+  ],
+  "clip": [],
+  "taps": [
+   [
+    "panel here 2 Here",
+    100.3,
+    44
+   ],
+   [
+    "btn TODAY",
+    46,
+    59
+   ],
+   [
+    "btn RADIO",
+    46,
+    59
+   ],
+   [
+    "btn TV",
+    46,
+    59
+   ],
+   [
+    "btn SKY",
+    46,
+    59
+   ],
+   [
+    "panel strip task Poppy is making te",
+    282,
+    44
+   ],
+   [
+    "panel strip chat Basil Rain's picki",
+    378,
+    44
+   ],
+   [
+    "it on ROOM",
+    73.6,
+    54
+   ],
+   [
+    "it ACTIVITY",
+    73.6,
+    54
+   ],
+   [
+    "it own INVITE",
+    73.6,
+    54
+   ],
+   [
+    "it PEOPLE",
+    73.6,
+    54
+   ],
+   [
+    "it YOU",
+    73.6,
+    54
+   ]
+  ],
+  "minGap": [
+   0,
+   "panel here 2 Here | panel strip task Pop"
+  ],
+  "railGaps": [
+   10.3,
+   10.3,
+   10.3
+  ],
+  "coarse": true,
+  "cardScroll": null,
+  "fade": null,
+  "scrollport": null,
+  "fadeCheck": null,
+  "els": {
+   ".leave": [],
+   ".plays": [],
+   ".offline": [],
+   ".screen": [],
+   ".tvtop": [],
+   ".ctrlwrap": [],
+   ".wtag": [],
+   ".list .row": [],
+   ".grp": [
+    [
+     333,
+     244.1,
+     46,
+     281.8
+    ]
+   ],
+   ".badge": [
+    [
+     306,
+     51,
+     71,
+     28
+    ]
+   ],
+   ".counters": [],
+   ".top .count": [],
+   ".who": [
+    [
+     13,
+     47,
+     287,
+     36
+    ]
+   ],
+   ".playing": [
+    [
+     364,
+     358.4,
+     17,
+     17
+    ]
+   ],
+   ".dot": [
+    [
+     367,
+     260.1,
+     11,
+     11
+    ]
+   ],
+   ".here": [
+    [
+     6,
+     682,
+     100.3,
+     44
+    ]
+   ],
+   ".strip.task": [
+    [
+     102,
+     682,
+     282,
+     44
+    ]
+   ],
+   ".strip.chat": [
+    [
+     6,
+     732,
+     378,
+     44
+    ]
+   ],
+   ".navp": [
+    [
+     6,
+     782,
+     378,
+     56
+    ]
+   ],
+   ".nav .it": [
+    [
+     11,
+     783,
+     73.6,
+     54
+    ],
+    [
+     84.6,
+     783,
+     73.6,
+     54
+    ],
+    [
+     158.2,
+     783,
+     73.6,
+     54
+    ],
+    [
+     231.8,
+     783,
+     73.6,
+     54
+    ],
+    [
+     305.4,
+     783,
+     73.6,
+     54
+    ]
+   ],
+   ".pill": [],
+   ".pill .stopb": [],
+   ".pill .seg": [],
+   ".pill .hand": [],
+   ".card": [],
+   ".card .body": [],
+   ".card .fade": [],
+   ".hl": [],
+   ".stage": [
+    [
+     0,
+     0,
+     390,
+     844
+    ]
+   ],
+   ".fig": [],
+   ".card .x": [],
+   ".ctrl": [],
+   ".ctrl .big": [],
+   ".list": [],
+   ".player": [],
+   ".now": [],
+   ".chips": [],
+   ".fine": [],
+   ".rail": [
+    [
+     328,
+     98,
+     56,
+     574
+    ]
+   ],
+   ".top": [
+    [
+     6,
+     42,
+     378,
+     46
+    ]
+   ],
+   ".bot": [],
+   ".homebar": [],
+   ".rail .medal": [
+    [
+     333,
+     259.1,
+     46,
+     46
+    ],
+    [
+     333,
+     328.4,
+     46,
+     46
+    ],
+    [
+     333,
+     397.6,
+     46,
+     46
+    ],
+    [
+     333,
+     466.9,
+     46,
+     46
+    ]
+   ],
+   ".rail .btn": [
+    [
+     333,
+     259.1,
+     46,
+     59
+    ],
+    [
+     333,
+     328.4,
+     46,
+     59
+    ],
+    [
+     333,
+     397.6,
+     46,
+     59
+    ],
+    [
+     333,
+     466.9,
+     46,
+     59
+    ]
+   ],
+   ".btn.on": [],
+   ".strip.chat .pg": [
+    [
+     311.8,
+     746.5,
+     65.2,
+     15
+    ]
+   ]
+  }
+ },
+ "p390-tv": {
+  "vw": 390,
+  "vh": 844,
+  "docW": 390,
+  "house": {
+   "w": 280.8,
+   "h": 523.3,
+   "stage": [
+    0,
+    0,
+    390,
+    844
+   ],
+   "plate": "room-flatbg-portrait.jpg"
+  },
+  "overlapStage": [
+   "panel top F Your apartment L",
+   "panel rail HOUSE TODAY RADIO",
+   "panel card TV · Supper Club H"
+  ],
+  "panelOverlap": [
+   "panel rail HOUS X panel card TV ·"
+  ],
+  "offscreen": [
+   "ticker-track SUNSET AT 6:30 PM.",
+   "ticker-item THE SPACE STATION",
+   "ticker-dot ·",
+   "ticker-item LIGHT RAIN OVERNIG",
+   "ticker-dot ·",
+   "ticker-item BASIL PUT ON JAZZ2",
+   "ticker-dot ·",
+   "ticker-item FERRY SCHEDULE HOL"
+  ],
+  "clip": [],
+  "taps": [
+   [
+    "btn TODAY",
+    46,
+    59
+   ],
+   [
+    "btn RADIO",
+    46,
+    59
+   ],
+   [
+    "btn on TV",
+    46,
+    59
+   ],
+   [
+    "btn SKY",
+    46,
+    59
+   ],
+   [
+    "it on ROOM",
+    73.6,
+    54
+   ],
+   [
+    "it ACTIVITY",
+    73.6,
+    54
+   ],
+   [
+    "it own INVITE",
+    73.6,
+    54
+   ],
+   [
+    "it PEOPLE",
+    73.6,
+    54
+   ],
+   [
+    "it YOU",
+    73.6,
+    54
+   ],
+   [
+    "x",
+    44,
+    44
+   ],
+   [
+    "big sec Turn off",
+    352,
+    48
+   ],
+   [
+    "Meadow",
+    94.1,
+    44
+   ],
+   [
+    "Midnight News",
+    130.6,
+    44
+   ],
+   [
+    "Cartoon Hour",
+    121.6,
+    44
+   ],
+   [
+    "Rain",
+    70.5,
+    44
+   ],
+   [
+    "on Supper Club",
+    115.9,
+    44
+   ]
+  ],
+  "minGap": [
+   0,
+   "btn on TV | big sec Turn off"
+  ],
+  "railGaps": [
+   10.3,
+   10.3,
+   10.3
+  ],
+  "coarse": true,
+  "cardScroll": [
+   600,
+   600,
+   0
+  ],
+  "fade": null,
+  "scrollport": [
+   173,
+   773
+  ],
+  "fadeCheck": [
+   [
+    "big sec Turn off",
+    1,
+    0
+   ],
+   [
+    "Meadow",
+    1,
+    0
+   ],
+   [
+    "Midnight News",
+    1,
+    0
+   ],
+   [
+    "Cartoon Hour",
+    1,
+    0
+   ],
+   [
+    "Rain",
+    1,
+    0
+   ],
+   [
+    "on Supper Club",
+    1,
+    0
+   ]
+  ],
+  "els": {
+   ".leave": [],
+   ".plays": [],
+   ".offline": [],
+   ".screen": [],
+   ".tvtop": [],
+   ".ctrlwrap": [],
+   ".wtag": [],
+   ".list .row": [],
+   ".grp": [
+    [
+     333,
+     244.1,
+     46,
+     281.8
+    ]
+   ],
+   ".badge": [
+    [
+     306,
+     51,
+     71,
+     28
+    ]
+   ],
+   ".counters": [],
+   ".top .count": [],
+   ".who": [
+    [
+     13,
+     47,
+     287,
+     36
+    ]
+   ],
+   ".playing": [
+    [
+     364,
+     358.4,
+     17,
+     17
+    ]
+   ],
+   ".dot": [
+    [
+     367,
+     260.1,
+     11,
+     11
+    ]
+   ],
+   ".here": [],
+   ".strip.task": [],
+   ".strip.chat": [],
+   ".navp": [
+    [
+     6,
+     782,
+     378,
+     56
+    ]
+   ],
+   ".nav .it": [
+    [
+     11,
+     783,
+     73.6,
+     54
+    ],
+    [
+     84.6,
+     783,
+     73.6,
+     54
+    ],
+    [
+     158.2,
+     783,
+     73.6,
+     54
+    ],
+    [
+     231.8,
+     783,
+     73.6,
+     54
+    ],
+    [
+     305.4,
+     783,
+     73.6,
+     54
+    ]
+   ],
+   ".pill": [],
+   ".pill .stopb": [],
+   ".pill .seg": [],
+   ".pill .hand": [],
+   ".card": [
+    [
+     6,
+     96,
+     378,
+     678
+    ]
+   ],
+   ".card .body": [
+    [
+     19,
+     173,
+     352,
+     600
+    ]
+   ],
+   ".card .fade": [],
+   ".hl": [],
+   ".stage": [
+    [
+     0,
+     0,
+     390,
+     844
+    ]
+   ],
+   ".fig": [],
+   ".card .x": [
+    [
+     327,
+     119,
+     44,
+     44
+    ]
+   ],
+   ".ctrl": [
+    [
+     19,
+     437.8,
+     352,
+     48
+    ]
+   ],
+   ".ctrl .big": [
+    [
+     19,
+     437.8,
+     352,
+     48
+    ]
+   ],
+   ".list": [],
+   ".player": [],
+   ".now": [],
+   ".chips": [
+    [
+     19,
+     495.8,
+     352,
+     96
+    ]
+   ],
+   ".fine": [
+    [
+     19,
+     601.8,
+     352,
+     15.4
+    ]
+   ],
+   ".rail": [
+    [
+     328,
+     98,
+     56,
+     574
+    ]
+   ],
+   ".top": [
+    [
+     6,
+     42,
+     378,
+     46
+    ]
+   ],
+   ".bot": [],
+   ".homebar": [],
+   ".rail .medal": [
+    [
+     333,
+     259.1,
+     46,
+     46
+    ],
+    [
+     333,
+     328.4,
+     46,
+     46
+    ],
+    [
+     333,
+     397.6,
+     46,
+     46
+    ],
+    [
+     333,
+     466.9,
+     46,
+     46
+    ]
+   ],
+   ".rail .btn": [
+    [
+     333,
+     259.1,
+     46,
+     59
+    ],
+    [
+     333,
+     328.4,
+     46,
+     59
+    ],
+    [
+     333,
+     397.6,
+     46,
+     59
+    ],
+    [
+     333,
+     466.9,
+     46,
+     59
+    ]
+   ],
+   ".btn.on": [
+    [
+     333,
+     397.6,
+     46,
+     59
+    ]
+   ],
+   ".strip.chat .pg": []
+  }
+ },
+ "d1440-idle": {
+  "vw": 1440,
+  "vh": 900,
+  "docW": 1440,
+  "house": {
+   "w": 547.2,
+   "h": 702,
+   "stage": [
+    0,
+    0,
+    1440,
+    900
+   ],
+   "plate": "room-flatbg-portrait.jpg"
+  },
+  "overlapStage": [
+   "panel top F Your apartment L",
+   "panel here 2 HERE",
+   "panel rail HOUSE TODAY RADIO",
+   "panel bot FIG. 1 · LIVING RO"
+  ],
+  "panelOverlap": [],
+  "offscreen": [
+   "ticker-track SUNSET AT 6:30 PM.",
+   "ticker-item SUNSET AT 6:30 PM.",
+   "ticker-dot ·",
+   "ticker-item THE SPACE STATION",
+   "ticker-dot ·",
+   "ticker-item LIGHT RAIN OVERNIG",
+   "ticker-dot ·",
+   "ticker-item BASIL PUT ON JAZZ2"
+  ],
+  "clip": [],
+  "taps": [
+   [
+    "panel here 2 HERE",
+    44,
+    122.9
+   ],
+   [
+    "btn TODAY",
+    54,
+    71
+   ],
+   [
+    "btn RADIO",
+    54,
+    71
+   ],
+   [
+    "btn TV",
+    54,
+    71
+   ],
+   [
+    "btn SKY",
+    54,
+    71
+   ],
+   [
+    "panel strip task Poppy is making te",
+    724.8,
+    40
+   ],
+   [
+    "panel strip chat Basil Rain's picki",
+    724.8,
+    40
+   ],
+   [
+    "it on ROOM",
+    78,
+    88
+   ],
+   [
+    "it ACTIVITY",
+    78,
+    88
+   ],
+   [
+    "it own INVITE",
+    78,
+    88
+   ],
+   [
+    "it PEOPLE",
+    78,
+    88
+   ],
+   [
+    "it YOU",
+    78,
+    88
+   ]
+  ],
+  "minGap": [
+   8,
+   "panel strip task Pop | panel strip chat Bas"
+  ],
+  "railGaps": [
+   10,
+   10,
+   10
+  ],
+  "coarse": false,
+  "cardScroll": null,
+  "fade": null,
+  "scrollport": null,
+  "fadeCheck": null,
+  "els": {
+   ".leave": [],
+   ".plays": [],
+   ".offline": [],
+   ".screen": [],
+   ".tvtop": [],
+   ".ctrlwrap": [],
+   ".wtag": [],
+   ".list .row": [],
+   ".grp": [
+    [
+     1353,
+     318.6,
+     54,
+     334
+    ]
+   ],
+   ".badge": [
+    [
+     289,
+     61,
+     72.8,
+     30
+    ]
+   ],
+   ".counters": [
+    [
+     1029.4,
+     59,
+     385.6,
+     34
+    ]
+   ],
+   ".top .count": [
+    [
+     1029.4,
+     59,
+     88.3,
+     34
+    ],
+    [
+     1125.7,
+     59,
+     114.4,
+     34
+    ],
+    [
+     1248.1,
+     59,
+     166.9,
+     34
+    ]
+   ],
+   ".who": [
+    [
+     21,
+     54,
+     256,
+     44
+    ]
+   ],
+   ".playing": [
+    [
+     1392,
+     457.6,
+     17,
+     17
+    ]
+   ],
+   ".dot": [
+    [
+     1395,
+     339.6,
+     11,
+     11
+    ]
+   ],
+   ".here": [
+    [
+     12,
+     116,
+     44,
+     122.9
+    ]
+   ],
+   ".strip.task": [
+    [
+     271,
+     791,
+     724.8,
+     40
+    ]
+   ],
+   ".strip.chat": [
+    [
+     271,
+     839,
+     724.8,
+     40
+    ]
+   ],
+   ".navp": [
+    [
+     1011.8,
+     791,
+     403.2,
+     88
+    ]
+   ],
+   ".nav .it": [
+    [
+     1024.8,
+     791,
+     78,
+     88
+    ],
+    [
+     1102.8,
+     791,
+     78,
+     88
+    ],
+    [
+     1180.9,
+     791,
+     78,
+     88
+    ],
+    [
+     1258.9,
+     791,
+     78,
+     88
+    ],
+    [
+     1337,
+     791,
+     78,
+     88
+    ]
+   ],
+   ".pill": [],
+   ".pill .stopb": [],
+   ".pill .seg": [],
+   ".pill .hand": [],
+   ".card": [],
+   ".card .body": [],
+   ".card .fade": [],
+   ".hl": [],
+   ".stage": [
+    [
+     0,
+     0,
+     1440,
+     900
+    ]
+   ],
+   ".fig": [
+    [
+     25,
+     791,
+     230,
+     88
+    ]
+   ],
+   ".card .x": [],
+   ".ctrl": [],
+   ".ctrl .big": [],
+   ".list": [],
+   ".player": [],
+   ".now": [],
+   ".chips": [],
+   ".fine": [],
+   ".rail": [
+    [
+     1332,
+     307.6,
+     96,
+     356
+    ]
+   ],
+   ".top": [
+    [
+     12,
+     48,
+     1416,
+     56
+    ]
+   ],
+   ".bot": [
+    [
+     12,
+     780,
+     1416,
+     110
+    ]
+   ],
+   ".homebar": [],
+   ".rail .medal": [
+    [
+     1353,
+     338.6,
+     54,
+     54
+    ],
+    [
+     1353,
+     419.6,
+     54,
+     54
+    ],
+    [
+     1353,
+     500.6,
+     54,
+     54
+    ],
+    [
+     1353,
+     581.6,
+     54,
+     54
+    ]
+   ],
+   ".rail .btn": [
+    [
+     1353,
+     338.6,
+     54,
+     71
+    ],
+    [
+     1353,
+     419.6,
+     54,
+     71
+    ],
+    [
+     1353,
+     500.6,
+     54,
+     71
+    ],
+    [
+     1353,
+     581.6,
+     54,
+     71
+    ]
+   ],
+   ".btn.on": [],
+   ".strip.chat .pg": [
+    [
+     923.6,
+     851.5,
+     65.2,
+     15
+    ]
+   ]
+  }
+ },
+ "d1440-tv": {
+  "vw": 1440,
+  "vh": 900,
+  "docW": 1440,
+  "house": {
+   "w": 547.2,
+   "h": 702,
+   "stage": [
+    0,
+    0,
+    1440,
+    900
+   ],
+   "plate": "room-flatbg-portrait.jpg"
+  },
+  "overlapStage": [
+   "panel top F Your apartment L",
+   "panel here 2 HERE",
+   "panel rail HOUSE TODAY RADIO",
+   "panel bot FIG. 1 · LIVING RO",
+   "panel card TV · Supper Club H"
+  ],
+  "panelOverlap": [],
+  "offscreen": [
+   "ticker-track SUNSET AT 6:30 PM.",
+   "ticker-item SUNSET AT 6:30 PM.",
+   "ticker-dot ·",
+   "ticker-item THE SPACE STATION",
+   "ticker-dot ·",
+   "ticker-item LIGHT RAIN OVERNIG",
+   "ticker-dot ·",
+   "ticker-item BASIL PUT ON JAZZ2"
+  ],
+  "clip": [],
+  "taps": [
+   [
+    "panel here 2 HERE",
+    44,
+    122.9
+   ],
+   [
+    "btn TODAY",
+    54,
+    71
+   ],
+   [
+    "btn RADIO",
+    54,
+    71
+   ],
+   [
+    "btn on TV",
+    54,
+    71
+   ],
+   [
+    "btn SKY",
+    54,
+    71
+   ],
+   [
+    "panel strip task Poppy is making te",
+    724.8,
+    40
+   ],
+   [
+    "panel strip chat Basil Rain's picki",
+    724.8,
+    40
+   ],
+   [
+    "it on ROOM",
+    78,
+    88
+   ],
+   [
+    "it ACTIVITY",
+    78,
+    88
+   ],
+   [
+    "it own INVITE",
+    78,
+    88
+   ],
+   [
+    "it PEOPLE",
+    78,
+    88
+   ],
+   [
+    "it YOU",
+    78,
+    88
+   ],
+   [
+    "x",
+    44,
+    44
+   ],
+   [
+    "big sec Turn off",
+    362.8,
+    48
+   ],
+   [
+    "Meadow",
+    94.1,
+    44
+   ],
+   [
+    "Midnight News",
+    130.6,
+    44
+   ],
+   [
+    "Cartoon Hour",
+    121.6,
+    44
+   ],
+   [
+    "Rain",
+    70.5,
+    44
+   ],
+   [
+    "on Supper Club",
+    115.9,
+    44
+   ]
+  ],
+  "minGap": [
+   8,
+   "panel strip task Pop | panel strip chat Bas"
+  ],
+  "railGaps": [
+   10,
+   10,
+   10
+  ],
+  "coarse": false,
+  "cardScroll": [
+   462,
+   462,
+   0
+  ],
+  "fade": null,
+  "scrollport": [
+   183,
+   645.2
+  ],
+  "fadeCheck": [
+   [
+    "big sec Turn off",
+    1,
+    0
+   ],
+   [
+    "Meadow",
+    1,
+    0
+   ],
+   [
+    "Midnight News",
+    1,
+    0
+   ],
+   [
+    "Cartoon Hour",
+    1,
+    0
+   ],
+   [
+    "Rain",
+    1,
+    0
+   ],
+   [
+    "on Supper Club",
+    1,
+    0
+   ]
+  ],
+  "els": {
+   ".leave": [],
+   ".plays": [],
+   ".offline": [],
+   ".screen": [],
+   ".tvtop": [],
+   ".ctrlwrap": [],
+   ".wtag": [],
+   ".list .row": [],
+   ".grp": [
+    [
+     1353,
+     318.6,
+     54,
+     334
+    ]
+   ],
+   ".badge": [
+    [
+     289,
+     61,
+     72.8,
+     30
+    ]
+   ],
+   ".counters": [
+    [
+     1029.4,
+     59,
+     385.6,
+     34
+    ]
+   ],
+   ".top .count": [
+    [
+     1029.4,
+     59,
+     88.3,
+     34
+    ],
+    [
+     1125.7,
+     59,
+     114.4,
+     34
+    ],
+    [
+     1248.1,
+     59,
+     166.9,
+     34
+    ]
+   ],
+   ".who": [
+    [
+     21,
+     54,
+     256,
+     44
+    ]
+   ],
+   ".playing": [
+    [
+     1392,
+     457.6,
+     17,
+     17
+    ]
+   ],
+   ".dot": [
+    [
+     1395,
+     339.6,
+     11,
+     11
+    ]
+   ],
+   ".here": [
+    [
+     12,
+     116,
+     44,
+     122.9
+    ]
+   ],
+   ".strip.task": [
+    [
+     271,
+     791,
+     724.8,
+     40
+    ]
+   ],
+   ".strip.chat": [
+    [
+     271,
+     839,
+     724.8,
+     40
+    ]
+   ],
+   ".navp": [
+    [
+     1011.8,
+     791,
+     403.2,
+     88
+    ]
+   ],
+   ".nav .it": [
+    [
+     1024.8,
+     791,
+     78,
+     88
+    ],
+    [
+     1102.8,
+     791,
+     78,
+     88
+    ],
+    [
+     1180.9,
+     791,
+     78,
+     88
+    ],
+    [
+     1258.9,
+     791,
+     78,
+     88
+    ],
+    [
+     1337,
+     791,
+     78,
+     88
+    ]
+   ],
+   ".pill": [],
+   ".pill .stopb": [],
+   ".pill .seg": [],
+   ".pill .hand": [],
+   ".card": [
+    [
+     931.2,
+     116,
+     388.8,
+     530.2
+    ]
+   ],
+   ".card .body": [
+    [
+     944.2,
+     183,
+     362.8,
+     462.2
+    ]
+   ],
+   ".card .fade": [],
+   ".hl": [],
+   ".stage": [
+    [
+     0,
+     0,
+     1440,
+     900
+    ]
+   ],
+   ".fig": [
+    [
+     25,
+     791,
+     230,
+     88
+    ]
+   ],
+   ".card .x": [
+    [
+     1263,
+     129,
+     44,
+     44
+    ]
+   ],
+   ".ctrl": [
+    [
+     944.2,
+     453.8,
+     362.8,
+     48
+    ]
+   ],
+   ".ctrl .big": [
+    [
+     944.2,
+     453.8,
+     362.8,
+     48
+    ]
+   ],
+   ".list": [],
+   ".player": [],
+   ".now": [],
+   ".chips": [
+    [
+     944.2,
+     511.8,
+     362.8,
+     96
+    ]
+   ],
+   ".fine": [
+    [
+     944.2,
+     617.8,
+     362.8,
+     15.4
+    ]
+   ],
+   ".rail": [
+    [
+     1332,
+     307.6,
+     96,
+     356
+    ]
+   ],
+   ".top": [
+    [
+     12,
+     48,
+     1416,
+     56
+    ]
+   ],
+   ".bot": [
+    [
+     12,
+     780,
+     1416,
+     110
+    ]
+   ],
+   ".homebar": [],
+   ".rail .medal": [
+    [
+     1353,
+     338.6,
+     54,
+     54
+    ],
+    [
+     1353,
+     419.6,
+     54,
+     54
+    ],
+    [
+     1353,
+     500.6,
+     54,
+     54
+    ],
+    [
+     1353,
+     581.6,
+     54,
+     54
+    ]
+   ],
+   ".rail .btn": [
+    [
+     1353,
+     338.6,
+     54,
+     71
+    ],
+    [
+     1353,
+     419.6,
+     54,
+     71
+    ],
+    [
+     1353,
+     500.6,
+     54,
+     71
+    ],
+    [
+     1353,
+     581.6,
+     54,
+     71
+    ]
+   ],
+   ".btn.on": [
+    [
+     1353,
+     500.6,
+     54,
+     71
+    ]
+   ],
+   ".strip.chat .pg": [
+    [
+     923.6,
+     851.5,
+     65.2,
+     15
+    ]
+   ]
+  }
+ }
+}

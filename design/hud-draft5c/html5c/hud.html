@@ -1,0 +1,257 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="stylesheet" href="hud.css"></head><body>
+<div class="ticker" aria-hidden="true">
+  <div class="ticker-kicker"><span class="tdot"></span>Today</div>
+  <div class="ticker-mask">
+  <div class="ticker-track">
+    <span class="ticker-item">Sunset at 6:30 PM.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">The space station passes over tonight.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">Light rain overnight, clearing by morning.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">Basil put on Jazz24.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">Ferry schedule holds steady.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">Sunset at 6:30 PM.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">The space station passes over tonight.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">Light rain overnight, clearing by morning.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">Basil put on Jazz24.</span>
+    <span class="ticker-dot">·</span>
+    <span class="ticker-item">Ferry schedule holds steady.</span>
+    <span class="ticker-dot">·</span>
+  </div>
+  </div>
+</div>
+
+<header class="panel top">
+  <div class="who"><div class="medal">F</div>
+    <div style="min-width:0"><div class="n"><span class="own">Your apartment</span><span class="wat">Founder's apartment</span></div><div class="s mono"><span class="p-only own-i" style="display:inline">Lakeview · 6:46 PM</span><span class="p-only wat-i wtag" style="display:inline">Watching · read-only</span><span class="d-only" style="display:inline">Living Room · Apt 01 · Private</span></div></div></div>
+  <div class="badge own" data-i="crown" data-s="13">OWNER</div>
+  <div class="badge wb wat d-only">WATCHING · READ-ONLY</div>
+  <div class="leave wat">Leave</div>
+  <div class="counters d-only">
+    <div class="count tap" data-i="people" data-s="17">2 here</div>
+    <div class="count tap own" data-i="eye" data-s="17">1 watching</div>
+    <div class="count info" data-i="clock" data-s="17">Lakeview · 6:46 PM</div>
+  </div>
+</header>
+
+<div class="panel here"><span class="c">2</span><span class="v">Here</span><span data-i="chev" data-s="15" style="display:flex"></span></div>
+
+<div class="stage" id="stage">
+  <img class="scene" id="room" src="room-flatbg-portrait.jpg" alt="">
+</div>
+
+<nav class="panel rail">
+  <div class="grp">
+    <div class="tag">House</div>
+    <div class="btns">
+    <div class="btn" id="b-today"><div class="medal" data-i="today" data-s="24"><span class="dot"></span></div><div class="lab">Today</div></div>
+    <div class="btn" id="b-radio"><div class="medal" data-i="radio" data-s="24"><span class="playing" data-i="eq" data-s="11"></span></div><div class="lab">Radio</div></div>
+    <div class="btn" id="b-tv"><div class="medal" data-i="tv" data-s="24"></div><div class="lab">TV</div></div>
+    <div class="btn" id="b-sky"><div class="medal" data-i="sky" data-s="24"></div><div class="lab">Sky</div></div>
+    </div>
+  </div>
+</nav>
+
+<section class="panel bot">
+  <div class="fig"><div class="t">FIG. 1 · LIVING ROOM</div><div class="u">SECTION A-A · 1:50</div><div class="scale"><i></i><i></i><i></i><i></i></div><div class="scalen"><span>0</span><span>1</span><span>2 M</span></div></div>
+  <div class="strips">
+    <div class="panel strip task"><span class="ic" data-i="task" data-s="14"></span><span class="tx">Poppy is making tea in the kitchen.</span><span class="pg">1/3<span data-i="chev" data-s="14" style="display:flex"></span></span></div>
+    <div class="panel strip chat"><span class="ic" data-i="chat" data-s="14"></span><span class="tx"><span class="sw" style="background:#B08A4A"></span><b>Basil</b>&nbsp; Rain's picking up. Anyone mind the radio on?</span><span class="pg">Activity<span data-i="chev" data-s="14" style="display:flex"></span></span></div>
+  </div>
+  <div class="panel navp"><div class="nav">
+    <div class="it on" data-i="house" data-s="22">Room</div>
+    <div class="it" data-i="activity" data-s="22">Activity</div>
+    <div class="it own" data-i="invite" data-s="22">Invite</div>
+    <div class="it" data-i="people" data-s="22">People</div>
+    <div class="it" data-i="me" data-s="22">You</div>
+  </div></div>
+</section>
+
+<div class="panel pill">
+  <div class="seg"><span class="pd"></span>Today</div>
+  <span class="vs when-play"></span>
+  <div class="seg when-play"><span class="eqi" data-i="radio" data-s="18"></span>Radio · Jazz24</div>
+  <div class="stopb when-play own" data-i="stop" data-s="18" title="Stop"></div><div class="mutep when-play wat" data-i="mute" data-s="17">Mute</div>
+  <div class="hand when-idle" data-i="chevup" data-s="20" title="Show controls"></div>
+</div>
+
+<div class="scrim"></div>
+<section class="panel card" id="card-radio" role="dialog" aria-modal="true"><div class="grab"></div>
+  <div class="hd"><div class="medal" data-i="radio" data-s="22"></div><div><div class="t">Radio</div><div class="tag" style="margin-top:4px">House</div></div><div class="x" data-i="close" data-s="18"></div></div>
+  <div class="body">
+  <div class="ctrlwrap own">
+  <div class="ctrl"><div class="rb" data-i="prev" data-s="18"></div><div class="big when-play" data-i="stop" data-s="16">Stop</div><div class="big when-idle" data-i="play" data-s="15">Play</div><div class="rb" data-i="next" data-s="18"></div></div>
+  <div class="plays when-idle">Plays Jazz24</div>
+  </div>
+  <div class="ctrlwrap wat">
+  <div class="ctrl when-play"><div class="big sec" data-i="mute" data-s="16">Mute</div></div>
+  <div class="offline when-idle">The radio is off.</div>
+  </div>
+  <div class="streamwell when-play" aria-hidden="true">
+    <div class="streamviz">
+      <div class="eqbars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="streammeta">
+        <div class="streamlive"><span class="livedot"></span>Live stream</div>
+        <div class="streamtitle">Jazz24</div>
+        <div class="streamsub mono">Seattle · jazz · 128 kbps</div>
+      </div>
+    </div>
+    <div class="streamsrc">Plays from the station stream.</div>
+  </div>
+  <div class="list">
+    <div class="row on"><span class="ri when-play" data-i="eq" data-s="16"></span><span class="ri when-idle" data-i="radio" data-s="16"></span><span class="nm">Jazz24</span><span class="m">Seattle · jazz</span><span class="st when-play">Playing</span></div>
+    <div class="row"><span class="ri tapi own-f" data-i="play" data-s="12"></span><span class="ri own-n"></span><span class="nm">FIP</span><span class="m">Paris · eclectic</span></div>
+    <div class="row"><span class="ri tapi own-f" data-i="play" data-s="12"></span><span class="ri own-n"></span><span class="nm">KEXP</span><span class="m">Seattle · indie</span></div>
+    <div class="row"><span class="ri tapi own-f" data-i="play" data-s="12"></span><span class="ri own-n"></span><span class="nm">Radio Swiss Jazz</span><span class="m">Basel · jazz</span></div>
+  </div>
+  <div class="fine">Poppy put on Jazz24. · 6:41 PM</div>
+  </div>
+  <div class="fade" data-i="chevdown" data-s="16"></div>
+</section>
+
+<section class="panel card" id="card-tv" role="dialog" aria-modal="true"><div class="grab"></div>
+  <div class="hd"><div class="medal" data-i="tv" data-s="22"></div><div><div class="t" id="tvhd">TV · Supper Club</div><div class="tag" style="margin-top:4px">House</div></div><div class="x" data-i="close" data-s="18"></div></div>
+  <div class="body">
+  <!-- MOCK ONLY — visual player chrome; no real embed. Labels below are mock-only until Founder wires playback. -->
+  <div class="ytwell mock-yt" id="ytwell">
+    <div class="ytvid" style="--c:#e07a3d;--a:#f2c4a0">
+      <div class="ythills"></div>
+      <div class="ytplay" data-i="play" data-s="18"><span class="ytplaylab">Watch live</span></div>
+      <div class="ytbar">
+        <div class="ytprog"><i style="width:38%"></i><b style="left:38%"></b></div>
+        <div class="yttimes mono"><span>12:04</span><span>31:20</span></div>
+      </div>
+    </div>
+    <div class="ytmeta">
+      <div class="yttitle" id="yttitle">Supper Club · live set</div>
+      <div class="ytch"><span class="ytbadge">Playing</span><span class="ytline" id="ytline">Plays from YouTube.</span></div>
+    </div>
+  </div>
+  <div class="ctrl own"><div class="big sec" data-i="power" data-s="16">Turn off</div></div>
+  <div class="offline wat">On · Supper Club</div>
+  <div class="chips" id="tvchips">
+    <span data-title="Meadow · evening loop" data-hd="TV · Meadow" data-c="#6fa35a" data-a="#e5f2c4"><i style="background:#6fa35a"></i>Meadow</span>
+    <span data-title="Midnight News · desk" data-hd="TV · Midnight News" data-c="#3c6d94" data-a="#b8d0e8"><i style="background:#3c6d94"></i>Midnight News</span>
+    <span data-title="Cartoon Hour · shorts" data-hd="TV · Cartoon Hour" data-c="#f0c14b" data-a="#f8e9b0"><i style="background:#f0c14b"></i>Cartoon Hour</span>
+    <span data-title="Rain · window" data-hd="TV · Rain" data-c="#8d99a6" data-a="#d4dae0"><i style="background:#8d99a6"></i>Rain</span>
+    <span class="on" data-title="Supper Club · live set" data-hd="TV · Supper Club" data-c="#e07a3d" data-a="#f2c4a0"><i style="background:#e07a3d"></i>Supper Club</span>
+  </div>
+  <div class="fine">Basil switched to Supper Club. · 6:30 PM</div>
+  </div>
+  <div class="fade" data-i="chevdown" data-s="16"></div>
+</section>
+
+
+<section class="panel card" id="card-sky" role="dialog" aria-modal="true"><div class="grab"></div>
+  <div class="hd"><div class="medal" data-i="sky" data-s="22"></div><div><div class="t">Sky</div><div class="tag" style="margin-top:4px">House</div></div><div class="x" data-i="close" data-s="18"></div></div>
+  <div class="body">
+  <div class="skywell">
+    <div class="skywin">
+      <div class="skygrad"></div>
+      <div class="skydrops" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="skyglass"></div>
+      <div class="skylabel mono">Windows · now</div>
+    </div>
+    <div class="skynow">
+      <div class="skytemp">54°</div>
+      <div class="skycond">Light rain</div>
+      <div class="skyline">On the glass · clearing overnight</div>
+    </div>
+  </div>
+  <div class="skyfacts">
+    <div class="skyfact"><span class="k mono">Sunset</span><span class="v">6:30 PM</span></div>
+    <div class="skyfact"><span class="k mono">Wind</span><span class="v">8 mph SW</span></div>
+    <div class="skyfact"><span class="k mono">Humidity</span><span class="v">78%</span></div>
+  </div>
+  <div class="chips skychips">
+    <span class="on"><i style="background:#8d99a6"></i>Now</span>
+    <span><i style="background:#6fa35a"></i>Clear AM</span>
+    <span><i style="background:#f0c14b"></i>Sun 6:42</span>
+    <span><i style="background:#3c6d94"></i>Tonight</span>
+  </div>
+  <div class="fine">House sky follows Lakeview weather. · Updates every 30 min.</div>
+  </div>
+  <div class="fade" data-i="chevdown" data-s="16"></div>
+</section>
+
+<section class="panel card" id="card-computer" role="dialog" aria-modal="true"><div class="grab"></div>
+  <div class="hd"><div class="medal" data-i="computer" data-s="22"></div><div><div class="t">Computer</div><div class="tag" style="margin-top:4px">House</div></div><div class="x" data-i="close" data-s="18"></div></div>
+  <div class="body">
+  <!-- MOCK ONLY — visual Google bar chrome; no real embed / no network. -->
+  <div class="compwell mock-comp">
+    <div class="comptop">
+      <div class="compdots"><i></i><i></i><i></i></div>
+      <div class="compurl mono">apartment · computer</div>
+    </div>
+    <div class="compbar">
+      <span class="compg" aria-hidden="true"><b></b><b></b><b></b><b></b></span>
+      <input class="compinput" type="text" readonly value="" placeholder="Search Google or type a URL" aria-label="Search Google or type a URL">
+      <span class="compgo" data-i="chev" data-s="16"></span>
+    </div>
+    <div class="comppage">
+      <div class="complogo">Google</div>
+      <div class="compdown">On the desk screen · shared house computer</div>
+      <div class="compsugs">
+        <div class="sug"><span class="mono">1</span>weather lakeview tonight</div>
+        <div class="sug"><span class="mono">2</span>jazz24 listen live</div>
+        <div class="sug"><span class="mono">3</span>ferry schedule</div>
+      </div>
+    </div>
+  </div>
+  <div class="ctrl own"><div class="big sec" data-i="power" data-s="16">Sleep screen</div></div>
+  <div class="fine">Google bar on the desk screen. · Shared house computer.</div>
+  </div>
+  <div class="fade" data-i="chevdown" data-s="16"></div>
+</section>
+
+<div class="homebar"></div>
+<script src="icons.js"></script>
+<script>
+const q=new URLSearchParams(location.search);
+const st=q.get('s')||'';
+document.body.classList.add(q.get('v')==='watch'?'watch':'owner');
+if(st==='tucked')document.body.classList.add('tucked');
+if(q.get('play')==='0')document.body.classList.add('idle');
+const CARDS=['radio','tv','sky','computer'];
+if(CARDS.includes(st)){document.body.classList.add('carded');
+  document.querySelectorAll('.card').forEach(c=>{if(c.id!=='card-'+st)c.remove()});
+  const btn=document.getElementById('b-'+st);if(btn)btn.classList.add('on');
+  }
+else document.querySelectorAll('.card').forEach(c=>c.remove());
+if(q.get('safet'))document.documentElement.style.setProperty('--sim-safe-t',q.get('safet')+'px');
+if(q.get('safe')){document.documentElement.style.setProperty('--sim-safe',q.get('safe')+'px');document.body.classList.add('simsafe')}
+// Unified plate: apartment baked into maquette yard — cover viewport; no separate cut.
+function fit(){const s=document.getElementById('stage');
+  const r=s.getBoundingClientRect();
+  const isP=innerWidth<720;
+  const hw=+(r.width*(isP?0.72:0.38)).toFixed(1), hh=+(r.height*(isP?0.62:0.78)).toFixed(1);
+  window.__house={w:hw,h:hh,stage:[+r.x.toFixed(1),+r.y.toFixed(1),+r.width.toFixed(1),+r.height.toFixed(1)],plate:'room-flatbg-portrait.jpg'};
+  const h=document.querySelector('.hl');if(h)h.remove()}
+addEventListener('resize',fit);fit();
+function hint(){document.querySelectorAll('.card .body').forEach(b=>{const more=b.scrollHeight>b.clientHeight+2&&b.scrollTop+b.clientHeight<b.scrollHeight-2;b.parentElement.classList.toggle('more',more)})}
+function snap(){document.querySelectorAll('.card').forEach(c=>{const b=c.querySelector('.body');b.style.height='';b.style.flex='';c.classList.remove('scrolls');
+  if((innerWidth>=720&&!(innerWidth<1200&&matchMedia('(pointer:coarse)').matches))||b.scrollHeight<=b.clientHeight+2)return;
+  c.classList.add('scrolls');const top=b.getBoundingClientRect().top-b.scrollTop;
+  const T=[...b.querySelectorAll('.rb,.big,.row,.chips span,.pb,.screen,.ytwell,.ytplay,.streamwell,.skywell,.compwell,.compbar')].filter(e=>e.offsetParent).map(e=>{const r=e.getBoundingClientRect();return [r.top-top,r.bottom-top]});
+  let cut=b.clientHeight,moved=true;while(moved){moved=false;for(const [t,bo] of T)if(t<cut-0.5&&bo>cut+0.5){cut=t;moved=true}}
+  if(cut>=60&&cut<b.clientHeight){b.style.flex='none';b.style.height=Math.floor(cut)+'px'}})}
+function layout(){snap();fit();if(q.get('scroll')==='end')document.querySelectorAll('.card .body').forEach(b=>b.scrollTop=b.scrollHeight);hint()}
+addEventListener('resize',layout);document.querySelectorAll('.card .body').forEach(b=>b.addEventListener('scroll',hint,{passive:true}));requestAnimationFrame(layout);document.fonts.ready.then(layout);
+/* Chip → player title (mock only) */
+const chips=document.getElementById('tvchips');
+if(chips){chips.addEventListener('click',e=>{const s=e.target.closest('span');if(!s)return;
+  chips.querySelectorAll('span').forEach(x=>x.classList.remove('on'));s.classList.add('on');
+  const vid=document.querySelector('.ytvid');if(vid){vid.style.setProperty('--c',s.dataset.c);vid.style.setProperty('--a',s.dataset.a)}
+  const tt=document.getElementById('yttitle');if(tt)tt.textContent=s.dataset.title;
+  const hd=document.getElementById('tvhd');if(hd&&s.dataset.hd)hd.textContent=s.dataset.hd;
+});}
+</script>
+</body></html>

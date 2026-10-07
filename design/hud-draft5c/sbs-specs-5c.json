@@ -1,0 +1,178 @@
+[
+ {
+  "before": "before5c/p390-idle.png",
+  "after": "out5c/p390-idle.png",
+  "out": "draft5c-sbs-p390-idle.png",
+  "title_before": "DRAFT 5b \u00b7 390\u00d7844 \u00b7 Idle",
+  "title_after": "DRAFT 5c \u00b7 390\u00d7844 \u00b7 Idle",
+  "width": 400,
+  "ui": 1.0,
+  "boxes": [
+   [
+    0.0,
+    0.0,
+    1.0,
+    1.0,
+    "Full-bleed soft flat field (rgb 208,205,198) behind the maquette \u2014 no yard, neighbors, or photoreal scene",
+    1,
+    "in"
+   ],
+   [
+    0.02,
+    0.01,
+    0.98,
+    0.12,
+    "Whiteout edge chrome: Today tape + top bar float over the field (semi-transparent plaster)",
+    2,
+    "in"
+   ],
+   [
+    0.82,
+    0.18,
+    0.995,
+    0.62,
+    "HOUSE rail = discrete floating medals on the right edge \u2014 no shared solid column stealing stage",
+    3,
+    "in"
+   ],
+   [
+    0.02,
+    0.72,
+    0.98,
+    0.99,
+    "Bottom strips + icon nav float over the room; chrome on edges only",
+    4,
+    "in"
+   ]
+  ],
+  "notes": [
+   "Founder: same UI, soft flat light-gray background only \u2014 nothing new.",
+   "5c = Whiteout Survival edge-float HUD + soft flat field (Living Sanctuary\u2013style). Maquette cut stays; apartment never shrinks.",
+   "Stage = full viewport 390\u00d7844. Draft 5b was inset beige plate."
+  ]
+ },
+ {
+  "before": "before5c/p390-tv.png",
+  "after": "out5c/p390-tv.png",
+  "out": "draft5c-sbs-p390-tv.png",
+  "title_before": "DRAFT 5b \u00b7 390\u00d7844 \u00b7 TV",
+  "title_after": "DRAFT 5c \u00b7 390\u00d7844 \u00b7 TV",
+  "width": 400,
+  "ui": 1.0,
+  "boxes": [
+   [
+    0.02,
+    0.14,
+    0.98,
+    0.88,
+    "Sheet overlays full-bleed soft flat field; stage stays full viewport \u2014 identical to idle (\u0394 0)",
+    1,
+    "in"
+   ],
+   [
+    0.06,
+    0.22,
+    0.94,
+    0.52,
+    "Watch chrome kept: Watch live \u00b7 Plays from YouTube. \u00b7 Playing",
+    2,
+    "in"
+   ],
+   [
+    0.02,
+    0.01,
+    0.98,
+    0.12,
+    "Tape + top stay above scrim; bottom nav stays; 0 canvas resize",
+    3,
+    "in"
+   ]
+  ],
+  "notes": [
+   "Measure: p390-idle stage == p390-tv stage 390\u00d7844 (\u0394 0). Soft flat field under sheet.",
+   "Draft 4b overlay rule kept under Whiteout layout."
+  ]
+ },
+ {
+  "before": "before5c/d1440-idle.png",
+  "after": "out5c/d1440-idle.png",
+  "out": "draft5c-sbs-d1440-idle.png",
+  "title_before": "DRAFT 5b \u00b7 1440\u00d7900 \u00b7 Idle",
+  "title_after": "DRAFT 5c \u00b7 1440\u00d7900 \u00b7 Idle",
+  "width": 640,
+  "ui": 1.0,
+  "boxes": [
+   [
+    0.0,
+    0.0,
+    1.0,
+    1.0,
+    "Desktop: soft flat field full-bleed behind the maquette \u2014 clean, no side scenery",
+    1,
+    "in"
+   ],
+   [
+    0.92,
+    0.18,
+    0.995,
+    0.72,
+    "Floating HOUSE rail (edge medals) \u2014 not a docked plate column",
+    2,
+    "in"
+   ],
+   [
+    0.02,
+    0.84,
+    0.98,
+    0.99,
+    "Bottom FIG + strips + icon nav float as one edge bar over the field",
+    3,
+    "in"
+   ]
+  ],
+  "notes": [
+   "Desktop stage full viewport 1440\u00d7900. Whiteout edge-float over soft flat field."
+  ]
+ },
+ {
+  "before": "before5c/d1440-tv.png",
+  "after": "out5c/d1440-tv.png",
+  "out": "draft5c-sbs-d1440-tv.png",
+  "title_before": "DRAFT 5b \u00b7 1440\u00d7900 \u00b7 TV",
+  "title_after": "DRAFT 5c \u00b7 1440\u00d7900 \u00b7 TV",
+  "width": 640,
+  "ui": 1.0,
+  "boxes": [
+   [
+    0.62,
+    0.14,
+    0.9,
+    0.72,
+    "Desktop float over soft flat field; no scrim; 0 stage reflow vs idle",
+    1,
+    "in"
+   ],
+   [
+    0.01,
+    0.12,
+    0.6,
+    0.82,
+    "Field + maquette unchanged idle\u2192TV (stage 1440\u00d7900 both)",
+    2,
+    "in"
+   ],
+   [
+    0.64,
+    0.22,
+    0.88,
+    0.48,
+    "Watch live / Plays from YouTube. chrome retained",
+    3,
+    "in"
+   ]
+  ],
+  "notes": [
+   "Measure: d1440-idle == d1440-tv stage (\u0394 0). Whiteout + soft flat field."
+  ]
+ }
+]
