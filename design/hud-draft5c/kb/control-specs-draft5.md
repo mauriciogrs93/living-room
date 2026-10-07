@@ -143,3 +143,14 @@ Tucked: action still runs; Radio/TV untuck because they open a sheet.
 ## Hard skips
 
 Coming-soon chrome · fake scrub · unwired Google · Yours (Packages/Spotify/My city) · SomaFM embed · plaster-plate inset layout (5b superseded)
+
+## 5c freeze (Founder GO Oct 7 ~12:09 AM ET) — **mock GO**
+
+Sources: `CONTROL-PLAN-5c.md`, `after-measure-5c.json`, `draft5c-sbs-*.png`.
+
+- Layout: Whiteout full-bleed + soft flat field `rgb(208,205,198)`; edge-float chrome; discrete HOUSE medals.
+- **0 resize:** p390 stage 390×844 / house **280.8×523.3** idle==TV; d1440 stage 1440×900 / house **547.2×702** idle==TV.
+- Watch live / Plays from YouTube. / Playing / Turn off / chips / Close kept for real wire.
+- Soft note for Engineer preview: phone TV measure lists `panelOverlap` rail×card — keep z-order so medals don’t steal taps from sheet controls (or hide rail under sheet while open).
+- **Live preview:** still reconfirm Δ0 + every Tap→success row before final GO.
+
