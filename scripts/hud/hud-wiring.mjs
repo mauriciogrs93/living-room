@@ -263,7 +263,7 @@ try {
     if (name === "phone") {
       await clickCtl(page, "rail-radio", "owner", name);
       await clickCtl(page, "radio-play", "owner", name);
-      await page.waitForTimeout(400);
+      await page.waitForSelector(".hudf-card .hudf-eq i", { timeout: 8000 });
       check("phone: Play calls the radio route", bag.api.some((line) => line.includes("/api/radio")));
       const eq = await page.evaluate(() => {
         const bar = document.querySelector(".hudf-card .hudf-eq i");
@@ -342,9 +342,12 @@ try {
       check("phone: owner Room sound shows On or Off", ownerSound.includes("Room sound") && !/Mute|Unmute/.test(ownerSound) && /\b(On|Off)\b/.test(ownerSound), ownerSound);
       const soundSize = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-ctl=room-sound]")).fontSize));
       check("phone: Room sound label is at least 13px", soundSize >= 13, String(soundSize));
+      await page.keyboard.press("Escape");
       await clickCtl(page, "rail-radio", "owner", name);
-      await clickCtl(page, "radio-play", "owner", name);
-      await page.waitForTimeout(400);
+      if ((await page.locator(".hudf-card .hudf-eq").count()) === 0) {
+        await clickCtl(page, "radio-play", "owner", name);
+        await page.waitForSelector(".hudf-card .hudf-eq", { timeout: 8000 });
+      }
     }
     if (name === "short") {
       await clickCtl(page, "rail-tv", "owner", name);
