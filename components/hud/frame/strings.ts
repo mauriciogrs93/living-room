@@ -1,6 +1,14 @@
 /** Copy for the HUD frame. Word for word from the writer notes. */
 export const TITLE_OWNER = "Your apartment";
 export const TITLE_WATCH = "The apartment";
+
+/** Watcher title. A real display name becomes "{name}'s apartment". Unknown, empty, or an email stays "The apartment". */
+export function apartmentTitle(name?: string | null): string {
+  const clean = (name ?? "").trim().replace(/\s+/g, " ");
+  if (!clean || clean.length > 40 || clean.includes("@")) return TITLE_WATCH;
+  if (!/^[\p{L}][\p{L}\p{M}'’.-]*(?: [\p{L}][\p{L}\p{M}'’.-]*)*$/u.test(clean)) return TITLE_WATCH;
+  return `${clean}'s apartment`;
+}
 export const BADGE_WATCH = "WATCHING · READ-ONLY";
 export const HERE = "Here";
 export const HERE_EMPTY = "No one's home right now.";

@@ -53,7 +53,7 @@ import {
   SUNRISE,
   SUNSET,
   TITLE_OWNER,
-  TITLE_WATCH,
+  apartmentTitle,
   TODAY_EMPTY,
   TURN_OFF,
   TURN_ON,
@@ -611,7 +611,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       ) : null}
       <header className="hudf-top" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <div className="hudf-title is-info">
-          <b>{owner ? TITLE_OWNER : TITLE_WATCH}</b>
+          <b>{owner ? TITLE_OWNER : apartmentTitle(null)}</b>
           <span>
             {place}
             {clock ? ` · ${clock}` : ""}

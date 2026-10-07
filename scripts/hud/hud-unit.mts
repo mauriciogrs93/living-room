@@ -56,6 +56,8 @@ for (const banned of ["Open-Meteo", "17TRACK", "Spotify", "YouTube", "youtube", 
   check(`HUD strings have no ${banned}`, !stringBody.includes(banned));
 }
 check("watch live copy is the ship line", strings.WATCH_LIVE === "Watch live" && strings.PLAYS_FROM_YOUTUBE === "Plays from YouTube." && strings.SKY_FOLLOWS === "The sky follows the house.");
+check("watcher title uses a display name or The apartment", strings.apartmentTitle(null) === "The apartment" && strings.apartmentTitle("  ") === "The apartment" && strings.apartmentTitle("Ada") === "Ada's apartment" && strings.apartmentTitle("Ada Lovelace") === "Ada Lovelace's apartment");
+check("watcher title never uses an email", strings.apartmentTitle("ada@example.com") === "The apartment" && strings.apartmentTitle("ada@example.com's apartment") === "The apartment");
 const embed = watchEmbed(5);
 check("watch embed is the nocookie host", embed.startsWith("https://www.youtube-nocookie.com/embed/") && !embed.includes("ytimg") && !embed.includes("www.youtube.com/"));
 check("unknown channels do not invent an embed", watchEmbed(0) === "" && watchEmbed(9) === "");
@@ -88,6 +90,8 @@ function walk(dir: string, out: string[]) {
 }
 const files: string[] = [];
 const root = path.resolve(import.meta.dirname, "../..");
+const bannedTitle = ["Founder", "'s apartment"].join("");
+check("html5c does not hardcode a person in the apartment title", !readFileSync(path.join(root, "design/hud-draft5c/html5c/hud.html"), "utf8").includes(bannedTitle));
 for (const dir of ["app", "components", "lib"]) walk(path.join(root, dir), files);
 const bannedSource = ["Open-Meteo", "17TRACK", "ytimg", "youtube-nocookie", "fonts.googleapis", "TODO-WRITER", "navigator.geolocation"];
 const nocookieFile = path.join(root, "lib/room/watch-live.ts");
@@ -97,6 +101,7 @@ for (const file of files) {
     if (word === "youtube-nocookie" && file === nocookieFile) continue;
     if (body.includes(word)) check(`shipped source has no ${word}`, false, path.relative(root, file));
   }
+  if (body.includes(bannedTitle)) check("shipped source has no hardcoded apartment name", false, path.relative(root, file));
 }
 check("shipped source scan finished", files.length > 20, `${files.length} files`);
 

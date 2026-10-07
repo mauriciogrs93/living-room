@@ -35,8 +35,8 @@ Side-by-sides: python3 mkspec3.py && python3 sbs2.py sbs-specs.json ; contact sh
 - Right column: target gaps >= 8 px everywhere (gap clamp(8px, 2.4dvh - 10px, 14px) on phone; header-to-first-button 4 px).
   Phones shorter than 700 px: the right column also runs beside the chat strip.
 - (pointer: coarse) at >= 720 px: strips 44 px, Here tab 44 px wide and 12 px in from the edge.
-- 720-1023 px: hide the subline under "Founder's apartment" and the FIG title block, condense counters; no sideways scroll.
-- Title (Writer): 'Your apartment' for the owner, '{name}'s apartment' (e.g. "Founder's apartment") for people watching.
+- 720-1023 px: hide the subline under the apartment title and the FIG title block, condense counters; no sideways scroll.
+- Title (Writer): 'Your apartment' for the owner. Watchers see '{name}'s apartment' only from a real display name, otherwise 'The apartment'. Never an email.
   The mockups show the watcher view.
 - Unchanged and approved: "1 watching" on desktop ("2 watching" when more), House tag on card headers, one sound at a time,
   opaque panels (no backdrop-filter), one shared 1 s timer for clock/counters.
