@@ -277,6 +277,11 @@
   font-size: 11px;
   font-weight: 600;
 }
+.hudf.is-sheet .hudf-bot,
+.hudf.is-sheet .hudf-strips { pointer-events: none; }
+.hudf.is-sheet .hudf-nav,
+.hudf.is-sheet .hudf-top,
+.hudf.is-sheet .hudf-tape { pointer-events: auto; }
 .hudf.is-tucked .hudf-tape,
 .hudf.is-tucked .hudf-rail,
 .hudf.is-tucked .hudf-here,
@@ -289,7 +294,7 @@
   bottom: 12px;
   transform: translateX(-50%);
 }
-.hudf-card.is-sheet { top: 132px; }
+.hudf-card.is-sheet { top: 132px; bottom: 176px; }
 .hudf-card.is-float {
   top: 108px;
   right: 84px;
