@@ -317,6 +317,7 @@
   border: 0;
   border-radius: 12px;
 }
+.hudf-play { min-height: 48px; height: 48px; flex-shrink: 0; }
 .hudf-watch-btn {
   position: relative;
   z-index: 1;
@@ -344,6 +345,9 @@
   z-index: 1;
   pointer-events: none;
   background: repeating-linear-gradient(100deg, transparent 0 10px, rgba(43, 45, 49, 0.08) 10px 11px);
+}
+@media (max-width: 719px) and (max-height: 700px) {
+  .hudf-well { height: 96px; }
 }
 @media (min-width: 720px) {
   .hudf-stage { position: absolute; inset: 0; }
