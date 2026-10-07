@@ -6,7 +6,8 @@ import { LIMITS } from "@/lib/apartments/limits";
 import { markPasswordSet } from "@/lib/auth/admin";
 import { emailLimitKey, normalEmail } from "@/lib/auth/email";
 import { passwordIssue } from "@/lib/auth/password";
-import { ENTER_EMAIL, ENTER_PASSWORD, PASSWORD_SIGNUP_ENABLED, TOO_LONG, TOO_MANY, TOO_SHORT, UNAVAILABLE } from "@/lib/auth/strings";
+import { passwordSignupEnabled } from "@/lib/auth/signup-flag";
+import { ENTER_EMAIL, ENTER_PASSWORD, TOO_LONG, TOO_MANY, TOO_SHORT, UNAVAILABLE } from "@/lib/auth/strings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,4 +65,4 @@ export async function handleSignup(req: Request, enabled: boolean) {
   return withCookies(ownerJson({ ok: true, signedIn }), auth.setCookies());
 }
 
-export const POST = guarded((req) => handleSignup(req, PASSWORD_SIGNUP_ENABLED));
+export const POST = guarded((req) => handleSignup(req, passwordSignupEnabled()));

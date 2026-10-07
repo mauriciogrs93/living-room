@@ -3,8 +3,6 @@
  * Forgot-password lines are kept for a later cut and are not rendered.
  * There is no /auth/confirm page, so its lines are not in this module.
  */
-export const PASSWORD_SIGNUP_ENABLED = true;
-
 export const INTRO = "One account, one private apartment. Only you and people you send a watch link can see it.";
 export const LABEL_EMAIL = "Email";
 export const LABEL_PASSWORD = "Password";

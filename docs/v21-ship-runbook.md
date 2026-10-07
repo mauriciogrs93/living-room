@@ -105,7 +105,7 @@ Supabase project `naihkbwobufqasdfiubq` (shared by Auth, v20 `public` tables, `v
 
 Password is the primary sign-in (`POST /api/auth/password`). The email link is unchanged: `POST /api/auth/otp`, then the same browser opens `/auth/callback?code=` (PKCE). There is no `/auth/confirm` route and no Continue page.
 
-`PASSWORD_SIGNUP_ENABLED` in `lib/auth/strings.ts` is one exported constant, left `true` on this branch. Founder turns sign-up off for production by setting that constant to `false` and rebuilding. No new environment variable. While it is false the sign-up route is 404 and the "New here? Create an account" control is not rendered.
+`PASSWORD_SIGNUP_ENABLED` is read on the server (`lib/auth/signup-flag.ts`). Sign-up is on only when that variable is exactly `1`. Unset is off, so production stays off without a code change. It is not a `NEXT_PUBLIC` variable: the room page passes a boolean into the sign-in screen. While it is off the sign-up route is 404 and the "New here? Create an account" control is not rendered. Local suites that create an account set it to `1` on the server process.
 
 The "has a password" flag is `app_metadata.lr_password_set`, written only by the server with `auth.admin.updateUserById` (the existing `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY`). It is never read or written on `user_metadata`. The set-password offer shows after an email-link sign-in when the flag is not true.
 

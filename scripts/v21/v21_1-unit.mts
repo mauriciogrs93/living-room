@@ -179,7 +179,7 @@ check("the proxy file's matcher matches the session-cookie list", proxyConfig.ma
 
 const struck = [["Tap ", ["Con", "tinue"].join(""), " to finish."].join(""), ["One", "moment\u2026"].join(" ")];
 const root = path.resolve(import.meta.dirname, "../..");
-const skip = new Set(["node_modules", ".next", ".git"]);
+const skip = new Set(["node_modules", ".next", ".git", "design"]);
 function walk(dir: string, out: string[]) {
   for (const name of readDir(dir)) {
     if (skip.has(name)) continue;
@@ -192,7 +192,27 @@ const files: string[] = [];
 walk(root, files);
 const blob = files.map((file) => readFile(file, "utf8")).join("\n");
 check("struck confirm lines are absent from the source", struck.every((line) => !blob.includes(line)) && !/["']Continue["']/.test(blob) && !blob.includes(["One", "moment\u2026"].join(" ")));
-check("sign-up switch stays one exported const and is true", strings.PASSWORD_SIGNUP_ENABLED === true);
+const signupFlag = await import("../../lib/auth/signup-flag");
+const savedSignup = process.env.PASSWORD_SIGNUP_ENABLED;
+delete process.env.PASSWORD_SIGNUP_ENABLED;
+check("sign-up is off when PASSWORD_SIGNUP_ENABLED is unset", signupFlag.passwordSignupEnabled() === false);
+process.env.PASSWORD_SIGNUP_ENABLED = "0";
+check("sign-up stays off for any value other than 1", signupFlag.passwordSignupEnabled() === false);
+process.env.PASSWORD_SIGNUP_ENABLED = "true";
+check("sign-up ignores the word true", signupFlag.passwordSignupEnabled() === false);
+process.env.PASSWORD_SIGNUP_ENABLED = "1";
+check("sign-up is on only when PASSWORD_SIGNUP_ENABLED is 1", signupFlag.passwordSignupEnabled() === true);
+if (savedSignup === undefined) delete process.env.PASSWORD_SIGNUP_ENABLED;
+else process.env.PASSWORD_SIGNUP_ENABLED = savedSignup;
+const signInSrc = readFile(path.join(root, "components/account/sign-in.tsx"), "utf8");
+check("the create-account control is a server prop, not a public env", signInSrc.includes("signupEnabled") && !signInSrc.includes("NEXT_PUBLIC") && !signInSrc.includes("PASSWORD_SIGNUP_ENABLED"));
+const { createElement } = await import("react");
+const { renderToStaticMarkup } = await import("react-dom/server");
+const { SignIn } = await import("../../components/account/sign-in");
+const hidden = renderToStaticMarkup(createElement(SignIn, { signupEnabled: false }));
+const shown = renderToStaticMarkup(createElement(SignIn, { signupEnabled: true }));
+check("create-account is hidden when sign-up is off", !hidden.includes("create-account") && !hidden.includes("New here? Create an account"));
+check("create-account is shown when sign-up is on", shown.includes('data-auth-control="create-account"'));
 check("failed sign-in line is the short mismatch sentence", strings.SIGN_IN_MISMATCH === MISMATCH);
 check("forgot-password copy is in the module and not rendered", strings.FORGOT_PASSWORD === "Forgot password?" && !readFile(path.join(root, "components/account/sign-in.tsx"), "utf8").includes("Forgot password?"));
 check("password rules: empty, 11, 12, 73 bytes", passwordMod.passwordIssue("") === "empty" && passwordMod.passwordIssue("short-pass") === "short" && passwordMod.passwordIssue(pw) === "ok" && passwordMod.passwordIssue("a".repeat(73)) === "long");
@@ -206,6 +226,14 @@ check("a session cookie is HttpOnly Secure SameSite=Lax with a long Max-Age", /H
 
 const off = await signup.handleSignup(req(`${HOST}/api/auth/signup`, { method: "POST", body: { email: "v21t-off@example.com", password: pw } }), false);
 check("sign-up with the switch off is 404 before any auth call", off.status === 404 && usersByEmail.size === 0, `status ${off.status}`);
+delete process.env.PASSWORD_SIGNUP_ENABLED;
+const postOff = await signup.POST(req(`${HOST}/api/auth/signup`, { method: "POST", body: { email: "v21t-post-off@example.com", password: pw } }));
+check("POST /api/auth/signup is 404 when the env is unset", postOff.status === 404 && usersByEmail.size === 0, `status ${postOff.status}`);
+process.env.PASSWORD_SIGNUP_ENABLED = "1";
+const postOn = await signup.POST(req(`${HOST}/api/auth/signup`, { method: "POST", body: { email: "v21t-post-on@example.com", password: pw } }));
+const postOnBody = (await postOn.json()) as { ok?: boolean; signedIn?: boolean };
+check("POST /api/auth/signup signs up when the env is 1", postOn.status === 200 && postOnBody.signedIn === true, `status ${postOn.status}`);
+delete process.env.PASSWORD_SIGNUP_ENABLED;
 
 const jar = new Jar();
 const created = jar.take(await signup.handleSignup(req(`${HOST}/api/auth/signup`, { method: "POST", body: { email: "v21t-new@example.com", password: pw }, jar }), true));

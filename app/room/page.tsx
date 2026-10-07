@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { RoomGate } from "@/components/room-gate";
+import { passwordSignupEnabled } from "@/lib/auth/signup-flag";
 import { baseUrlFrom } from "@/lib/http";
 
 export const metadata: Metadata = {
@@ -9,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default async function RoomPage() {
-  return <RoomGate origin={baseUrlFrom(await headers())} />;
+  return <RoomGate origin={baseUrlFrom(await headers())} signupEnabled={passwordSignupEnabled()} />;
 }

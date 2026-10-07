@@ -22,7 +22,7 @@ function WatchEnded({ message }: { message: string }) {
   );
 }
 
-export function RoomGate({ origin = "" }: { origin?: string }) {
+export function RoomGate({ origin = "", signupEnabled = false }: { origin?: string; signupEnabled?: boolean }) {
   const me = useMe();
   const watchEnded = useWatchEnded();
   const passwordSet = me?.role === "owner" ? Boolean(me.passwordSet) : true;
@@ -37,7 +37,7 @@ export function RoomGate({ origin = "" }: { origin?: string }) {
     window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}${rest ? `#${rest}` : ""}`);
   }, [me?.role]);
   if (!me) return <div className="landing min-h-dvh" aria-busy="true" data-gate="loading" />;
-  if (me.role === "none") return <SignIn />;
+  if (me.role === "none") return <SignIn signupEnabled={signupEnabled} />;
   if (me.role === "error") {
     if (me.message === WATCH_ENDED_COPY) return <WatchEnded message={me.message} />;
     return (

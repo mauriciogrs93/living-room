@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { refreshMe } from "./me";
 import { passwordIssue } from "@/lib/auth/password";
-import { PASSWORD_SIGNUP_ENABLED } from "@/lib/auth/strings";
 import {
   ALREADY_HAVE,
   CREATE_ACCOUNT,
@@ -53,7 +52,7 @@ function takeWatchCode() {
 }
 
 /** Password is the primary sign-in. The magic link stays a secondary button. */
-export function SignIn() {
+export function SignIn({ signupEnabled = false }: { signupEnabled?: boolean }) {
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -258,7 +257,7 @@ export function SignIn() {
                   <button type="button" className="signin-secondary" data-auth-control="magic" onClick={() => { setMode("magic"); setPhase("form"); setNote(""); }}>
                     {MAGIC_LINK}
                   </button>
-                  {PASSWORD_SIGNUP_ENABLED ? (
+                  {signupEnabled ? (
                     <button type="button" className="signin-text" data-auth-control="create-account" onClick={() => { setMode("signup"); setNote(""); }}>
                       {CREATE_LINK}
                     </button>
