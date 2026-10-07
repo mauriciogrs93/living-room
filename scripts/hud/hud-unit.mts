@@ -494,10 +494,16 @@ check(
   hudFrame.includes("roomSoundOff: muted") && mutePillVisible({ ...pillBase, roomSoundOff: true }) === false,
 );
 check(
-  "at 1440 the mute pill sits 16px from the right and is not a child of the center bar",
-  hudCss.includes("@media (min-width: 1440px)") &&
-    hudCss.includes(".hudf button.hudf-mute-pill { right: 16px; bottom: 18px; }") &&
-    hudCss.includes(".hudf.is-tucked button.hudf-mute-pill { right: 16px; bottom: 16px; }") &&
+  "at 1440 the station line sits left of the pill and the center bar keeps no radio",
+  hudCss.includes(".hudf.is-tucked .hudf-radio-cluster,") &&
+    hudCss.includes("right: 16px;") &&
+    hudCss.includes("bottom: 16px;") &&
+    hudCss.includes("gap: 8px;") &&
+    hudCss.includes("align-items: center;") &&
+    hudCss.includes('.hudf .hudf-pill [data-ctl="pill-radio"]') &&
+    hudCss.includes('.hudf .hudf-pill [data-ctl="pill-stop"]') &&
+    hudFrame.includes('data-station-line=""') &&
+    hudFrame.includes('data-radio-cluster=""') &&
     !hudFrame.includes('data-ctl="pill-mute"'),
 );
 check(

@@ -468,9 +468,9 @@ async function activityPin(page, size) {
   await page.waitForSelector("[data-activity-pin]", { timeout: 4000 });
   const fromEnter = await pinState(page);
   check(`${size}: Enter on a +N row pins that agent the same way`, pinOk(fromEnter), JSON.stringify(fromEnter));
-  await page.locator("[data-activity-pin]").focus();
+  await page.locator(".hudf-card [data-activity-pin]").focus();
   const pinRing = await page.evaluate(() => {
-    const style = getComputedStyle(document.querySelector("[data-activity-pin]"));
+    const style = getComputedStyle(document.querySelector(".hudf-card [data-activity-pin]"));
     return { offset: style.outlineOffset, width: style.outlineWidth };
   });
   check(`${size}: the pinned Activity focus ring is inset 4px`, pinRing.offset === "-4px" && pinRing.width === "2px", JSON.stringify(pinRing));
@@ -518,6 +518,7 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
       w: Math.round(box.width),
       h: Math.round(box.height),
       right: Math.round(window.innerWidth - box.right),
+      bottom: Math.round(window.innerHeight - box.bottom),
       aboveNav: Math.round(navBox.top - box.bottom),
       centerDelta: Math.round((box.top + box.height / 2) - (navBox.top + navBox.height / 2)),
       rightOfNav: box.left + 1 >= navBox.right,
@@ -543,10 +544,40 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
     JSON.stringify(look),
   );
   check(
-    `${size}: the mute pill sits ${phone ? "12px from the right, 8px above the nav" : "16px from the right, level with the nav"}`,
-    phone ? look.right === 12 && look.aboveNav === 8 : look.right === 16 && Math.abs(look.centerDelta) <= 2 && look.rightOfNav,
+    `${size}: the mute pill sits ${phone ? "12px from the right, 8px above the nav" : "16px from the right and 16px above the bottom"}`,
+    phone ? look.right === 12 && look.aboveNav === 8 : look.right === 16 && look.bottom === 16,
     JSON.stringify(look),
   );
+  if (!phone) {
+    const cluster = await page.evaluate(() => {
+      const host = document.querySelector(".hudf");
+      const wasTucked = host.classList.contains("is-tucked");
+      host.classList.add("is-tucked");
+      const pill = document.querySelector("[data-ctl=mute-pill]").getBoundingClientRect();
+      const line = document.querySelector("[data-station-line]");
+      const bar = document.querySelector(".hudf-pill");
+      const radioInBar = bar
+        ? [...bar.querySelectorAll("[data-ctl=pill-radio], [data-ctl=pill-stop]")].filter((el) => getComputedStyle(el).display !== "none" && el.getClientRects().length > 0)
+        : [];
+      if (!wasTucked) host.classList.remove("is-tucked");
+      if (!line) return { missing: true, inBar: radioInBar.length };
+      const box = line.getBoundingClientRect();
+      return {
+        gap: Math.round(pill.left - box.right),
+        mid: Math.round(box.top + box.height / 2 - (pill.top + pill.height / 2)),
+        right: Math.round(window.innerWidth - pill.right),
+        bottom: Math.round(window.innerHeight - pill.bottom),
+        text: (line.textContent || "").trim(),
+        inBar: radioInBar.length,
+        lineInBar: Boolean(line.closest(".hudf-pill")),
+      };
+    });
+    check(
+      "desk: the station line is 8px left of the pill, centered on it, and the center bar has no radio",
+      cluster.gap === 8 && cluster.mid === 0 && cluster.right === 16 && cluster.bottom === 16 && cluster.inBar === 0 && cluster.lineInBar === false && cluster.text.startsWith("Radio"),
+      JSON.stringify(cluster),
+    );
+  }
   check(`${size}: a toast sits above the mute pill`, look.toastAbove && !look.covers, JSON.stringify(look));
   check(`${size}: the mute pill fades with opacity`, look.transition.includes("opacity") && look.transition.includes("0.15s"), look.transition);
   await page.locator("[data-ctl=mute-pill]").focus();

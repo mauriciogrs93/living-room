@@ -47,6 +47,7 @@ export const HUD_CONTROLS: Record<string, HudControl> = {
   "nav-you": { roles: both, effect: "open:you" },
   "pill-today": { roles: both, effect: "open:today" },
   "pill-radio": { roles: both, effect: "open:radio" },
+  "station-line": { roles: both, effect: "open:radio" },
   "pill-stop": { roles: owner, effect: "request:/api/radio {intent:off}" },
   "pill-mute": { roles: watch, effect: "device:living-room-mute" },
   "pill-handle": { roles: both, effect: "device:lr-hud-tuck" },

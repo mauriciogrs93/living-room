@@ -370,9 +370,43 @@
   .hudf button.hudf-mute-pill { right: 16px; bottom: 18px; }
   .hudf.has-mute-pill .hudf-bot { right: 120px; }
 }
+.hudf-radio-cluster { display: contents; }
+.hudf-station-line { display: none; }
 @media (min-width: 1440px) {
-  .hudf button.hudf-mute-pill { right: 16px; bottom: 18px; }
-  .hudf.is-tucked button.hudf-mute-pill { right: 16px; bottom: 16px; }
+  .hudf.is-tucked .hudf-radio-cluster,
+  .hudf.has-mute-pill .hudf-radio-cluster {
+    display: flex;
+    position: fixed;
+    z-index: 55;
+    right: 16px;
+    bottom: 16px;
+    align-items: center;
+    gap: 8px;
+  }
+  .hudf.is-tucked .hudf-station-line,
+  .hudf.has-mute-pill .hudf-station-line {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: 44px;
+    max-width: 240px;
+    margin: 0;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: #f7f4ee;
+    color: rgb(43, 45, 49);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hudf button.hudf-mute-pill { position: static; right: auto; bottom: auto; }
+  .hudf .hudf-pill [data-ctl="pill-radio"],
+  .hudf .hudf-pill [data-ctl="pill-stop"] { display: none; }
+  .hudf.has-mute-pill .hudf-bot { right: 376px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hudf button.hudf-mute-pill { transition: none; }

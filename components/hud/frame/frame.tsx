@@ -794,22 +794,27 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
           </button>
         </nav>
       </div>
-      {mutePill.present ? (
-        <button
-          type="button"
-          className={`hudf-mute-pill${mutePill.on ? " is-in" : ""}`}
-          data-ctl="mute-pill"
-          onClick={pressMutePill}
-        >
-          <span className={`hudf-eq${hearing ? "" : " is-paused"}`} data-pill-eq="" aria-hidden>
-            <i />
-            <i />
-            <i />
-          </span>
-          <HudIcon name={held ? "mute" : "vol"} size={16} />
-          {held ? UNMUTE : MUTE}
+      <div className="hudf-radio-cluster" data-radio-cluster="">
+        <button type="button" className="hudf-station-line" data-station-line="" data-ctl="station-line" onClick={(event) => go("radio", event)}>
+          Radio{station ? ` · ${station}` : ""}
         </button>
-      ) : null}
+        {mutePill.present ? (
+          <button
+            type="button"
+            className={`hudf-mute-pill${mutePill.on ? " is-in" : ""}`}
+            data-ctl="mute-pill"
+            onClick={pressMutePill}
+          >
+            <span className={`hudf-eq${hearing ? "" : " is-paused"}`} data-pill-eq="" aria-hidden>
+              <i />
+              <i />
+              <i />
+            </span>
+            <HudIcon name={held ? "mute" : "vol"} size={16} />
+            {held ? UNMUTE : MUTE}
+          </button>
+        ) : null}
+      </div>
       {sheet && shown ? <button type="button" className="hudf-scrim" data-ctl="sheet-scrim" aria-label={CLOSE} onClick={close} /> : null}
       {sheet ? card : null}
       <div className="hudf-pill" data-chrome="">
