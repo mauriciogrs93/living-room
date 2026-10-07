@@ -45,19 +45,24 @@ function abortOutside(page) {
 try {
   const sign = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const signPage = await sign.newPage();
-  await signPage.goto(`${BASE}/room`, { waitUntil: "networkidle" });
+  await signPage.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
+  await signPage.waitForSelector("[data-auth-control=sign-in]", { timeout: 20000 });
   for (const [width, height] of [[390, 844], [390, 664], [1440, 900]]) {
     await signPage.setViewportSize({ width, height });
     await shot(signPage, width, height, "none", "signin");
   }
-  await signPage.goto(`${BASE}/`, { waitUntil: "networkidle" });
+  // The homepage polls /api/state, so networkidle never settles.
+  await signPage.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  await signPage.waitForSelector(".landing-title", { timeout: 20000 });
   for (const [width, height] of [[390, 844], [390, 664], [1440, 900]]) {
     await signPage.setViewportSize({ width, height });
     await shot(signPage, width, height, "none", "hero");
   }
-  await signPage.goto(`${BASE}/no-such-page`, { waitUntil: "networkidle" });
+  await signPage.goto(`${BASE}/no-such-page`, { waitUntil: "domcontentloaded" });
+  await signPage.waitForSelector(".not-found-page h1", { timeout: 20000 });
   await shot(signPage, 1440, 900, "none", "404");
-  await signPage.goto(`${BASE}/watch/not-a-real-code`, { waitUntil: "networkidle" });
+  await signPage.goto(`${BASE}/watch/not-a-real-code`, { waitUntil: "domcontentloaded" });
+  await signPage.waitForSelector(".not-found-page h1", { timeout: 20000 });
   await shot(signPage, 1440, 900, "none", "watch-404");
   await sign.close();
 
