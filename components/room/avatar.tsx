@@ -11,8 +11,6 @@ import type { PublicAgent } from "@/lib/room/types";
 import { DeckContext } from "./interact";
 import { useAtmosphere } from "./atmosphere";
 import { MAQUETTE, PAL } from "./maquette/config";
-import { mutedHex } from "./maquette/kit";
-
 const HIPS = 0.72;
 const STEPS = 8;
 
@@ -826,7 +824,6 @@ export function AgentAvatar({
     });
   });
 
-  const swatch = mutedHex(agent.color);
   useLayoutEffect(() => {
     if (stack.current) stack.current.classList.toggle("is-away", agent.away);
     labelRoot.current?.render(
@@ -838,21 +835,6 @@ export function AgentAvatar({
           </div>
         ) : null}
         {agent.pose === "sleeping" && <div className="agent-zzz">Z Z Z</div>}
-        {agent.away && <div className="agent-away">AWAY</div>}
-        <button
-          type="button"
-          className={`agent-tag${focused ? " is-followed" : ""}${agent.away ? " is-away" : ""}`}
-          style={{ pointerEvents: "auto" }}
-          aria-label={`Follow ${agent.name}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelect?.(agent.id);
-          }}
-        >
-          <i className="agent-swatch" style={{ background: swatch }} aria-hidden />
-          <span>{agent.name}</span>
-        </button>
-        <span className="agent-leader" aria-hidden />
       </>,
     );
   });

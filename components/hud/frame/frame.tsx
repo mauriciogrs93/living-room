@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { signOut } from "@/components/account/me";
 import { useAmbience } from "@/components/room/ambience";
 import { useAtmosphere } from "@/components/room/atmosphere";
@@ -136,7 +137,8 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const titleRef = useRef<HTMLHeadingElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const wellRef = useRef<HTMLDivElement>(null);
-  const [liveBox, setLiveBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const parkRef = useRef<HTMLDivElement>(null);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const nowRef = useRef(model.now);
@@ -210,12 +212,12 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   }, [watchLive]);
 
   useLayoutEffect(() => {
-    if (!watchOn) return;
-    const node = wellRef.current;
-    if (!node) return;
-    const rect = node.getBoundingClientRect();
-    setLiveBox({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-  }, [watchOn, sheet, short, narrow]);
+    if (!watchLive) {
+      setPortalHost(null);
+      return;
+    }
+    setPortalHost(watchOn ? wellRef.current : parkRef.current);
+  }, [watchLive, watchOn, shown]);
 
   useEffect(() => {
     if (shown !== "today" || !latest) return;
@@ -480,7 +482,16 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
               <p className="is-info hudf-quiet">{RADIO_OFF}</p>
             )}
             {owner && !radio?.on && station ? <p className="is-info hudf-quiet">{PLAYS(station)}</p> : null}
-            {radio?.on && station ? <p className="is-info hudf-quiet">{PLAYING}</p> : null}
+            {radio?.on && station ? (
+              <p className="is-info hudf-quiet hudf-now">
+                <span className="hudf-eq" data-eq="" aria-hidden>
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {PLAYING}
+              </p>
+            ) : null}
             {radioNote ? <p className="is-info hudf-quiet">{radioNote}</p> : null}
             <div className="hudf-list">
               {stations.map((name, index) =>
@@ -741,14 +752,8 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
           </button>
         ) : null}
       </div>
-      {watchLive ? (
-        <div
-          className={`hudf-watch-slot${watchOn ? " is-live" : " is-parked"}`}
-          style={watchOn && liveBox ? { left: liveBox.left, top: liveBox.top, width: liveBox.width, height: liveBox.height } : undefined}
-        >
-          <WatchFrame channelId={channel.id} muted={muted} />
-        </div>
-      ) : null}
+      {watchLive ? <div ref={parkRef} className="hudf-watch-park" /> : null}
+      {watchLive && portalHost ? createPortal(<WatchFrame channelId={channel.id} muted={muted} />, portalHost) : null}
       {ring ? <div className="hudf-ring" style={{ left: ring.x, top: ring.y }} /> : null}
       {model.status === "offline" ? <p className="hud-offline is-info">{OFFLINE}</p> : null}
       {overlay ? <div className="hudf-overlay">{overlay}</div> : null}

@@ -198,6 +198,21 @@
   align-items: center;
   width: max-content;
   max-width: 240px;
+  pointer-events: none;
+}
+
+.name-tags {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.name-tags .agent-tag {
+  position: absolute;
+  pointer-events: auto;
+  overflow: hidden;
 }
 
 .agent-tag {
@@ -214,17 +229,11 @@
   color: var(--hud-ink);
   box-shadow: var(--hud-shadow);
   font: 500 11px/1 var(--mono);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-transform: none;
   white-space: nowrap;
   cursor: pointer;
-}
-
-/* a 44px-tall tap target around the 26px tag */
-.agent-tag::after {
-  content: "";
-  position: absolute;
-  inset: -9px -6px;
+  pointer-events: auto;
 }
 
 .agent-tag span {
@@ -338,9 +347,6 @@
   .agent-tag {
     height: 28px;
     font-size: 11.5px;
-  }
-  .agent-tag::after {
-    inset: -8px -6px;
   }
   /* the note yields to an open sheet so the house keeps the screen */
   html[data-card] .agent-bubble,

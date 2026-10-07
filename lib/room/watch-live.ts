@@ -10,16 +10,22 @@ const VIDEO_IDS: Record<number, string> = {
   5: "YE7VzlLtp-4",
 };
 
+/** Page origin only. A query string, path, or room field is rejected. */
+export function embedOrigin(loc: { origin: string }): string {
+  const origin = loc.origin;
+  if (!/^https?:\/\/[^/?#\s]+$/.test(origin)) return "";
+  return origin;
+}
+
 /**
- * mute=1 is a fixed literal, added only when the caller says Room sound is already off.
+ * mute=1 is a fixed literal on every embed. Callers pass window.location.origin.
  * This module does not read the query string or the room snapshot.
  */
-export function watchEmbed(channelId: number, opts?: { muted?: boolean; origin?: string }): string {
+export function watchEmbed(channelId: number, opts?: { origin?: string }): string {
   const id = VIDEO_IDS[channelId] ?? "";
   if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return "";
-  const origin = opts?.origin ? `&origin=${encodeURIComponent(opts.origin)}` : "";
-  const quiet = opts?.muted ? "&mute=1" : "";
-  return `${HOST}${id}?rel=0&modestbranding=1&autoplay=1&enablejsapi=1${origin}${quiet}`;
+  const origin = opts?.origin && embedOrigin({ origin: opts.origin }) === opts.origin ? `&origin=${encodeURIComponent(opts.origin)}` : "";
+  return `${HOST}${id}?rel=0&modestbranding=1&autoplay=1&mute=1&enablejsapi=1${origin}`;
 }
 
 export function playerCommand(func: "mute" | "unMute") {

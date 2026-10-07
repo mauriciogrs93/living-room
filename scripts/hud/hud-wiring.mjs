@@ -195,6 +195,32 @@ try {
       taps.push({ role: "owner", ctl: "sheet-scrim", size: name, at: Date.now() });
       check(`${name}: scrim closes the sheet`, (await page.locator(".hudf-card").count()) === 0);
       if (name === "phone") {
+        const underTag = await page.evaluate(() => {
+          const canvas = document.querySelector("canvas");
+          if (!canvas) return { ok: false, pill: "", under: "no-canvas" };
+          const rect = canvas.getBoundingClientRect();
+          const probe = document.createElement("button");
+          probe.type = "button";
+          probe.className = "agent-tag";
+          probe.dataset.nameTag = "";
+          probe.textContent = "perf-test-09";
+          probe.style.position = "fixed";
+          probe.style.left = `${rect.left + rect.width / 2 - 66}px`;
+          probe.style.top = `${rect.top + rect.height / 2 - 14}px`;
+          probe.style.width = "132px";
+          probe.style.height = "28px";
+          document.body.appendChild(probe);
+          const box = probe.getBoundingClientRect();
+          const pill = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+          const under = document.elementFromPoint(box.left + box.width / 2, box.bottom + 6);
+          probe.remove();
+          return {
+            ok: Boolean(pill?.closest("[data-name-tag]")) && under?.tagName === "CANVAS",
+            pill: pill?.tagName || "",
+            under: under?.tagName || "",
+          };
+        });
+        check("phone: a tap under a name tag reaches the canvas", underTag.ok, `${underTag.pill} / ${underTag.under}`);
         await clickCtl(page, "here-tab", "owner", name);
         await page.waitForSelector(".hudf-card h2");
         check("phone: owner Here stays blank when nobody is home", (await page.locator("[data-here-empty]").count()) === 0);
@@ -210,7 +236,15 @@ try {
       await clickCtl(page, "radio-play", "owner", name);
       await page.waitForTimeout(400);
       check("phone: Play calls the radio route", bag.api.some((line) => line.includes("/api/radio")));
+      const eq = await page.evaluate(() => {
+        const bar = document.querySelector(".hudf-card .hudf-eq i");
+        if (!bar) return "missing";
+        const style = getComputedStyle(bar);
+        return `${style.animationName} ${style.animationPlayState}`;
+      });
+      check("phone: the radio card EQ animates while the station plays", eq.startsWith("hudf-eq") && eq.includes("running"), eq);
       await clickCtl(page, "radio-stop", "owner", name);
+      check("phone: stopping the radio removes the EQ", (await page.locator(".hudf-card .hudf-eq").count()) === 0);
       await page.keyboard.press("Escape");
       await clickCtl(page, "rail-tv", "owner", name);
       await clickCtl(page, "tv-chip-3", "owner", name);
@@ -246,7 +280,11 @@ try {
       await page.waitForSelector("iframe.hudf-watch", { timeout: 4000 });
       const src = await page.locator("iframe.hudf-watch").getAttribute("src");
       const pageOrigin = new URL(page.url()).origin;
-      check("phone: Watch live uses the nocookie host", Boolean(src && src.startsWith("https://www.youtube-nocookie.com/embed/") && src.includes("enablejsapi=1") && src.includes(`origin=${encodeURIComponent(pageOrigin)}`) && !src.includes("ytimg") && !src.includes("www.youtube.com/") && !src.includes("mute=1")), src || "");
+      check("phone: Watch live uses the nocookie host", Boolean(src && src.startsWith("https://www.youtube-nocookie.com/embed/") && src.includes("enablejsapi=1") && src.includes("mute=1") && src.includes(`origin=${encodeURIComponent(pageOrigin)}`) && !src.includes("ytimg") && !src.includes("www.youtube.com/")), src || "");
+      await clickCtl(page, "nav-you", "owner", name);
+      await clickCtl(page, "room-sound", "owner", name);
+      const heldSrc = await page.locator("iframe.hudf-watch").getAttribute("src");
+      check("phone: Room sound leaves the watch iframe in place", heldSrc === src && heldSrc?.includes("mute=1"), heldSrc || "");
       const canvasHeld = await canvasBox(page);
       const stageHeld = await stageOf();
       check("phone: Watch live does not resize the canvas", Boolean(canvasLive && canvasHeld && canvasLive.w === canvasHeld.w && canvasLive.h === canvasHeld.h), `${canvasLive?.w}x${canvasLive?.h} -> ${canvasHeld?.w}x${canvasHeld?.h}`);
@@ -272,6 +310,8 @@ try {
       check("phone: You offers Change password and sign out", (await page.locator("[data-ctl=you-set-password]").innerText()) === "Change password" && (await page.locator("[data-ctl=you-signout]").count()) === 1);
       const ownerSound = await page.locator("[data-ctl=room-sound]").innerText();
       check("phone: owner Room sound shows On or Off", ownerSound.includes("Room sound") && !/Mute|Unmute/.test(ownerSound) && /\b(On|Off)\b/.test(ownerSound), ownerSound);
+      const soundSize = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-ctl=room-sound]")).fontSize));
+      check("phone: Room sound label is at least 13px", soundSize >= 13, String(soundSize));
     }
     if (name === "short") {
       await clickCtl(page, "rail-tv", "owner", name);

@@ -9,6 +9,7 @@ import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import type { LiveSnapshot } from "@/components/use-room";
 import { useAtmosphere } from "./atmosphere";
 import { AgentAvatar } from "./avatar";
+import { NameTagLayer } from "./name-tag-layer";
 import { Furniture, HouseDog, HouseMaterials, RoomShell, SceneLiveProvider } from "./furniture";
 import { STATIC_KINDS, StaticFurniture } from "./furniture-pieces";
 import { DoorMesh, type DoorMeshProps } from "./maquette/door-mesh";
@@ -1134,6 +1135,10 @@ export function RoomCanvas({
                   .map((agent) => (
                     <AgentAvatar key={agent.id} agent={agent} skew={skew} focused={agent.id === selectedId} onSelect={onSelectAgent} />
                   ))}
+                <NameTagLayer
+                  agents={(lineup ? lineupAgents(snapshot.agents) : snapshot.agents).filter((agent) => !above(agent.position.z))}
+                  onSelect={onSelectAgent}
+                />
                 <ContactShadows bakeKey={bakeKey} night={night} lift={lift} />
                 {camPreset()?.ground && <GroundPlane grade={grade} />}
                 <LabelSpacing />

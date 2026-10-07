@@ -74,9 +74,15 @@
 .hudf-rail button.is-on { box-shadow: inset 0 0 0 1.5px var(--ink); border-radius: 12px; }
 .hudf-rail small { font-size: 8px; letter-spacing: 0.04em; }
 .hudf-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); display: inline-block; }
-.hudf-eq { display: inline-flex; gap: 2px; height: 10px; align-items: flex-end; }
-.hudf-eq i { width: 2px; background: var(--ink); display: block; }
-.hudf-eq i:nth-child(1) { height: 4px; } .hudf-eq i:nth-child(2) { height: 9px; } .hudf-eq i:nth-child(3) { height: 6px; }
+.hudf-eq { display: inline-flex; gap: 2px; height: 12px; align-items: flex-end; margin-right: 8px; vertical-align: middle; }
+.hudf-eq i { width: 2px; height: 12px; background: var(--ink); display: block; transform-origin: center bottom; animation: hudf-eq 900ms ease-in-out infinite; }
+.hudf-eq i:nth-child(2) { animation-delay: 150ms; }
+.hudf-eq i:nth-child(3) { animation-delay: 300ms; }
+@keyframes hudf-eq {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+.hudf.is-tucked .hudf-eq i { animation-play-state: paused; }
 .hudf .hudf-here { grid-area: here; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--line); border-radius: 12px; background: #f7f4ee; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(70, 55, 35, 0.08); }
 .hudf .hudf-strip { min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border: 1px solid var(--line); border-radius: 12px; background: #f7f4ee; color: var(--ink); text-align: left; box-shadow: 0 1px 2px rgba(70, 55, 35, 0.08); }
 .hudf-strips { display: contents; }
@@ -125,7 +131,7 @@
 .hudf .hudf-chips button, .hudf .hudf-chips .is-info { min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line); background: #faf8f3; display: inline-flex; align-items: center; gap: 6px; }
 .hudf .hudf-chips .is-on { background: var(--ink); color: #f5f2eb; border-color: var(--ink); }
 .hudf-quiet { color: var(--muted); font-size: 13px; line-height: 1.4; }
-.hudf-switch { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hudf-switch { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
 .hudf-toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 16px); transform: translateX(-50%); z-index: 60; max-width: min(420px, calc(100% - 24px)); padding: 10px 14px; border-radius: 12px; background: #2b2d31; color: #f5f2eb; font-size: 14px; }
 .hudf-ring { position: absolute; z-index: 2; width: 46px; height: 46px; margin: -23px 0 0 -23px; border: 1.5px dashed rgba(184, 103, 78, 0.9); border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 4px rgba(184, 103, 78, 0.12); }
 .hudf-overlay { position: absolute; inset: 0; z-index: 70; pointer-events: none; }
@@ -323,9 +329,9 @@
   align-items: center;
   justify-content: center;
 }
-.hudf-watch-slot { position: fixed; z-index: 46; }
-.hudf-watch-slot.is-parked { left: 0; top: 0; width: 160px; height: 90px; visibility: hidden; pointer-events: none; }
-.hudf-watch-slot .hudf-watch { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.hudf-well.is-watching { background: #111; }
+.hudf-watch-park { position: absolute; left: 0; top: 0; width: 160px; height: 90px; visibility: hidden; pointer-events: none; }
+.hudf-watch-park .hudf-watch { width: 160px; height: 90px; border: 0; }
 .hudf-well .hudf-watch {
   position: absolute;
   inset: 0;

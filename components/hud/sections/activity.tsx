@@ -9,6 +9,7 @@ import { BringYourAgent } from "@/components/invite-copy";
 import type { HudModel } from "../model";
 import { ACTIVITY_LIMIT } from "../tokens";
 import { mutedHex } from "@/components/room/maquette/color";
+import { walkedInLine } from "@/lib/room/name-tags";
 
 export function ActivitySection({ model, watcher = false }: { model: HudModel; watcher?: boolean }) {
   const agents = model.snapshot?.agents ?? [];
@@ -23,7 +24,7 @@ export function ActivitySection({ model, watcher = false }: { model: HudModel; w
           <p>
             <span className="hud-swatch is-inline" style={{ background: mutedHex(selected.color) }} aria-hidden /> {selected.name}
           </p>
-          <p className="hud-quiet">{selected.status}</p>
+          <p className="hud-quiet">{selected.status === "just walked in" ? walkedInLine(selected.name) : selected.status}</p>
           {selected.speech && <p className="hud-quiet">“{selected.speech.text}”</p>}
           <button type="button" className="hud-text" data-ctl="activity-close" onClick={() => model.selectAgent(selected.id)}>
             Close
@@ -79,7 +80,7 @@ function AgentList({
               <span className="hud-line">
                 {agent.name}
               </span>
-              <span className="hud-quiet">{agent.status}</span>
+              <span className="hud-quiet">{agent.status === "just walked in" ? walkedInLine(agent.name) : agent.status}</span>
             </span>
           </button>
         </li>
