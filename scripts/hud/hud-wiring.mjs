@@ -1028,15 +1028,19 @@ try {
       check(`${name}: opening Activity closes the +N list`, closed === 0, String(closed));
       const ownerActs = await page.evaluate(() => {
       const card = document.querySelector(".hudf-card");
+      const diary = card?.querySelector("[data-ctl=activity-diary]");
+      const books = card?.querySelector("[data-ctl=activity-books]");
       return {
-        diary: card ? card.querySelectorAll("[data-ctl=activity-diary]").length : 0,
-        books: card ? card.querySelectorAll("[data-ctl=activity-books]").length : 0,
-        text: card?.innerText || "",
+        diary: diary ? 1 : 0,
+        books: books ? 1 : 0,
+        diaryText: (diary?.textContent || "").trim(),
+        booksText: (books?.textContent || "").trim(),
+        text: card?.textContent || "",
       };
       });
       check(
         `${name}: the owner sees the diary and the shelf`,
-        ownerActs.diary === 1 && ownerActs.books === 1 && ownerActs.text.includes("Open the diary") && ownerActs.text.includes("Read the shelf"),
+        ownerActs.diary === 1 && ownerActs.books === 1 && ownerActs.diaryText === "Open the diary" && ownerActs.booksText === "Read the shelf",
         JSON.stringify(ownerActs),
       );
       await page.keyboard.press("Escape");
@@ -1523,10 +1527,14 @@ try {
   await watcher.waitForSelector(".hudf-card", { timeout: 8000 });
   const watchActs = await watcher.evaluate(() => {
       const card = document.querySelector(".hudf-card");
+      const diary = card?.querySelector("[data-ctl=activity-diary]");
+      const books = card?.querySelector("[data-ctl=activity-books]");
       return {
-        diary: card ? card.querySelectorAll("[data-ctl=activity-diary]").length : 0,
-        books: card ? card.querySelectorAll("[data-ctl=activity-books]").length : 0,
-        text: card?.innerText || "",
+        diary: diary ? 1 : 0,
+        books: books ? 1 : 0,
+        diaryText: (diary?.textContent || "").trim(),
+        booksText: (books?.textContent || "").trim(),
+        text: card?.textContent || "",
       };
   });
   check(
