@@ -13,7 +13,8 @@ import { forecastUrlAllowed } from "../../lib/room/house-sky";
 import { lineupCount, lineupDraws, lineupEnabled } from "../../lib/room/lineup";
 import { acceptPlayerEvent, embedOrigin, readPlayerSignal, watchEmbed, YT_ORIGIN } from "../../lib/room/watch-live";
 import { fitTagBoxes, joinToast, placeTags, plainName, stackLabel, stackListBox, stackRowCopy, tagCopy, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
-import { stationRowMayUnmute } from "../../lib/room/room-sound";
+import { orderAgents } from "../../lib/room/activity-pin";
+import { mutePillIcon, mutePillLabel, mutePillMayUnmute, mutePillVisible, stationRowMayUnmute } from "../../lib/room/room-sound";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -267,7 +268,7 @@ check(
     avatarSource.includes("tapReady"),
 );
 check("the framed camera ignores stage changes", canvasSource.includes("window.innerWidth") && !canvasSource.includes('addEventListener("hud-stage"'));
-check("rail bars follow playback", hudFrame.includes("data-rail-eq") && hudFrame.includes("paused={Boolean(radio?.on && muted)}"));
+check("rail bars follow playback", hudFrame.includes("data-rail-eq") && hudFrame.includes("paused={Boolean(radio?.on && silent)}"));
 check(
   "the rail dot drops when tv, radio, or you opens",
   hudFrame.includes('dot={dot && shown !== "tv" && shown !== "radio" && shown !== "you"}') && hudCss.includes(".hudf.is-sheet .hudf-dot { display: none; visibility: hidden; transition: none; }"),
@@ -316,6 +317,47 @@ check(
     !globals.includes(".tag-stack-scroll.is-overflow {\n  filter"),
 );
 check("opening a sheet closes the +N list", hudFrame.includes('new Event("hud-sheet")') && tagLayer.includes('addEventListener("hud-sheet"'));
+check(
+  "the mute pill shows only while this device is playing and no sheet is open",
+  mutePillVisible(true, false) === true && mutePillVisible(false, false) === false && mutePillVisible(true, true) === false,
+);
+check("room sound off blocks the mute pill", mutePillMayUnmute(false) === true && mutePillMayUnmute(true) === false);
+check(
+  "the mute pill reads Mute or Unmute and crosses the speaker for Unmute",
+  mutePillLabel(false) === strings.MUTE && mutePillLabel(true) === strings.UNMUTE && mutePillIcon(false) === "vol" && mutePillIcon(true) === "mute",
+);
+check(
+  "the mute pill is a local hold with no aria-pressed",
+  hudFrame.includes('data-ctl="mute-pill"') &&
+    hudFrame.includes("pressMutePill") &&
+    !hudFrame.includes('data-ctl="mute-pill"\n          aria-pressed') &&
+    ambienceSource.includes("mutePillMayUnmute(roomSoundOff())") &&
+    ambienceSource.includes("writeHeld(true)") &&
+    !ambienceSource.includes("unMute") &&
+    hudCss.includes("width: 96px;") &&
+    hudCss.includes("height: 44px;") &&
+    hudCss.includes("right: 12px;") &&
+    hudCss.includes("right: 16px;") &&
+    hudCss.includes("transition: opacity 150ms linear;") &&
+    hudCss.includes(".hudf button.hudf-mute-pill.is-in { opacity: 1; pointer-events: auto; }") &&
+    hudCss.includes(".hudf.has-mute-pill .hudf-toast") &&
+    !hudFrame.includes("aria-pressed={silent}") &&
+    !hudFrame.includes("aria-pressed={muted || held}"),
+);
+const pinned = orderAgents([{ id: "ada" }, { id: "bea" }, { id: "cid" }], "cid");
+const untouched = orderAgents([{ id: "ada" }, { id: "bea" }], null);
+check(
+  "a pinned agent is first and Activity expands that row",
+  pinned.map((agent) => agent.id).join(",") === "cid,ada,bea" &&
+    untouched.map((agent) => agent.id).join(",") === "ada,bea" &&
+    orderAgents([{ id: "ada" }], "missing").length === 1 &&
+    activitySource.includes("data-activity-pin") &&
+    activitySource.includes("is-open") &&
+    activitySource.includes("orderAgents") &&
+    readFileSync(path.join(root, "app/hud.css"), "utf8").includes("rgba(43, 45, 49, 0.06)") &&
+    hudFrame.includes('querySelector<HTMLElement>("[data-activity-pin]")') &&
+    hudFrame.includes("pin.focus()"),
+);
 
 const failed = results.filter((ok) => !ok).length;
 console.log(`${results.length - failed}/${results.length}`);

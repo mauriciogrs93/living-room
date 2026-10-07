@@ -10,6 +10,7 @@ import { anchorPoint } from "@/components/hud/anchors";
 import type { HudModel } from "@/components/hud/model";
 import { onRadioNotice, tapRadio } from "@/components/hud/radio";
 import { unmuteFromStationTap } from "@/components/room/ambience";
+import { mutePillVisible } from "@/lib/room/room-sound";
 import { ActivitySection } from "@/components/hud/sections/activity";
 import { DoorSection } from "@/components/hud/sections/door";
 import { InviteSection } from "@/components/hud/sections/invite";
@@ -116,9 +117,26 @@ function shownId(section: string | null) {
   return section;
 }
 
+function usePresence(shown: boolean) {
+  const [present, setPresent] = useState(shown);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (shown) {
+      setPresent(true);
+      const frame = requestAnimationFrame(() => setOn(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    setOn(false);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => setPresent(false), reduce ? 0 : 150);
+    return () => window.clearTimeout(timer);
+  }, [shown]);
+  return { present, on };
+}
+
 export function HudFrame({ role, model, section, open, close, children, overlay }: FrameProps) {
   const shown = shownId(section);
-  const { muted, toggleMute, hear, stopRadio } = useAmbience();
+  const { muted, held, hearing, toggleMute, pressMutePill, hear, stopRadio } = useAmbience();
   const { place, clock, dusk, night } = useAtmosphere();
   const [sheet, setSheet] = useState(false);
   const [tablet, setTablet] = useState(false);
@@ -333,9 +351,19 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   }, [ringKey, model.snapshot?.serverTime]);
 
   useEffect(() => {
-    if (shown) titleRef.current?.focus();
-    else opener.current?.focus();
-  }, [shown]);
+    if (!shown) {
+      opener.current?.focus();
+      return;
+    }
+    if (shown === "activity" && model.selectedId) {
+      const pin = cardRef.current?.querySelector<HTMLElement>("[data-activity-pin]");
+      if (pin) {
+        pin.focus();
+        return;
+      }
+    }
+    titleRef.current?.focus();
+  }, [shown, model.selectedId]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -437,7 +465,10 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const skyWord = night ? NIGHT : dusk ? DUSK : DAY;
   const tapeItems = [sunLine, ...tv.headlines.map((item) => headlineTitle(item))].filter((line) => line && !/youtube|watch live|°/i.test(line));
   const cardClass = `hudf-card${sheet ? " is-sheet" : " is-float"}${tablet ? " is-tablet" : ""}`;
-  const rootClass = `room-root hudf${night ? " is-night" : ""}${sheet && shown ? " is-sheet" : ""}${tucked ? " is-tucked" : ""}${short ? " is-short" : ""}`;
+  const pillShown = mutePillVisible(hearing, Boolean(shown) || tucked);
+  const mutePill = usePresence(pillShown);
+  const silent = muted || held;
+  const rootClass = `room-root hudf${night ? " is-night" : ""}${sheet && shown ? " is-sheet" : ""}${tucked ? " is-tucked" : ""}${short ? " is-short" : ""}${mutePill.present ? " has-mute-pill" : ""}`;
 
   const card = shown ? (
     <div
@@ -508,7 +539,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
             {owner && !radio?.on && station ? <p className="is-info hudf-quiet">{PLAYS(station)}</p> : null}
             {radio?.on ? (
               <p className="is-info hudf-quiet hudf-now">
-                <span className={`hudf-eq${muted ? " is-paused" : ""}`} data-eq="" aria-hidden>
+                  <span className={`hudf-eq${silent ? " is-paused" : ""}`} data-eq="" aria-hidden>
                   <i />
                   <i />
                   <i />
@@ -705,7 +736,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       <div className="hudf-rail" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <p className="is-info mono">{HOUSE}</p>
         <Rail id="today" label="Today" on={shown === "today"} dot={dot && shown !== "tv" && shown !== "radio" && shown !== "you"} onClick={(event) => toggle("today", event)} />
-        <Rail id="radio" label="Radio" on={shown === "radio"} bars={Boolean(radio?.on)} paused={Boolean(radio?.on && muted)} onClick={(event) => toggle("radio", event)} />
+        <Rail id="radio" label="Radio" on={shown === "radio"} bars={Boolean(radio?.on)} paused={Boolean(radio?.on && silent)} onClick={(event) => toggle("radio", event)} />
         <Rail id="tv" label="TV" on={shown === "tv"} onClick={(event) => toggle("tv", event)} />
         <Rail id="sky" label="Sky" on={shown === "sky"} onClick={(event) => toggle("sky", event)} />
         {YOURS_CARDS.filter((card) => yours.includes(card.title)).map((card) => (
@@ -755,6 +786,17 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
           </button>
         </nav>
       </div>
+      {mutePill.present ? (
+        <button
+          type="button"
+          className={`hudf-mute-pill${mutePill.on ? " is-in" : ""}`}
+          data-ctl="mute-pill"
+          onClick={pressMutePill}
+        >
+          <HudIcon name={silent ? "mute" : "vol"} size={16} />
+          {silent ? UNMUTE : MUTE}
+        </button>
+      ) : null}
       {sheet && shown ? <button type="button" className="hudf-scrim" data-ctl="sheet-scrim" aria-label={CLOSE} onClick={close} /> : null}
       {sheet ? card : null}
       <div className="hudf-pill" data-chrome="">

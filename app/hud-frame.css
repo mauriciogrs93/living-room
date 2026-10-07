@@ -137,6 +137,7 @@
 .hudf-quiet { color: var(--muted); font-size: 13px; line-height: 1.4; }
 .hudf-switch { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
 .hudf-toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 16px); transform: translateX(-50%); z-index: 60; max-width: min(420px, calc(100% - 24px)); padding: 10px 14px; border-radius: 12px; background: #2b2d31; color: #f5f2eb; font-size: 14px; }
+.hudf.has-mute-pill .hudf-toast { bottom: calc(8px + 56px + 8px + 44px + 8px); }
 .hudf-toast:empty,
 .hudf-list:empty,
 [data-warm-sheet] { display: none !important; }
@@ -310,6 +311,46 @@
 .hudf.is-sheet .hudf-rail * { pointer-events: none; visibility: hidden; }
 .hudf.is-sheet .hudf-rail { z-index: 30; }
 .hudf.is-sheet .hudf-dot { display: none; visibility: hidden; transition: none; }
+.hudf button.hudf-mute-pill {
+  position: fixed;
+  z-index: 55;
+  right: 12px;
+  bottom: calc(8px + 56px + 8px);
+  box-sizing: border-box;
+  width: 96px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 22px;
+  border: 1px solid rgba(43, 45, 49, 0.12);
+  background: #f7f4ee;
+  color: rgb(43, 45, 49);
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms linear;
+}
+.hudf button.hudf-mute-pill.is-in { opacity: 1; pointer-events: auto; }
+.hudf button.hudf-mute-pill:focus { outline: 2px solid rgb(43, 45, 49); outline-offset: 2px; }
+@media (max-width: 719px) {
+  .hudf.has-mute-pill .hudf-strip.is-chat { margin-right: 108px; }
+  .hudf.has-mute-pill:not(.is-sheet) .hudf-strips { pointer-events: none; }
+  .hudf.has-mute-pill:not(.is-sheet) .hudf-strip { pointer-events: auto; }
+}
+@media (min-width: 720px) {
+  .hudf button.hudf-mute-pill { right: 16px; bottom: 18px; }
+  .hudf.has-mute-pill .hudf-bot { right: 120px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hudf button.hudf-mute-pill { transition: none; }
+}
 .hudf.is-tucked .hudf-tape,
 .hudf.is-tucked .hudf-rail,
 .hudf.is-tucked .hudf-here,

@@ -50,6 +50,7 @@ export const HUD_CONTROLS: Record<string, HudControl> = {
   "pill-mute": { roles: watch, effect: "device:living-room-mute" },
   "pill-handle": { roles: both, effect: "device:lr-hud-tuck" },
   "room-sound": { roles: both, effect: "device:living-room-mute" },
+  "mute-pill": { roles: both, effect: "device:mute-pill" },
   "you-set-password": { roles: owner, effect: "open:password" },
   "offer-save": { roles: owner, effect: "request:/api/auth/update-password" },
   "offer-not-now": { roles: owner, effect: "device:lr-set-password-later" },

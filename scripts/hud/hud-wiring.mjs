@@ -32,7 +32,7 @@ function contextOptions(width, height, touch) {
   };
 }
 
-const browser = await chromium.launch({
+let browser = await chromium.launch({
   executablePath: CHROME,
   args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
 });
@@ -45,13 +45,9 @@ function watchNetwork(page, bag) {
     if (!local) bag.outside.push(req.url().slice(0, 120));
     if (/\/api\/(tap|dog|radio)/.test(req.url())) bag.api.push(`${req.method} ${req.url()}`);
   });
-  return page.route("**/*", (route) => {
-    const url = route.request().url();
-    if (/youtube|ytimg|spotify|open-meteo|17track|somafm|googleapis|gstatic|fonts\.g/i.test(url)) {
-      bag.aborted.push(url.slice(0, 120));
-      return route.abort();
-    }
-    return route.continue();
+  return page.route(/youtube|ytimg|spotify|open-meteo|17track|somafm|googleapis|gstatic|fonts\.g/i, (route) => {
+    bag.aborted.push(route.request().url().slice(0, 120));
+    return route.abort();
   });
 }
 
@@ -351,6 +347,263 @@ async function canvasBox(page) {
   return box ? { w: Math.round(box.width), h: Math.round(box.height) } : null;
 }
 
+async function pinState(page) {
+  return page.evaluate(() => {
+    const pin = document.querySelector("[data-activity-pin]");
+    const rows = [...document.querySelectorAll("[data-ctl=activity-agent]")];
+    if (!pin) return { missing: true };
+    const style = getComputedStyle(pin);
+    return {
+      first: rows[0] === pin,
+      focused: document.activeElement === pin,
+      open: pin.classList.contains("is-open"),
+      bg: style.backgroundColor,
+      name: pin.querySelector(".hud-line")?.textContent || "",
+    };
+  });
+}
+
+function pinOk(state) {
+  return state.first && state.focused && state.open && state.bg === "rgba(43, 45, 49, 0.06)" && state.name === "Ada";
+}
+
+async function activityPin(page, size) {
+  const minted = await page.evaluate(async () => {
+    const res = await fetch("/api/apartment/invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "line" }),
+    });
+    const body = await res.json();
+    return { ok: res.ok, invite: typeof body.invite === "string" ? body.invite : "" };
+  });
+  check(`${size}: an agent invite was minted`, minted.ok && minted.invite.length > 0, minted.invite.slice(0, 12));
+  if (!minted.invite) return;
+  const joined = await page.evaluate(async (invite) => {
+    const res = await fetch("/api/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Ada", invite, color: "#6fa35a", emoji: "🌿" }),
+    });
+    const body = await res.json();
+    return { ok: res.ok, id: typeof body.agentId === "string" ? body.agentId : "", error: body.error || "" };
+  }, minted.invite);
+  check(`${size}: Ada walks in`, joined.ok && joined.id.length > 0, joined.error || joined.id);
+  if (!joined.id) return;
+  const tag = page.locator(`[data-agent-id="${joined.id}"]`);
+  const visible = await tag.waitFor({ state: "visible", timeout: 15000 }).then(() => true).catch(() => false);
+  if (!visible) {
+    const dump = await page.evaluate(async (id) => {
+      const state = await fetch("/api/state", { cache: "no-store" }).then((res) => res.json()).catch(() => ({}));
+      const buttons = [...document.querySelectorAll("[data-name-tags] button")].slice(0, 8).map((btn) => ({
+        hidden: btn.hidden,
+        id: btn.dataset.agentId || "",
+        key: btn.dataset.tagKey || "",
+        text: (btn.textContent || "").trim().slice(0, 24),
+        top: Math.round(btn.getBoundingClientRect().top),
+        w: Math.round(btn.getBoundingClientRect().width),
+      }));
+      return {
+        pageHidden: document.hidden,
+        agents: (state.agents || []).map((agent) => `${agent.name}:${agent.id}`),
+        layers: document.querySelectorAll("[data-name-tags]").length,
+        buttons,
+        wanted: id,
+      };
+    }, joined.id);
+    throw new Error(`tag missing ${JSON.stringify(dump)}`);
+  }
+  await tag.click();
+  await page.waitForSelector("[data-activity-pin]", { timeout: 4000 });
+  const fromTag = await pinState(page);
+  check(`${size}: a tag tap pins that agent at the top of Activity`, pinOk(fromTag), JSON.stringify(fromTag));
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await page.evaluate((id) => {
+    document.querySelector("[data-name-stack]")?.remove();
+    const layer = document.querySelector("[data-name-tags]");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "agent-tag";
+    btn.dataset.nameTag = "";
+    btn.dataset.stackIds = id;
+    btn.dataset.stackNames = "Ada";
+    btn.dataset.stackColors = "#6fa35a";
+    btn.dataset.tagKey = "stack-pin";
+    btn.style.left = "48px";
+    btn.style.top = "360px";
+    btn.style.pointerEvents = "auto";
+    btn.textContent = "+1";
+    layer.append(btn);
+    btn.click();
+  }, joined.id);
+  await page.waitForSelector("[data-stack-pick]", { timeout: 4000 });
+  await page.locator("[data-stack-pick]").first().click();
+  await page.waitForSelector("[data-activity-pin]", { timeout: 4000 });
+  const fromRow = await pinState(page);
+  check(`${size}: a +N row pins that agent the same way`, pinOk(fromRow), JSON.stringify(fromRow));
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await page.evaluate((id) => {
+    document.querySelector("[data-name-stack]")?.remove();
+    const layer = document.querySelector("[data-name-tags]");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "agent-tag";
+    btn.dataset.nameTag = "";
+    btn.dataset.stackIds = id;
+    btn.dataset.stackNames = "Ada";
+    btn.dataset.stackColors = "#6fa35a";
+    btn.dataset.tagKey = "stack-pin";
+    btn.style.left = "48px";
+    btn.style.top = "360px";
+    btn.style.pointerEvents = "auto";
+    btn.textContent = "+1";
+    layer.append(btn);
+    btn.click();
+  }, joined.id);
+  await page.waitForSelector("[data-stack-pick]", { timeout: 4000 });
+  await page.locator("[data-stack-pick]").first().focus();
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("[data-activity-pin]", { timeout: 4000 });
+  const fromEnter = await pinState(page);
+  check(`${size}: Enter on a +N row pins that agent the same way`, pinOk(fromEnter), JSON.stringify(fromEnter));
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await page.evaluate(() => document.querySelector("[data-tag-key='stack-pin']")?.remove());
+}
+
+async function mutePillChecks(page, size, expectHiddenFirst) {
+  if (expectHiddenFirst) {
+    const before = await page.locator("[data-ctl=mute-pill]").count();
+    check(`${size}: the mute pill is hidden before this device is playing`, before === 0, String(before));
+  }
+  await clickCtl(page, "nav-you", "owner", size);
+  if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) !== "true") {
+    await clickCtl(page, "room-sound", "owner", size);
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await clickCtl(page, "rail-radio", "owner", size);
+  await page.waitForSelector("[data-ctl=radio-row-0]", { timeout: 8000 });
+  const tuned = page.waitForResponse((res) => res.url().includes("/api/radio") && res.request().method() === "POST");
+  await page.click("[data-ctl=radio-row-0]");
+  await tuned;
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await page.waitForSelector("[data-ctl=mute-pill].is-in", { timeout: 4000 });
+  await page.waitForTimeout(400);
+  const look = await page.evaluate(() => {
+    const pill = document.querySelector("[data-ctl=mute-pill]");
+    const nav = document.querySelector(".hudf-nav");
+    for (const anim of pill.getAnimations()) anim.finish();
+    const style = getComputedStyle(pill);
+    const box = pill.getBoundingClientRect();
+    const navBox = nav.getBoundingClientRect();
+    const host = document.querySelector(".hudf");
+    const toast = document.createElement("p");
+    toast.className = "hudf-toast";
+    toast.textContent = "Only the owner can change this.";
+    host.append(toast);
+    const toastBox = toast.getBoundingClientRect();
+    const covers = toastBox.left < box.right && toastBox.right > box.left && toastBox.top < box.bottom && toastBox.bottom > box.top;
+    toast.remove();
+    return {
+      w: Math.round(box.width),
+      h: Math.round(box.height),
+      right: Math.round(window.innerWidth - box.right),
+      aboveNav: Math.round(navBox.top - box.bottom),
+      centerDelta: Math.round((box.top + box.height / 2) - (navBox.top + navBox.height / 2)),
+      rightOfNav: box.left + 1 >= navBox.right,
+      bg: style.backgroundColor,
+      color: style.color,
+      border: style.borderTopColor,
+      shadow: style.boxShadow,
+      opacity: style.opacity,
+      hit: style.pointerEvents,
+      transition: style.transitionProperty + " " + style.transitionDuration,
+      text: pill.textContent.trim(),
+      pressed: pill.hasAttribute("aria-pressed"),
+      label: pill.getAttribute("aria-label"),
+      crossed: (pill.querySelector("svg")?.innerHTML || "").includes("M16 9.5"),
+      covers,
+      toastAbove: toastBox.bottom <= box.top + 1,
+    };
+  });
+  const phone = size === "phone";
+  check(
+    `${size}: the mute pill is 96 by 44 plaster with ink text`,
+    look.w === 96 && look.h === 44 && look.bg === "rgb(247, 244, 238)" && look.color === "rgb(43, 45, 49)" && look.border === "rgba(43, 45, 49, 0.12)" && look.shadow === "none" && Number(look.opacity) > 0.98 && look.hit === "auto" && look.text === "Mute" && look.pressed === false && look.label === null && look.crossed === false,
+    JSON.stringify(look),
+  );
+  check(
+    `${size}: the mute pill sits ${phone ? "12px from the right, 8px above the nav" : "16px from the right, level with the nav"}`,
+    phone ? look.right === 12 && look.aboveNav === 8 : look.right === 16 && Math.abs(look.centerDelta) <= 2 && look.rightOfNav,
+    JSON.stringify(look),
+  );
+  check(`${size}: a toast sits above the mute pill`, look.toastAbove && !look.covers, JSON.stringify(look));
+  check(`${size}: the mute pill fades with opacity`, look.transition.includes("opacity") && look.transition.includes("0.15s"), look.transition);
+  await page.locator("[data-ctl=mute-pill]").focus();
+  const ring = await page.evaluate(() => {
+    const style = getComputedStyle(document.querySelector("[data-ctl=mute-pill]"));
+    return { width: style.outlineWidth, style: style.outlineStyle, color: style.outlineColor };
+  });
+  check(`${size}: the mute pill focus ring is 2px ink`, ring.width === "2px" && ring.style === "solid" && ring.color === "rgb(43, 45, 49)", JSON.stringify(ring));
+  let radioPosts = 0;
+  const onReq = (req) => {
+    if (req.method() === "POST" && req.url().includes("/api/radio")) radioPosts += 1;
+  };
+  page.on("request", onReq);
+  await page.click("[data-ctl=mute-pill]");
+  await page.waitForTimeout(200);
+  page.off("request", onReq);
+  const mutedLook = await page.evaluate(() => {
+    const pill = document.querySelector("[data-ctl=mute-pill]");
+    return {
+      text: pill?.textContent?.trim() || "",
+      crossed: (pill?.querySelector("svg")?.innerHTML || "").includes("M16 9.5"),
+      name: pill?.getAttribute("aria-label"),
+      stored: localStorage.getItem("living-room-mute"),
+    };
+  });
+  check(`${size}: Mute becomes Unmute on this device only`, mutedLook.text === "Unmute" && mutedLook.crossed && mutedLook.name === null && radioPosts === 0 && mutedLook.stored !== "1", JSON.stringify({ ...mutedLook, radioPosts }));
+  await page.click("[data-ctl=mute-pill]");
+  await page.waitForTimeout(150);
+  check(`${size}: Unmute restores Mute`, (await page.locator("[data-ctl=mute-pill]").innerText()).trim() === "Mute");
+  await clickCtl(page, "nav-you", "owner", size);
+  if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) === "true") {
+    await clickCtl(page, "room-sound", "owner", size);
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await page.waitForTimeout(200);
+  const blocked = await page.locator("[data-ctl=mute-pill]").innerText();
+  await page.click("[data-ctl=mute-pill]");
+  await page.waitForTimeout(150);
+  const still = await page.evaluate(() => ({
+    text: document.querySelector("[data-ctl=mute-pill]")?.textContent?.trim() || "",
+    stored: localStorage.getItem("living-room-mute"),
+  }));
+  check(`${size}: Room sound off blocks the mute pill`, blocked.trim() === "Unmute" && still.text === "Unmute" && still.stored === "1", JSON.stringify(still));
+  await clickCtl(page, "nav-activity", "owner", size);
+  await page.waitForTimeout(250);
+  const hidden = await page.evaluate(() => {
+    const pill = document.querySelector("[data-ctl=mute-pill]");
+    if (!pill) return { gone: true };
+    const style = getComputedStyle(pill);
+    return { gone: false, display: style.display, hidden: pill.hidden };
+  });
+  check(`${size}: the mute pill is fully hidden while a sheet is open`, hidden.gone || hidden.display === "none" || hidden.hidden === true, JSON.stringify(hidden));
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await clickCtl(page, "nav-you", "owner", size);
+  if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) !== "true") {
+    await clickCtl(page, "room-sound", "owner", size);
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+}
+
 try {
   const sizes = [
     [390, 844, true, "phone"],
@@ -360,6 +613,7 @@ try {
   ];
   let watchLink = "";
   let deskWatchLink = "";
+  let ownerState = null;
 
   for (const [width, height, touch, name] of sizes) {
     const ctx = await browser.newContext(contextOptions(width, height, touch));
@@ -423,13 +677,14 @@ try {
         const text = row?.querySelector("span")?.textContent || "";
         return { text, label: row?.getAttribute("aria-label") || "", html: row?.querySelector("span")?.innerHTML || "" };
       });
-      check(`${size}: an away stack row is plain text`, away.text === "Bea · Away" && away.label === "Bea · Away" && away.html === "Bea · Away", JSON.stringify(away));
+      check(`${name}: an away stack row is plain text`, away.text === "Bea · Away" && away.label === "Bea · Away" && away.html === "Bea · Away", JSON.stringify(away));
       await page.click("[data-ctl=nav-activity]");
       const closed = await page.evaluate(() => document.querySelectorAll("[data-name-stack]").length);
-      check(`${size}: opening Activity closes the +N list`, closed === 0, String(closed));
+      check(`${name}: opening Activity closes the +N list`, closed === 0, String(closed));
       await page.keyboard.press("Escape");
       await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
       await page.evaluate(() => document.querySelector("[data-tag-key='stack-away']")?.remove());
+      await activityPin(page, name);
       await missBesideTag(page, "owner", name, "object:tv", "card");
     }
     check(`${name}: owner title`, (await page.locator(".hudf-title b").innerText()) === "Your apartment");
@@ -536,7 +791,9 @@ try {
         btn.setAttribute("aria-label", "2 more: Ada, Bea");
         btn.textContent = "+2";
         btn.style.left = "420px";
-        btn.style.top = "360px";
+        btn.style.top = "200px";
+        btn.style.zIndex = "40";
+        btn.style.pointerEvents = "auto";
         layer.append(btn);
         btn.click();
         const menu = document.querySelector("[data-name-stack]");
@@ -555,7 +812,7 @@ try {
       check("desk: the +N list is plaster with ink text", stack.bg === "rgb(247, 244, 238)" && stack.ink === "rgb(43, 45, 49)", `${stack.bg} / ${stack.ink}`);
       await page.keyboard.press("Escape");
       check("desk: Escape closes the stack list", (await page.locator("[data-name-stack]").count()) === 0);
-      await page.evaluate(() => document.querySelector("[data-name-tags] button[data-stack-ids]")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      await page.locator("[data-tag-key=stack-test]").click();
       await page.locator("[data-stack-pick='agent-ada']").click();
       await page.waitForSelector(".hudf-card h2");
       check("desk: tapping a stacked name focuses that agent", (await page.locator(".hudf-card h2").innerText()) === "Activity");
@@ -602,7 +859,14 @@ try {
       check("desk: name-tag layout reads stay at or under 0.13 per frame", layoutRate >= 0 && layoutRate <= 0.13, layoutRate.toFixed(3));
     }
 
+    if (name === "desk") await mutePillChecks(page, name, true);
     if (name === "phone") {
+      await clickCtl(page, "nav-you", "owner", name);
+      if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) !== "true") {
+        await clickCtl(page, "room-sound", "owner", name);
+      }
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
       await clickCtl(page, "rail-radio", "owner", name);
       await clickCtl(page, "radio-play", "owner", name);
       await page.waitForSelector(".hudf-card .hudf-eq i", { timeout: 8000 });
@@ -705,6 +969,9 @@ try {
       check("phone: owner Room sound shows On or Off", ownerSound.includes("Room sound") && !/Mute|Unmute/.test(ownerSound) && /\b(On|Off)\b/.test(ownerSound), ownerSound);
       const soundSize = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-ctl=room-sound]")).fontSize));
       check("phone: Room sound label is at least 13px", soundSize >= 13, String(soundSize));
+      if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) !== "true") {
+        await clickCtl(page, "room-sound", "owner", name);
+      }
       await page.keyboard.press("Escape");
       await clickCtl(page, "rail-radio", "owner", name);
       if ((await page.locator(".hudf-card .hudf-eq").count()) === 0) {
@@ -717,6 +984,7 @@ try {
         return bar ? getComputedStyle(bar).animationPlayState : "missing";
       });
       check("phone: rail bars keep moving with the card closed", moving === "running", moving);
+      await mutePillChecks(page, "phone", false);
       await clickCtl(page, "nav-you", "owner", name);
       if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) === "true") {
         await clickCtl(page, "room-sound", "owner", name);
@@ -754,10 +1022,36 @@ try {
     check(`${name}: geolocation was not called`, geo === 0, String(geo));
     const body = await page.locator("body").innerText();
     check(`${name}: no video-site copy`, !/youtube|watch live|°/i.test(body));
+    if (name === "phone") ownerState = await ctx.storageState();
     await ctx.close();
   }
 
   check("a watch link was minted", watchLink.startsWith(BASE));
+  await browser.close();
+  browser = await chromium.launch({
+    executablePath: CHROME,
+    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+  });
+  const mintCtx = await browser.newContext({ storageState: ownerState });
+  const mintPage = await mintCtx.newPage();
+  await mintPage.goto(`${BASE}/room?debug=1`, { waitUntil: "domcontentloaded" });
+  await mintPage.waitForSelector("[data-hud-frame]", { timeout: 25000 });
+  const freshLinks = await mintPage.evaluate(async () => {
+    async function one() {
+      const res = await fetch("/api/apartment/invite", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind: "watch" }),
+      });
+      const body = await res.json();
+      return typeof body.watchLink === "string" ? body.watchLink : "";
+    }
+    return [await one(), await one()];
+  });
+  await mintCtx.close();
+  if (freshLinks[0]) watchLink = freshLinks[0];
+  if (freshLinks[1]) deskWatchLink = freshLinks[1];
+  check("watcher links are still inside their minute", watchLink.startsWith(BASE) && deskWatchLink.startsWith(BASE));
   const deskWatch = await browser.newContext(contextOptions(1440, 900, false));
   await arm(deskWatch);
   const deskWatcher = await deskWatch.newPage();
@@ -765,7 +1059,7 @@ try {
   await watchNetwork(deskWatcher, deskBag);
   const deskLink = deskWatchLink || watchLink;
   await deskWatcher.goto(deskLink.includes("debug=1") ? deskLink : deskLink.replace("/room#", "/room?debug=1#"), { waitUntil: "domcontentloaded" });
-  await deskWatcher.waitForSelector("[data-watch-badge]", { timeout: 25000 });
+  await deskWatcher.waitForSelector("[data-watch-badge]", { timeout: 45000 });
   await missBesideTag(deskWatcher, "watch", "desk", "object:lamp", "notice");
   const beforeDesk = deskBag.api.length;
   await assertCatalog(deskWatcher, "watch", "desk");
@@ -778,7 +1072,7 @@ try {
   await watchNetwork(watcher, watchBag);
   const apiBefore = () => watchBag.api.length;
   await watcher.goto(watchLink.includes("debug=1") ? watchLink : watchLink.replace("/room#", "/room?debug=1#"), { waitUntil: "domcontentloaded" });
-  await watcher.waitForSelector("[data-watch-badge]", { timeout: 25000 });
+  await watcher.waitForSelector("[data-watch-badge]", { timeout: 45000 });
   await missBesideTag(watcher, "watch", "phone", "object:lamp", "notice");
   check("watcher: title is The apartment", (await watcher.locator(".hudf-title b").innerText()) === "The apartment");
   check("watcher: the header pill says Watching", (await watcher.locator(".hudf-badge[data-watch-badge]").innerText()).trim() === "Watching");

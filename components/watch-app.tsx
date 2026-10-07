@@ -114,14 +114,14 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
     window.dispatchEvent(new Event("maquette-layout"));
   }, [hud.section]);
 
-  const selectAgent = useCallback((id: string | null) => {
+  const selectAgent = useCallback((id: string | null, keepOpen = false) => {
     if (!id) {
       setSelectedId(null);
-      if (hud.section && !furnitureGestureRecent()) hud.close();
+      if (!keepOpen && hud.section && !furnitureGestureRecent()) hud.close();
       return;
     }
     setShot(false);
-    setSelectedId((current) => (current === id ? null : id));
+    setSelectedId(id);
     hud.open("activity");
   }, [hud]);
 

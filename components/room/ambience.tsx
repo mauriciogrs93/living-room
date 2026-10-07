@@ -2,13 +2,15 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { LiveSnapshot } from "@/components/use-room";
-import { stationRowMayUnmute } from "@/lib/room/room-sound";
+import { mutePillMayUnmute, stationRowMayUnmute } from "@/lib/room/room-sound";
 import { useAtmosphere } from "./atmosphere";
 
 type AmbienceValue = {
   muted: boolean;
+  held: boolean;
   hearing: boolean;
   toggleMute: () => void;
+  pressMutePill: () => void;
   hear: (url: string) => void;
   stopRadio: () => void;
 };
@@ -49,20 +51,59 @@ export function roomSoundOff(): boolean {
 }
 
 let radioAudio: HTMLAudioElement | null = null;
+let pillHeld = false;
+const heldListeners = new Set<() => void>();
 
-/** Local station-row tap only. Does not assign a src and does not touch the YouTube player. */
-export function unmuteFromStationTap() {
-  if (!stationRowMayUnmute(roomSoundOff(), "station-row")) return;
-  writeMuted(false);
+function readHeld() {
+  return pillHeld;
+}
+
+function writeHeld(next: boolean) {
+  if (pillHeld === next) return;
+  pillHeld = next;
+  for (const listener of heldListeners) listener();
+}
+
+function subscribeHeld(listener: () => void) {
+  heldListeners.add(listener);
+  return () => {
+    heldListeners.delete(listener);
+  };
+}
+
+function playRadio() {
   const audio = radioAudio;
   if (!audio?.getAttribute("src")) return;
   void audio.play().catch(() => undefined);
 }
 
+/** Local station-row tap only. Does not assign a src and does not touch the YouTube player. */
+export function unmuteFromStationTap() {
+  if (!stationRowMayUnmute(roomSoundOff(), "station-row")) return;
+  writeHeld(false);
+  writeMuted(false);
+  playRadio();
+}
+
+/** Mute pill: this device only. Room sound off always wins, and the src is never assigned. */
+export function pressMutePill() {
+  if (readHeld() || readMuted()) {
+    if (!mutePillMayUnmute(roomSoundOff())) return;
+    writeHeld(false);
+    if (readMuted()) writeMuted(false);
+    playRadio();
+    return;
+  }
+  writeHeld(true);
+  radioAudio?.pause();
+}
+
 const AmbienceContext = createContext<AmbienceValue>({
   muted: true,
+  held: false,
   hearing: false,
   toggleMute: () => {},
+  pressMutePill: () => {},
   hear: () => {},
   stopRadio: () => {},
 });
@@ -74,12 +115,16 @@ export function useAmbience() {
 export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null; children: ReactNode }) {
   const { sky } = useAtmosphere();
   const muted = useSyncExternalStore(subscribeMute, readMuted, () => true);
+  const held = useSyncExternalStore(subscribeHeld, readHeld, () => false);
   const [hearing, setHearing] = useState(false);
   const radioOn = Boolean(snapshot?.radio.on);
   const [seenRadio, setSeenRadio] = useState(radioOn);
   if (radioOn !== seenRadio) {
     setSeenRadio(radioOn);
-    if (!radioOn) setHearing(false);
+    if (!radioOn) {
+      setHearing(false);
+      writeHeld(false);
+    }
   }
   const mutedRef = useRef(true);
   const hearingRef = useRef(false);
@@ -187,7 +232,7 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
       audioRef.current?.pause();
       return;
     }
-    if (!hearingRef.current || mutedRef.current) return;
+    if (!hearingRef.current || mutedRef.current || readHeld()) return;
     const url = snapshot.radio.url;
     const audio = audioRef.current;
     if (!audio || !url || heardUrl.current === url) return;
@@ -221,6 +266,7 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
 
   const value: AmbienceValue = {
     muted,
+    held,
     hearing,
     toggleMute: () => {
       const next = !readMuted();
@@ -228,9 +274,11 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
       const audio = audioRef.current;
       if (!audio) return;
       if (next) {
+        writeHeld(false);
         audio.pause();
         return;
       }
+      writeHeld(false);
       if (audio.getAttribute("src")) {
         void audio.play().catch(() => undefined);
         return;
@@ -249,11 +297,13 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
         heardUrl.current = url;
         audio.src = url;
       }
-      if (readMuted()) return;
+      if (readMuted() || readHeld()) return;
       setHearing(true);
       void audio.play().catch(() => setHearing(false));
     },
+    pressMutePill,
     stopRadio: () => {
+      writeHeld(false);
       const audio = audioRef.current;
       if (audio) {
         audio.pause();

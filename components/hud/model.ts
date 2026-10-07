@@ -6,7 +6,7 @@ export type HudModel = {
   now: number;
   origin: string;
   selectedId: string | null;
-  selectAgent: (id: string | null) => void;
+  selectAgent: (id: string | null, keepOpen?: boolean) => void;
   openBooks: () => void;
   diaryOpen: boolean;
   setDiaryOpen: (open: boolean) => void;

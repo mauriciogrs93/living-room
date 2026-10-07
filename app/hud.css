@@ -383,9 +383,17 @@
 }
 
 .hud-person-btn.is-on {
-  box-shadow: inset 2px 0 0 var(--hud-ink);
+  background: rgba(43, 45, 49, 0.06);
+  box-shadow: none;
   padding-left: 10px;
 }
+.hud-people > li.is-pin {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.hud-people > li.is-pin .hud-person-btn { flex: 1; min-width: 0; }
+.hud-people > li.is-pin .hudf-x { flex: none; margin-top: 6px; }
 
 .hud-person {
   flex-direction: column;

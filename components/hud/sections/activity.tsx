@@ -9,6 +9,7 @@ import { BringYourAgent } from "@/components/invite-copy";
 import type { HudModel } from "../model";
 import { ACTIVITY_LIMIT } from "../tokens";
 import { mutedHex } from "@/components/room/maquette/color";
+import { orderAgents } from "@/lib/room/activity-pin";
 import { walkedInLine } from "@/lib/room/name-tags";
 import { CLOSE } from "../frame/strings";
 
@@ -24,22 +25,12 @@ function uniqueAgents(agents: PublicAgent[]) {
 }
 
 export function ActivitySection({ model, watcher = false }: { model: HudModel; watcher?: boolean }) {
-  const agents = uniqueAgents(model.snapshot?.agents ?? []);
+  const agents = orderAgents(uniqueAgents(model.snapshot?.agents ?? []), model.selectedId);
   const events = [...(model.snapshot?.events ?? [])].reverse().slice(0, ACTIVITY_LIMIT);
-  const selected = agents.find((agent) => agent.id === model.selectedId) ?? null;
 
   return (
     <div className="hud-stack">
       <p className="hud-kicker">In the house</p>
-      {selected && (
-        <div className="hud-person">
-          <button type="button" className="hudf-x" data-ctl="activity-close" aria-label={CLOSE} onClick={() => model.selectAgent(selected.id)}>
-            <span aria-hidden="true">×</span>
-          </button>
-          <p className="hud-quiet">{selected.status === "just walked in" ? walkedInLine(selected.name) : selected.status}</p>
-          {selected.speech && <p className="hud-quiet">“{selected.speech.text}”</p>}
-        </div>
-      )}
       <AgentList agents={agents} selectedId={model.selectedId} onFocus={model.selectAgent} />
       <StatusLine snapshot={model.snapshot} />
       <p className="hud-kicker">Latest</p>
@@ -71,29 +62,38 @@ function AgentList({
 }: {
   agents: PublicAgent[];
   selectedId: string | null;
-  onFocus: (id: string | null) => void;
+  onFocus: (id: string | null, keepOpen?: boolean) => void;
 }) {
   if (agents.length === 0) return <p className="hud-quiet">No one's home right now.</p>;
   return (
     <ul className="hud-people">
-      {agents.map((agent) => (
-        <li key={agent.id}>
-          <button
-            type="button"
-            className={`hud-person-btn${agent.id === selectedId ? " is-on" : ""}`}
-            data-ctl="activity-agent"
-            onClick={() => onFocus(agent.id)}
-          >
-            <span className="hud-swatch" style={{ background: mutedHex(agent.color) }} />
-            <span>
-              <span className="hud-line">
-                {agent.name}
+      {agents.map((agent) => {
+        const pinned = agent.id === selectedId;
+        const status = agent.status === "just walked in" ? walkedInLine(agent.name) : agent.status;
+        return (
+          <li key={agent.id} className={pinned ? "is-pin" : undefined}>
+            <button
+              type="button"
+              className={`hud-person-btn${pinned ? " is-on is-open" : ""}`}
+              data-ctl="activity-agent"
+              {...(pinned ? { "data-activity-pin": "" } : {})}
+              onClick={() => onFocus(agent.id)}
+            >
+              <span className="hud-swatch" style={{ background: mutedHex(agent.color) }} />
+              <span>
+                <span className="hud-line">{agent.name}</span>
+                <span className="hud-quiet">{status}</span>
+                {pinned && agent.speech ? <span className="hud-quiet">“{agent.speech.text}”</span> : null}
               </span>
-              <span className="hud-quiet">{agent.status === "just walked in" ? walkedInLine(agent.name) : agent.status}</span>
-            </span>
-          </button>
-        </li>
-      ))}
+            </button>
+            {pinned ? (
+              <button type="button" className="hudf-x" data-ctl="activity-close" aria-label={CLOSE} onClick={() => onFocus(null, true)}>
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+          </li>
+        );
+      })}
     </ul>
   );
 }
