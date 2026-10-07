@@ -76,12 +76,6 @@ try {
   const owner = await ownerCtx.newPage();
   await abortOutside(owner);
   await signup(owner, `hud-shot-${tag}@example.com`);
-  const minted = await owner.evaluate(async () => {
-    const res = await fetch("/api/apartment/invite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "watch" }) });
-    const body = await res.json();
-    return res.ok ? body.watchLink : "";
-  });
-  if (!minted) throw new Error("no watch link");
 
   for (const [width, height] of sizes) {
     await owner.setViewportSize({ width, height });
@@ -121,6 +115,12 @@ try {
   }
 
   ip += 1;
+  const minted = await owner.evaluate(async () => {
+    const res = await fetch("/api/apartment/invite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "watch" }) });
+    const body = await res.json();
+    return res.ok ? body.watchLink : "";
+  });
+  if (!minted) throw new Error("no watch link");
   const watchCtx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
