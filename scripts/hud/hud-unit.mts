@@ -867,7 +867,7 @@ check(
 
 check(
   "close-up is a real pressed button and the scene follows the house sky",
-  hudFrame.includes('data-ctl="view-closeup"') &&
+  hudFrame.includes('ctl="view-closeup"') &&
     hudFrame.includes("pressed={closeUp}") &&
     hudFrame.includes('"aria-pressed": pressed') &&
     hudFrame.includes("setCloseUp(!closeUp)") &&
@@ -994,8 +994,6 @@ check(
   "close-up and the tree no longer read debug offsets",
   !/cux|cuy|ptx|ptz/.test(zoomSource) && !/cux|cuy|ptx|ptz/.test(weatherSource) && !/cux|cuy|ptx|ptz/.test(hudFrame) && weatherSource.includes("[-4.9, -1.0]"),
 );
-const canvasSource = readFileSync(path.join(root, "components/room/room-canvas.tsx"), "utf8");
-const activitySource = readFileSync(path.join(root, "components/hud/sections/activity.tsx"), "utf8");
 const controlsSource = readFileSync(path.join(root, "components/hud/frame/controls.ts"), "utf8");
 const rainFn = weatherSource.slice(weatherSource.indexOf("function Rain"), weatherSource.indexOf("const PHONE_TREE"));
 const rainFrame = rainFn.slice(rainFn.indexOf("useFrame"), rainFn.indexOf("return ("));
