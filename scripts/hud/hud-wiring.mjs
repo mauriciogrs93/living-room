@@ -485,19 +485,31 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
     check(`${size}: the mute pill is hidden before this device is playing`, before === 0, String(before));
   }
   await clickCtl(page, "nav-you", "owner", size);
-  if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) !== "true") {
-    await clickCtl(page, "room-sound", "owner", size);
+  const soundWasOff = (await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) !== "true";
+  if (soundWasOff) await clickCtl(page, "room-sound", "owner", size);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  if (soundWasOff) {
+    const idle = await page.evaluate(() => ({
+      src: document.querySelector("audio")?.getAttribute("src"),
+      pill: document.querySelectorAll("[data-ctl=mute-pill]").length,
+    }));
+    check(`${size}: turning Room sound On starts no audio`, idle.src == null && idle.pill === 0, JSON.stringify(idle));
   }
-  await page.keyboard.press("Escape");
-  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
-  await clickCtl(page, "rail-radio", "owner", size);
-  await page.waitForSelector("[data-ctl=radio-row-0]", { timeout: 8000 });
-  const tuned = page.waitForResponse((res) => res.url().includes("/api/radio") && res.request().method() === "POST");
-  await page.click("[data-ctl=radio-row-0]");
-  await tuned;
-  await page.keyboard.press("Escape");
-  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
-  await page.waitForSelector("[data-ctl=mute-pill].is-in", { timeout: 4000 });
+  if ((await page.locator("[data-ctl=mute-pill]").count()) === 0) {
+    await clickCtl(page, "rail-radio", "owner", size);
+    await page.waitForSelector("[data-ctl=radio-play], [data-ctl=radio-resume]", { timeout: 8000 });
+    if ((await page.locator("[data-ctl=radio-play]").count()) > 0) {
+      const tuned = page.waitForResponse((res) => res.url().includes("/api/radio") && res.request().method() === "POST");
+      await page.click("[data-ctl=radio-play]");
+      await tuned;
+    } else {
+      await page.click("[data-ctl=radio-resume]");
+    }
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  }
+  await page.waitForSelector("[data-ctl=mute-pill]", { timeout: 8000 });
   await page.waitForTimeout(400);
   const look = await page.evaluate(() => {
     const pill = document.querySelector("[data-ctl=mute-pill]");
@@ -528,7 +540,7 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
       shadow: style.boxShadow,
       opacity: style.opacity,
       hit: style.pointerEvents,
-      transition: style.transitionProperty + " " + style.transitionDuration,
+      animation: style.animationName + " " + style.animationDuration,
       text: pill.textContent.trim(),
       pressed: pill.hasAttribute("aria-pressed"),
       label: pill.getAttribute("aria-label"),
@@ -579,7 +591,7 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
     );
   }
   check(`${size}: a toast sits above the mute pill`, look.toastAbove && !look.covers, JSON.stringify(look));
-  check(`${size}: the mute pill fades with opacity`, look.transition.includes("opacity") && look.transition.includes("0.15s"), look.transition);
+  check(`${size}: the mute pill fades in`, look.animation.includes("hudf-pill-in") && look.animation.includes("0.15s"), look.animation);
   await page.locator("[data-ctl=mute-pill]").focus();
   const ring = await page.evaluate(() => {
     const style = getComputedStyle(document.querySelector("[data-ctl=mute-pill]"));
@@ -632,6 +644,12 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
   await page.click("[data-ctl=mute-pill]");
   await page.waitForTimeout(150);
   check(`${size}: Unmute restores Mute`, (await page.locator("[data-ctl=mute-pill]").innerText()).trim() === "Mute");
+  await clickCtl(page, "nav-activity", "owner", size);
+  await page.waitForTimeout(200);
+  check(`${size}: the mute pill is absent from the DOM while a sheet is open`, (await page.locator("[data-ctl=mute-pill]").count()) === 0);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await page.waitForSelector("[data-ctl=mute-pill]", { timeout: 4000 });
   await clickCtl(page, "nav-you", "owner", size);
   if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) === "true") {
     await clickCtl(page, "room-sound", "owner", size);
@@ -641,20 +659,15 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
   await page.waitForTimeout(400);
   const soundOff = await page.evaluate(() => {
     const pill = document.querySelector("[data-ctl=mute-pill]");
-    return { count: pill ? 1 : 0, text: pill ? (pill.textContent || "").trim() : "", stored: localStorage.getItem("living-room-mute") };
+    const audio = document.querySelector("audio");
+    return {
+      count: pill ? 1 : 0,
+      text: pill ? (pill.textContent || "").trim() : "",
+      stored: localStorage.getItem("living-room-mute"),
+      src: audio ? audio.getAttribute("src") : null,
+    };
   });
-  check(`${size}: Room sound Off removes the mute pill`, soundOff.count === 0 && soundOff.text !== "Unmute" && soundOff.stored === "1", JSON.stringify(soundOff));
-  await clickCtl(page, "nav-activity", "owner", size);
-  await page.waitForTimeout(250);
-  const hidden = await page.evaluate(() => {
-    const pill = document.querySelector("[data-ctl=mute-pill]");
-    if (!pill) return { gone: true };
-    const style = getComputedStyle(pill);
-    return { gone: false, display: style.display, hidden: pill.hidden };
-  });
-  check(`${size}: the mute pill is fully hidden while a sheet is open`, hidden.gone || hidden.display === "none" || hidden.hidden === true, JSON.stringify(hidden));
-  await page.keyboard.press("Escape");
-  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  check(`${size}: Room sound Off removes the mute pill and the stream`, soundOff.count === 0 && soundOff.text !== "Unmute" && soundOff.stored === "1" && soundOff.src == null, JSON.stringify(soundOff));
   await clickCtl(page, "nav-you", "owner", size);
   if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) !== "true") {
     await clickCtl(page, "room-sound", "owner", size);
@@ -694,10 +707,32 @@ try {
           stored: localStorage.getItem("living-room-mute"),
         };
       });
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+      await clickCtl(page, "rail-radio", "owner", name);
+      await page.waitForSelector("[data-ctl=radio-play], [data-ctl=radio-resume]", { timeout: 8000 });
+      const freshCard = await page.evaluate(() => {
+        const btn = document.querySelector("[data-ctl=radio-play]") || document.querySelector("[data-ctl=radio-resume]");
+        const bits = [];
+        if (btn) {
+          for (const node of btn.childNodes) {
+            if (node.nodeType === Node.TEXT_NODE) bits.push(node.textContent || "");
+            else if (node.nodeType === Node.ELEMENT_NODE && node.getAttribute("aria-hidden") !== "true") bits.push(node.textContent || "");
+          }
+        }
+        return {
+          acc: bits.join("").replace(/\s+/g, " ").trim(),
+          aria: btn ? btn.getAttribute("aria-label") : "missing",
+          visible: (btn?.innerText || "").replace(/\s+/g, " ").trim(),
+          pill: document.querySelectorAll("[data-ctl=mute-pill]").length,
+          src: document.querySelector("audio")?.getAttribute("src") ?? null,
+        };
+      });
+      const stationHits = bag.outside.filter((url) => /radioparadise|streamguys|radiofrance/i.test(url));
       check(
-        `${name}: a fresh device with Room sound Off has no mute pill`,
-        /\bOff\b/.test(freshOff.sound) && freshOff.pill === "" && freshOff.stored !== "0",
-        JSON.stringify(freshOff),
+        `${name}: a fresh profile shows Off, Play, no pill, and no station request`,
+        /\bOff\b/.test(freshOff.sound) && freshOff.stored !== "0" && freshCard.acc === "Play" && freshCard.aria == null && freshCard.visible.includes("▶") && freshCard.visible.includes("Play") && freshCard.pill === 0 && freshCard.src == null && stationHits.length === 0,
+        JSON.stringify({ freshOff, freshCard, stationHits }),
       );
       await page.keyboard.press("Escape");
       await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
@@ -727,6 +762,21 @@ try {
         await page.waitForSelector(".hudf-card", { timeout: 8000 });
         const zoomOpen = await page.evaluate(() => document.documentElement.dataset.roomZoom || "");
         check(`${name}: roomZoom stays ${zoomLoad} while ${ctl} is open`, zoomOpen === zoomLoad, `${zoomLoad} -> ${zoomOpen}`);
+        await page.keyboard.press("Escape");
+        await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+      }
+      if (name === "desk") {
+        await clickCtl(page, "nav-activity", "owner", name);
+        await page.waitForSelector(".hudf-card", { timeout: 8000 });
+        const todayDot = await page.evaluate(() => {
+          const today = document.querySelector("[data-ctl=rail-today]");
+          const dot = today?.querySelector(".hudf-dot");
+          if (!dot) return { present: false };
+          const style = getComputedStyle(dot);
+          const box = dot.getBoundingClientRect();
+          return { present: true, display: style.display, w: Math.round(box.width) };
+        });
+        check("desk: the Today dot is hidden while Activity is open at 1440", todayDot.present === false || todayDot.display === "none" || todayDot.w === 0, JSON.stringify(todayDot));
         await page.keyboard.press("Escape");
         await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
       }
@@ -959,6 +1009,7 @@ try {
           playing,
           label: resume?.getAttribute("aria-label") || "",
           glyph: resume?.textContent?.trim() || "",
+          text: (resume?.innerText || "").replace(/\s+/g, " ").trim(),
           w: box ? Math.round(box.width) : 0,
           h: box ? Math.round(box.height) : 0,
           eq: style ? `${style.animationName} ${style.animationPlayState}` : "missing",
@@ -970,7 +1021,7 @@ try {
       } else {
         check(
           "phone: blocked autoplay shows Play and hides the pill",
-          eq.label === "Play" && eq.glyph === "▶" && eq.w === 96 && eq.h === 44 && eq.eq === "missing" && eq.pill === false,
+          eq.label === "" && eq.text.includes("▶") && eq.text.includes("Play") && eq.h === 44 && eq.eq === "missing" && eq.pill === false,
           JSON.stringify(eq),
         );
       }
@@ -1075,6 +1126,7 @@ try {
         await page.waitForSelector("[data-playing], [data-ctl=radio-resume]", { timeout: 8000 });
       }
       await page.keyboard.press("Escape");
+      await page.waitForSelector("[data-rail-eq]", { timeout: 8000 }).catch(() => null);
       const moving = await page.evaluate(() => {
         const bar = document.querySelector("[data-rail-eq] i");
         const playing = (document.querySelector("[data-ctl=mute-pill]")?.textContent || "").trim() === "Mute";

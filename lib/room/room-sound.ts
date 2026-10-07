@@ -1,13 +1,16 @@
 export type StationSoundSource = "station-row" | "remote";
 
 /**
- * Unmute only for a local tap on a station row.
- * A station change from the owner, the server, or realtime is remote and stays muted.
- * Room sound switched off always wins.
+ * A station change never unmutes and never turns Room sound on.
+ * Only the Play tap on this device does that.
  */
-export function stationRowMayUnmute(roomSoundOff: boolean, source: StationSoundSource): boolean {
-  if (roomSoundOff) return false;
-  return source === "station-row";
+export function stationRowMayUnmute(_roomSoundOff: boolean, _source: StationSoundSource): boolean {
+  return false;
+}
+
+/** Off unless this device stored the On value "0". A missing key is Off. */
+export function roomSoundStoredOff(stored: string | null): boolean {
+  return stored !== "0";
 }
 
 /** This device muted the radio. A missing saved setting is not that mute. */
@@ -15,11 +18,19 @@ export function deviceMuted(roomSoundOff: boolean, held: boolean): boolean {
   return roomSoundOff || held;
 }
 
-/** Play wins while autoplay is blocked. Unmute only after this device has muted. */
-export function radioControlLabel(blocked: boolean, mutedHere: boolean): "Play" | "Unmute" | "Mute" {
-  if (blocked) return "Play";
-  if (mutedHere) return "Unmute";
-  return "Mute";
+export type RadioControlInput = {
+  hearing: boolean;
+  held: boolean;
+  live: boolean;
+  roomSoundOff: boolean;
+  blocked: boolean;
+};
+
+/** Unmute only after this device tapped Mute while the station is live. Otherwise Play, unless audio is actually playing. */
+export function radioControlLabel(input: RadioControlInput): "Play" | "Unmute" | "Mute" {
+  if (!input.roomSoundOff && input.held && input.live) return "Unmute";
+  if (!input.roomSoundOff && input.hearing && !input.blocked && !input.held) return "Mute";
+  return "Play";
 }
 
 /** The Playing line is on only while audio is actually playing. */

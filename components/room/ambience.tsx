@@ -2,8 +2,8 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { LiveSnapshot } from "@/components/use-room";
-import { createRadioPlayback, type PlaybackSnapshot } from "@/lib/room/radio-playback";
-import { mutePillMayUnmute, stationRowMayUnmute } from "@/lib/room/room-sound";
+import { createRadioPlayback, type PlaybackSnapshot, type RadioSink } from "@/lib/room/radio-playback";
+import { mutePillMayUnmute, roomSoundStoredOff } from "@/lib/room/room-sound";
 import { useAtmosphere } from "./atmosphere";
 
 type AmbienceValue = {
@@ -15,15 +15,17 @@ type AmbienceValue = {
   soundOff: boolean;
   toggleMute: () => void;
   pressMutePill: () => void;
-  playBlocked: () => void;
+  failed: boolean;
+  playFromCard: () => void;
   stopRadio: () => void;
 };
 
 const muteListeners = new Set<() => void>();
 
-function readMuted() {
+/** Room sound is off unless this device stored "0". A missing key is Off. */
+export function roomSoundOff(): boolean {
   try {
-    return localStorage.getItem("living-room-mute") !== "0";
+    return roomSoundStoredOff(localStorage.getItem("living-room-mute"));
   } catch {
     return true;
   }
@@ -45,18 +47,9 @@ function subscribeMute(listener: () => void) {
   };
 }
 
-/** The user switched Room sound off. A missing key is the default mute, not that switch. */
-export function roomSoundOff(): boolean {
-  try {
-    return localStorage.getItem("living-room-mute") === "1";
-  } catch {
-    return true;
-  }
-}
-
-let radioAudio: HTMLAudioElement | null = null;
+let radioAudio: RadioSink | null = null;
 let playback: ReturnType<typeof createRadioPlayback> | null = null;
-let playSnap: PlaybackSnapshot = { blocked: false, hearing: false, started: false, index: 0 };
+let playSnap: PlaybackSnapshot = { blocked: false, hearing: false, started: false, index: 0, failed: false };
 const playListeners = new Set<() => void>();
 let pillHeld = false;
 const heldListeners = new Set<() => void>();
@@ -77,15 +70,26 @@ function readPlay() {
   return playSnap;
 }
 
-function ensurePlayback(audio: HTMLAudioElement) {
-  if (playback && radioAudio === audio) return playback;
+const boundAudio = new WeakSet<HTMLAudioElement>();
+
+export function connectRadio(audio: RadioSink) {
   radioAudio = audio;
   playback = createRadioPlayback(audio, {
-    deviceMuted: () => roomSoundOff() || readHeld(),
+    roomSoundOff,
+    deviceHeld: () => pillHeld,
     onChange: publishPlay,
   });
-  audio.addEventListener("playing", () => playback?.onPlaying());
   return playback;
+}
+
+function ensurePlayback(audio: HTMLAudioElement) {
+  if (!boundAudio.has(audio)) {
+    boundAudio.add(audio);
+    audio.addEventListener("playing", () => playback?.onPlaying());
+    audio.addEventListener("error", () => playback?.onMediaError());
+  }
+  if (playback && radioAudio === audio) return playback;
+  return connectRadio(audio);
 }
 
 function readHeld() {
@@ -105,18 +109,18 @@ function subscribeHeld(listener: () => void) {
   };
 }
 
-/** Local station-row tap only. Joins the fixed station for this index. Does not touch the YouTube player. */
-export function unmuteFromStationTap(index: number) {
-  if (!stationRowMayUnmute(roomSoundOff(), "station-row")) return;
-  writeHeld(false);
+/** The Play button only. Turns Room sound on, clears a device mute, and starts STATIONS[index]. */
+export function playFromCard() {
   writeMuted(false);
-  playback?.tuneGesture(index);
+  writeHeld(false);
+  playback?.gesture();
 }
 
-/** The blocked-autoplay Play button. One gesture, then the playing event clears blocked. */
-export function playBlocked() {
-  if (roomSoundOff() || readHeld()) return;
-  playback?.gesture();
+/** The Room sound switch. Off stops audio. On does not start it. */
+export function setRoomSoundOff(off: boolean) {
+  writeMuted(off);
+  writeHeld(false);
+  if (off) playback?.mute();
 }
 
 /** Mute pill: this device only. Room sound off always wins. Mute drops the stream. */
@@ -138,10 +142,11 @@ const AmbienceContext = createContext<AmbienceValue>({
   hearing: false,
   blocked: false,
   started: false,
-  soundOff: false,
+  soundOff: true,
+  failed: false,
   toggleMute: () => {},
   pressMutePill: () => {},
-  playBlocked: () => {},
+  playFromCard: () => {},
   stopRadio: () => {},
 });
 
@@ -151,9 +156,9 @@ export function useAmbience() {
 
 export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null; children: ReactNode }) {
   const { sky } = useAtmosphere();
-  const muted = useSyncExternalStore(subscribeMute, readMuted, () => true);
+  const soundOff = useSyncExternalStore(subscribeMute, roomSoundOff, () => true);
+  const muted = soundOff;
   const held = useSyncExternalStore(subscribeHeld, readHeld, () => false);
-  const soundOff = useSyncExternalStore(subscribeMute, roomSoundOff, () => false);
   const play = useSyncExternalStore(subscribePlay, readPlay, readPlay);
   const hearing = play.hearing;
   const blocked = play.blocked;
@@ -180,7 +185,7 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
 
   useEffect(() => {
     const arm = () => {
-      if (readMuted()) return;
+      if (roomSoundOff()) return;
       const ctx = ctxRef.current;
       if (ctx?.state === "suspended") void ctx.resume();
     };
@@ -263,9 +268,8 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
       playback?.stop();
       return;
     }
-    // Index only. A URL on the snapshot is ignored, including one injected by an agent.
-    playback?.follow(snapshot.radio.index, snapshot.radio.url);
-  }, [snapshot?.radio.on, snapshot?.radio.index, snapshot?.radio.url]);
+    playback?.follow(snapshot.radio.index);
+  }, [snapshot?.radio.on, snapshot?.radio.index]);
 
   const barked = useRef(false);
   useEffect(() => {
@@ -296,22 +300,17 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
     hearing,
     blocked,
     started,
+    failed: play.failed,
     soundOff,
     toggleMute: () => {
-      const next = !readMuted();
-      writeMuted(next);
-      if (!audioRef.current) return;
-      ensurePlayback(audioRef.current);
-      if (next) {
-        writeHeld(false);
-        playback?.mute();
-        return;
-      }
-      writeHeld(false);
-      if (snapshot?.radio.on) playback?.unmute();
+      if (audioRef.current) ensurePlayback(audioRef.current);
+      setRoomSoundOff(!roomSoundOff());
     },
     pressMutePill,
-    playBlocked,
+    playFromCard: () => {
+      if (audioRef.current) ensurePlayback(audioRef.current);
+      playFromCard();
+    },
     stopRadio: () => {
       writeHeld(false);
       if (audioRef.current) ensurePlayback(audioRef.current);

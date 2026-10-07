@@ -9,8 +9,8 @@ import { MAQUETTE } from "@/components/room/maquette/config";
 import { anchorPoint } from "@/components/hud/anchors";
 import type { HudModel } from "@/components/hud/model";
 import { onRadioNotice, tapRadio } from "@/components/hud/radio";
-import { playBlocked, unmuteFromStationTap } from "@/components/room/ambience";
-import { deviceMuted, mutePillVisible, playingLineVisible, radioControlLabel } from "@/lib/room/room-sound";
+import { playFromCard } from "@/components/room/ambience";
+import { mutePillVisible, playingLineVisible, radioControlLabel } from "@/lib/room/room-sound";
 import { ActivitySection } from "@/components/hud/sections/activity";
 import { DoorSection } from "@/components/hud/sections/door";
 import { InviteSection } from "@/components/hud/sections/invite";
@@ -58,6 +58,7 @@ import {
   ROOM_SOUND,
   SHOW_CONTROLS,
   STOP,
+  STATION_CANT_PLAY,
   STREAM_FAIL,
   SUNRISE,
   SUNSET,
@@ -117,26 +118,9 @@ function shownId(section: string | null) {
   return section;
 }
 
-function usePresence(shown: boolean) {
-  const [present, setPresent] = useState(shown);
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    if (shown) {
-      setPresent(true);
-      const frame = requestAnimationFrame(() => setOn(true));
-      return () => cancelAnimationFrame(frame);
-    }
-    setOn(false);
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => setPresent(false), reduce ? 0 : 150);
-    return () => window.clearTimeout(timer);
-  }, [shown]);
-  return { present, on };
-}
-
 export function HudFrame({ role, model, section, open, close, children, overlay }: FrameProps) {
   const shown = shownId(section);
-  const { muted, held, hearing, blocked, started, soundOff, toggleMute, pressMutePill, stopRadio } = useAmbience();
+  const { held, hearing, blocked, started, failed, soundOff, toggleMute, pressMutePill, stopRadio } = useAmbience();
   const { place, clock, dusk, night } = useAtmosphere();
   const [sheet, setSheet] = useState(false);
   const [tablet, setTablet] = useState(false);
@@ -455,19 +439,17 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const skyWord = night ? NIGHT : dusk ? DUSK : DAY;
   const tapeItems = [sunLine, ...tv.headlines.map((item) => headlineTitle(item))].filter((line) => line && !/youtube|watch live|°/i.test(line));
   const cardClass = `hudf-card${sheet ? " is-sheet" : " is-float"}${tablet ? " is-tablet" : ""}`;
-  const mutedHere = deviceMuted(soundOff, held);
-  const control = radioControlLabel(blocked, mutedHere);
+  const action = radioControlLabel({ hearing, held, live: Boolean(radio?.on), roomSoundOff: soundOff, blocked });
   const showPlaying = playingLineVisible(hearing, blocked);
   const pillShown = mutePillVisible({
     started,
     hearing,
     held,
-    roomSoundOff: muted,
+    roomSoundOff: soundOff,
     sheetOpen: Boolean(shown),
     blocked,
   });
-  const mutePill = usePresence(pillShown);
-  const rootClass = `room-root hudf${night ? " is-night" : ""}${sheet && shown ? " is-sheet" : ""}${tucked ? " is-tucked" : ""}${short ? " is-short" : ""}${mutePill.present ? " has-mute-pill" : ""}`;
+  const rootClass = `room-root hudf${night ? " is-night" : ""}${sheet && shown ? " is-sheet" : ""}${tucked ? " is-tucked" : ""}${short ? " is-short" : ""}${pillShown ? " has-mute-pill" : ""}`;
 
   const card = shown ? (
     <div
@@ -520,7 +502,8 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
                     {STOP}
                   </button>
                 ) : (
-                  <button type="button" className="hudf-play" data-ctl="radio-play" onClick={() => tapRadio("on")}>
+                  <button type="button" className="hudf-play is-resume" data-ctl="radio-play" onClick={() => { playFromCard(); tapRadio("on"); }}>
+                    <span aria-hidden="true">▶</span>
                     {PLAY}
                   </button>
                 )}
@@ -528,21 +511,28 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
                   ›
                 </button>
               </div>
-            ) : radio?.on && blocked ? (
-              <button type="button" className="hudf-play is-resume" data-ctl="radio-resume" aria-label={PLAY} onClick={playBlocked}>
+            ) : null}
+            {action === "play" && (radio?.on || !owner) ? (
+              <button type="button" className="hudf-play is-resume" data-ctl="radio-resume" onClick={() => playFromCard()}>
                 <span aria-hidden="true">▶</span>
+                {PLAY}
               </button>
-            ) : radio?.on ? (
+            ) : null}
+            {action === "unmute" ? (
               <button type="button" className="hudf-play" data-ctl="radio-mute" onClick={pressMutePill}>
-                {control}
+                {UNMUTE}
               </button>
-            ) : (
-              <p className="is-info hudf-quiet">{RADIO_OFF}</p>
-            )}
-            {owner && radio?.on && blocked ? (
-              <button type="button" className="hudf-play is-resume" data-ctl="radio-resume" aria-label={PLAY} onClick={playBlocked}>
-                <span aria-hidden="true">▶</span>
+            ) : null}
+            {action === "mute" && !owner ? (
+              <button type="button" className="hudf-play" data-ctl="radio-mute" onClick={pressMutePill}>
+                {MUTE}
               </button>
+            ) : null}
+            {!owner && !radio?.on && action !== "play" ? <p className="is-info hudf-quiet">{RADIO_OFF}</p> : null}
+            {failed ? (
+              <p className="hudf-station-fail" data-station-fail="" role="status" aria-live="polite">
+                {STATION_CANT_PLAY}
+              </p>
             ) : null}
             {owner && !radio?.on && station ? <p className="is-info hudf-quiet">{PLAYS(station)}</p> : null}
             {showPlaying ? (
@@ -559,7 +549,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
             <div className="hudf-list">
               {stations.map((name, index) =>
                 owner && tune ? (
-                  <button key={name + index} type="button" data-ctl={`radio-row-${index}`} className={index === radio?.index ? "is-on" : ""} onClick={() => { unmuteFromStationTap(index); tapRadio("tune", index); }}>
+                  <button key={name + index} type="button" data-ctl={`radio-row-${index}`} className={index === radio?.index ? "is-on" : ""} onClick={() => tapRadio("tune", index)}>
                     {name}
                   </button>
                 ) : owner ? (
@@ -665,9 +655,9 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         {shown === "you" && (
           <>
             {owner ? <YouSection /> : <p className="is-info hudf-quiet">{WATCH_YOU}</p>}
-            <button type="button" className="hudf-switch" role="switch" aria-checked={!muted} data-ctl="room-sound" onClick={toggleMute}>
+            <button type="button" className="hudf-switch" role="switch" aria-checked={!soundOff} data-ctl="room-sound" onClick={toggleMute}>
               <span>{ROOM_SOUND}</span>
-              <span>{muted ? SOUND_OFF : SOUND_ON}</span>
+              <span>{soundOff ? SOUND_OFF : SOUND_ON}</span>
             </button>
             {owner ? <SignForm ctl="you-signout" label={SIGN_OUT} /> : <SignForm ctl="you-leave" label={WATCH_LEAVE} />}
           </>
@@ -743,7 +733,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       </div>
       <div className="hudf-rail" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <p className="is-info mono">{HOUSE}</p>
-        <Rail id="today" label="Today" on={shown === "today"} dot={dot && shown !== "tv" && shown !== "radio" && shown !== "you"} onClick={(event) => toggle("today", event)} />
+        <Rail id="today" label="Today" on={shown === "today"} dot={dot && !shown} onClick={(event) => toggle("today", event)} />
         <Rail id="radio" label="Radio" on={shown === "radio"} bars={Boolean(radio?.on)} paused={!hearing} onClick={(event) => toggle("radio", event)} />
         <Rail id="tv" label="TV" on={shown === "tv"} onClick={(event) => toggle("tv", event)} />
         <Rail id="sky" label="Sky" on={shown === "sky"} onClick={(event) => toggle("sky", event)} />
@@ -798,10 +788,10 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         <button type="button" className="hudf-station-line" data-station-line="" data-ctl="station-line" onClick={(event) => go("radio", event)}>
           Radio{station ? ` · ${station}` : ""}
         </button>
-        {mutePill.present ? (
+        {pillShown ? (
           <button
             type="button"
-            className={`hudf-mute-pill${mutePill.on ? " is-in" : ""}`}
+            className="hudf-mute-pill"
             data-ctl="mute-pill"
             onClick={pressMutePill}
           >
@@ -836,7 +826,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         ) : null}
       </div>
       {watchLive ? <div ref={parkRef} className="hudf-watch-park" /> : null}
-      {watchLive && portalHost ? createPortal(<WatchFrame channelId={channel.id} muted={muted} />, portalHost) : null}
+      {watchLive && portalHost ? createPortal(<WatchFrame channelId={channel.id} muted={soundOff} />, portalHost) : null}
       {ring ? <div className="hudf-ring" style={{ left: ring.x, top: ring.y }} /> : null}
       {model.status === "offline" ? <p className="hud-offline is-info">{OFFLINE}</p> : null}
       {overlay ? <div className="hudf-overlay">{overlay}</div> : null}
