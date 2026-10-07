@@ -95,6 +95,142 @@ const _dir = new THREE.Vector3();
 const _c = new THREE.Vector3();
 const _q = new THREE.Vector3();
 
+type ScreenRect = { x: number; y: number; w: number; h: number };
+type ScreenBox = { l: number; t: number; r: number; b: number; w: number; h: number };
+
+function shownChrome(sel: string) {
+  if (typeof document === "undefined" || typeof document.querySelector !== "function") return null;
+  const el = document.querySelector<HTMLElement>(sel);
+  if (!el || typeof el.getBoundingClientRect !== "function") return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return null;
+  try {
+    const style = getComputedStyle(el);
+    if (style.visibility === "hidden" || style.display === "none") return null;
+  } catch {
+    return rect;
+  }
+  return rect;
+}
+
+/**
+ * The gap between the top cards and the bottom cards, in CSS px.
+ * Falls back to the full-bleed frame when the DOM has not painted yet.
+ */
+export function hudSafeRect(W: number, H: number): ScreenRect {
+  const gap = 6;
+  const phone = W < 720;
+  const tape = shownChrome(".hudf-tape");
+  const title = shownChrome(".hudf-top");
+  const here = shownChrome(".hudf-here");
+  const bot = shownChrome(".hudf-bot");
+  const pill = shownChrome(".hudf-pill");
+  const rail = shownChrome(".hudf-rail");
+  const measured = Boolean(tape || title || here || bot || pill || rail);
+  let top = phone ? 102 : 36;
+  let bottom = phone ? H - 176 : H - 68;
+  let left = 8;
+  let right = W - 8;
+  if (measured) {
+    top = gap;
+    bottom = H - gap;
+    if (tape) top = Math.max(top, tape.bottom + gap);
+    if (title && title.width > W * 0.55) top = Math.max(top, title.bottom + gap);
+    const floors: number[] = [];
+    if (bot) floors.push(bot.top);
+    if (pill && pill.top > H * 0.5) floors.push(pill.top);
+    if (here && here.top > H * 0.45) floors.push(here.top);
+    if (floors.length) bottom = Math.min(bottom, Math.min(...floors) - gap);
+    if (rail && rail.left > W * 0.6) right = Math.min(right, rail.left - gap);
+    if (here && here.right < W * 0.45 && here.top < bottom && here.bottom > top) left = Math.max(left, here.right + gap);
+  }
+  const w = Math.max(120, right - left);
+  const h = Math.max(160, bottom - top);
+  return { x: left, y: top, w, h };
+}
+
+/** Screen box of the apartment silhouette. */
+export function projectedHull(camera: THREE.PerspectiveCamera, W: number, H: number): ScreenBox {
+  let l = Infinity;
+  let t = Infinity;
+  let r = -Infinity;
+  let b = -Infinity;
+  for (const point of hullPoints()) {
+    _q.copy(point).project(camera);
+    const x = (_q.x * 0.5 + 0.5) * W;
+    const y = (-_q.y * 0.5 + 0.5) * H;
+    l = Math.min(l, x);
+    r = Math.max(r, x);
+    t = Math.min(t, y);
+    b = Math.max(b, y);
+  }
+  return { l, t, r, b, w: r - l, h: b - t };
+}
+
+/** ?closeup= is a finite lens in [1, 2]. Anything else is ignored. */
+export function closeUpZoomQuery(): number | null {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("closeup");
+  if (raw == null || raw === "") return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return Math.min(2, Math.max(1, value));
+}
+
+function hullOutside(box: ScreenBox, safe: ScreenRect) {
+  return box.l < safe.x - 1 || box.t < safe.y - 1 || box.r > safe.x + safe.w + 1 || box.b > safe.y + safe.h + 1;
+}
+
+/** Slide the fitted apartment into the safe rect. +offsetY moves the picture up. */
+function parkHull(camera: THREE.PerspectiveCamera, W: number, H: number, safe: ScreenRect) {
+  const view = camera.view;
+  if (!view) return;
+  for (let step = 0; step < 6; step += 1) {
+    const box = projectedHull(camera, W, H);
+    const slackX = safe.w - box.w;
+    const slackY = safe.h - box.h;
+    const targetL = safe.x + slackX / 2;
+    const targetT = slackY > 0 ? safe.y : safe.y + slackY / 2;
+    const dL = box.l - targetL;
+    const dT = box.t - targetT;
+    if (Math.abs(dL) < 0.75 && Math.abs(dT) < 0.75) break;
+    view.offsetX += dL;
+    view.offsetY += dT;
+    camera.updateProjectionMatrix();
+  }
+}
+
+/**
+ * Close-up keeps the fit distance and raises the lens only as far as the safe rect allows.
+ * The whole silhouette stays between the HUD cards. Zoom never leaves [1, 2].
+ */
+function applyCloseUp(camera: THREE.PerspectiveCamera, W: number, H: number) {
+  if (!camera.view) return;
+  const safe = hudSafeRect(W, H);
+  const box = projectedHull(camera, W, H);
+  if (box.w < 8 || box.h < 8) return;
+  const asked = closeUpZoomQuery();
+  let zoom = Math.min(safe.w / box.w, safe.h / box.h, asked ?? 2, 2);
+  if (!Number.isFinite(zoom) || zoom < 1) zoom = 1;
+  const baseX = camera.view.offsetX;
+  const baseY = camera.view.offsetY;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    camera.zoom = zoom;
+    camera.view.offsetX = baseX;
+    camera.view.offsetY = baseY;
+    camera.updateProjectionMatrix();
+    parkHull(camera, W, H, safe);
+    if (!hullOutside(projectedHull(camera, W, H), safe)) return;
+    if (zoom <= 1.001) break;
+    zoom = Math.max(1, zoom * 0.97);
+  }
+  camera.zoom = 1;
+  camera.view.offsetX = baseX;
+  camera.view.offsetY = baseY;
+  camera.updateProjectionMatrix();
+  parkHull(camera, W, H, safe);
+}
+
 /**
  * Draft 7 camera options (?cam=a|b|c|d|e). v20 default = e. The single-floor tap-in camera keeps the old angle (fitCamera).
  * fov: lens (smaller = longer lens, flatter perspective); yaw/pitch in degrees; level: keep verticals straight
@@ -249,19 +385,9 @@ export function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number,
       camera.updateProjectionMatrix();
     }
   }
-  // Close-up is a second view of the same fit: lens zoom 1.45 and +135 css px down. The fit distance
-  // (roomZoom) does not change, and zoom never drops below 1, so the apartment cannot shrink.
-  // ?closeup=<zoom>&cux=<css px>&cuy=<css px> overrides the lens while the view is on.
-  if (!floor && camera.view && closeUpOn()) {
-    const q = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-    const qz = q ? Number(q.get("closeup")) : NaN;
-    const z = qz > 1 ? qz : 1.45;
-    camera.zoom = Math.max(1, z);
-    camera.view.offsetX += Number(q?.get("cux") || 0);
-    const cuy = q?.get("cuy");
-    camera.view.offsetY += cuy != null && cuy !== "" ? Number(cuy) : 135;
-    camera.updateProjectionMatrix();
-  }
+  // Close-up is a second view of the same fit. The distance (roomZoom) stays put.
+  // The lens only grows, and only while the apartment still sits between the HUD cards.
+  if (!floor && camera.view && closeUpOn()) applyCloseUp(camera, W, H);
   if (typeof document !== "undefined" && document.documentElement.dataset.hudFrame === "1") {
     document.documentElement.dataset.roomLens = camera.zoom.toFixed(2);
   }

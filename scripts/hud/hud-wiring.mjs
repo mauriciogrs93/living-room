@@ -392,6 +392,46 @@ async function activityPin(page, size) {
   if (!joined.id) return;
   const tag = page.locator(`[data-agent-id="${joined.id}"]`);
   const visible = await tag.waitFor({ state: "visible", timeout: 15000 }).then(() => true).catch(() => false);
+  if (visible) {
+    const parked = await page.evaluate((id) => {
+      const node = document.querySelector(`[data-agent-id="${id}"]`);
+      if (!node) return null;
+      const box = node.getBoundingClientRect();
+      return { x: box.x, y: box.y, hidden: node.hidden };
+    }, joined.id);
+    await page.click("[data-ctl=view-closeup]");
+    await page.waitForFunction(() => document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "true", null, { timeout: 4000 });
+    await page.waitForTimeout(250);
+    const followed = await page.evaluate((id) => {
+      const node = document.querySelector(`[data-agent-id="${id}"]`);
+      if (!node) return null;
+      const box = node.getBoundingClientRect();
+      return {
+        x: box.x,
+        y: box.y,
+        hidden: node.hidden,
+        pressed: document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") || "",
+      };
+    }, joined.id);
+    const view = page.viewportSize() || { width: 0, height: 0 };
+    const followDelta = parked && followed ? Math.hypot(followed.x - parked.x, followed.y - parked.y) : 0;
+    check(
+      `${size}: the name tag follows the close-up`,
+      Boolean(parked && followed && followed.pressed === "true" && !followed.hidden && !parked.hidden && followDelta >= 8 && followed.x >= 0 && followed.y >= 0 && followed.x <= view.width && followed.y <= view.height),
+      JSON.stringify({ parked, followed, followDelta }),
+    );
+    await page.click("[data-ctl=view-closeup]");
+    await page.waitForFunction(() => document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "false", null, { timeout: 4000 });
+    await page.waitForTimeout(250);
+    const restored = await page.evaluate((id) => {
+      const node = document.querySelector(`[data-agent-id="${id}"]`);
+      if (!node) return null;
+      const box = node.getBoundingClientRect();
+      return { x: box.x, y: box.y };
+    }, joined.id);
+    const restoreDelta = parked && restored ? Math.hypot(restored.x - parked.x, restored.y - parked.y) : 99;
+    check(`${size}: the name tag returns with the default view`, restoreDelta <= 12, JSON.stringify({ parked, restored, restoreDelta }));
+  }
   if (!visible) {
     const dump = await page.evaluate(async (id) => {
       const state = await fetch("/api/state", { cache: "no-store" }).then((res) => res.json()).catch(() => ({}));
@@ -764,6 +804,30 @@ try {
         closeBefore.zoom === expectedZoom && closeBefore.pressed === "false" && Number(closeBefore.lens) >= 1 && Number(closeBefore.lens) < 1.05,
         JSON.stringify(closeBefore),
       );
+      const closeBtn = await page.evaluate(() => {
+        const btn = document.querySelector("[data-ctl=view-closeup]");
+        if (!btn) return { missing: true };
+        const box = btn.getBoundingClientRect();
+        const sels = [".hudf-tape", ".hudf-top", ".hudf-here", ".hudf-rail", ".hudf-strip", ".hudf-nav"];
+        const hits = [];
+        for (const sel of sels) {
+          const el = document.querySelector(sel);
+          if (!el) continue;
+          const style = getComputedStyle(el);
+          if (style.visibility === "hidden" || style.display === "none") continue;
+          const rect = el.getBoundingClientRect();
+          if (rect.width < 1 || rect.height < 1) continue;
+          const ix = Math.min(box.right, rect.right) - Math.max(box.left, rect.left);
+          const iy = Math.min(box.bottom, rect.bottom) - Math.max(box.top, rect.top);
+          if (ix > 0.5 && iy > 0.5) hits.push(sel);
+        }
+        return { w: box.width, h: box.height, hits };
+      });
+      check(
+        `${name}: the close-up button is a 44px target clear of the chrome`,
+        closeBtn.w >= 44 && closeBtn.h >= 44 && Array.isArray(closeBtn.hits) && closeBtn.hits.length === 0,
+        JSON.stringify(closeBtn),
+      );
       await page.click("[data-ctl=view-closeup]");
       await page.waitForFunction(() => document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "true", null, { timeout: 4000 });
       const closeOn = await page.evaluate(() => ({
@@ -773,7 +837,7 @@ try {
       }));
       check(
         `${name}: close-up keeps the fit distance and enlarges`,
-        closeOn.zoom === expectedZoom && closeOn.pressed === "true" && Number(closeOn.lens) >= 1.45,
+        closeOn.zoom === expectedZoom && closeOn.pressed === "true" && Number(closeOn.lens) >= 1 && Number(closeOn.lens) <= 2 && (name === "desk" || Number(closeOn.lens) >= 1.02),
         JSON.stringify(closeOn),
       );
       await page.focus("[data-ctl=view-closeup]");

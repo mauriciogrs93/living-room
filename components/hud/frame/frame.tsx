@@ -208,13 +208,15 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   }, []);
 
   useEffect(() => {
-    const zoom = Number(new URLSearchParams(window.location.search).get("closeup"));
-    if (zoom > 1) setCloseUp(true);
+    const raw = Number(new URLSearchParams(window.location.search).get("closeup"));
+    if (Number.isFinite(raw)) setCloseUp(true);
   }, []);
 
   useEffect(() => {
     let gone = false;
-    fetch("/api/sky")
+    const skyName = new URLSearchParams(window.location.search).get("sky");
+    const skyQuery = skyName === "rain" || skyName === "clear" ? `?sky=${skyName}` : "";
+    fetch(`/api/sky${skyQuery}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { ok?: boolean; summary?: unknown; temp?: unknown; rain?: unknown } | null) => {
         if (gone || !data?.ok) return;

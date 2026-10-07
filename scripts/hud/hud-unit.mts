@@ -10,7 +10,7 @@ import { HUD_CONTROLS, houseControls, yoursCards, yoursControls } from "../../co
 import { cleanHud, httpLink, httpsUrl } from "../../components/hud/frame/sanitize";
 import * as strings from "../../components/hud/frame/strings";
 import { FALLBACK_STATIONS } from "../../lib/room/house";
-import { forecastUrlAllowed } from "../../lib/room/house-sky";
+import { forecastUrlAllowed, houseSky, HOUSE_CELL, pointsUrl, previewSky, resetHouseSkyCache, roundCell, skyBody, skyCellFromHeaders } from "../../lib/room/house-sky";
 import { lineupCount, lineupDraws, lineupEnabled } from "../../lib/room/lineup";
 import { acceptPlayerEvent, embedOrigin, readPlayerSignal, watchEmbed, YT_ORIGIN } from "../../lib/room/watch-live";
 import { fitTagBoxes, joinToast, placeTags, plainName, stackLabel, stackListBox, stackRowCopy, tagCopy, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
@@ -25,7 +25,7 @@ import type { HudModel } from "../../components/hud/model";
 import type { LiveSnapshot } from "../../components/use-room";
 import { deviceMuted, mutePillIcon, mutePillLabel, mutePillMayUnmute, mutePillVisible, playingLineVisible, RADIO_CONTROLS, radioControlLabel, roomSoundStoredOff, stationRowMayUnmute } from "../../lib/room/room-sound";
 import * as THREE from "three";
-import { fitCamera, setCloseUp } from "../../components/room/frame-zoom";
+import { closeUpZoomQuery, fitCamera, hudSafeRect, projectedHull, setCloseUp } from "../../components/room/frame-zoom";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -870,7 +870,8 @@ check(
   hudFrame.includes('data-ctl="view-closeup"') &&
     hudFrame.includes("aria-pressed={closeUp}") &&
     hudFrame.includes("setCloseUp(!closeUp)") &&
-    hudFrame.includes('fetch("/api/sky")') &&
+    hudFrame.includes("fetch(`/api/sky${skyQuery}`)") &&
+    hudFrame.includes('skyName === "rain"') &&
     hudFrame.includes("noteHouseSky(rain)") &&
     !readFileSync(path.join(root, "components/room/maquette/weather-scene.tsx"), "utf8").includes("api.weather.gov") &&
     !readFileSync(path.join(root, "components/room/maquette/weather-scene.tsx"), "utf8").includes("geolocation"),
@@ -896,6 +897,95 @@ function houseSpan(cam: THREE.PerspectiveCamera) {
   }
   return Math.hypot(maxX - minX, maxY - minY);
 }
+
+const skyRoute = readFileSync(path.join(root, "app/api/sky/route.ts"), "utf8");
+const skySource = readFileSync(path.join(root, "lib/room/house-sky.ts"), "utf8");
+const zoomSource = readFileSync(path.join(root, "components/room/frame-zoom.ts"), "utf8");
+const weatherSource = readFileSync(path.join(root, "components/room/maquette/weather-scene.tsx"), "utf8");
+const tagSource = readFileSync(path.join(root, "components/room/name-tag-layer.tsx"), "utf8");
+check(
+  "the sky route is private and does not publish a coordinate",
+  skyRoute.includes('"Cache-Control": "private, no-store"') &&
+    skyRoute.includes("previewSky(req)") &&
+    skyRoute.includes("skyCellFromHeaders") &&
+    !skyRoute.includes("latitude") &&
+    !skyRoute.includes("longitude") &&
+    !skySource.includes("console.") &&
+    !skySource.includes("geolocation"),
+);
+const nyc = skyCellFromHeaders(new Headers());
+const rounded = skyCellFromHeaders(new Headers({ "x-vercel-ip-latitude": "40.7128", "x-vercel-ip-longitude": "-74.006" }));
+const invalid = skyCellFromHeaders(new Headers({ "x-vercel-ip-latitude": "nope", "x-vercel-ip-longitude": "-74" }));
+const abroad = skyCellFromHeaders(new Headers({ "x-vercel-ip-latitude": "120", "x-vercel-ip-longitude": "10" }));
+check(
+  "viewer headers round to 0.1° and missing headers stay on the house cell",
+  nyc.lat === 40.7 && nyc.lon === -74 && rounded.lat === 40.7 && rounded.lon === -74 && invalid.lat === HOUSE_CELL.lat && invalid.lon === HOUSE_CELL.lon && abroad.lat === HOUSE_CELL.lat && pointsUrl(rounded) === "https://api.weather.gov/points/40.7,-74.0",
+  JSON.stringify({ nyc, rounded, invalid }),
+);
+const prevEnv = process.env.VERCEL_ENV;
+const prevFetch = globalThis.fetch;
+process.env.VERCEL_ENV = "production";
+const ignored = previewSky(new Request("https://house.example/api/sky?sky=rain"));
+process.env.VERCEL_ENV = "preview";
+const forcedRain = previewSky(new Request("https://house.example/api/sky?sky=rain"));
+const forcedClear = previewSky(new Request("https://house.example/api/sky?sky=clear"));
+const forcedOther = previewSky(new Request("https://house.example/api/sky?sky=snow"));
+delete process.env.VERCEL_ENV;
+const localRain = previewSky(new Request("https://house.example/api/sky?sky=rain"));
+check(
+  "production ignores ?sky= and other environments can force rain or clear",
+  ignored === null && forcedRain === "rain" && forcedClear === "clear" && forcedOther === null && localRain === "rain",
+  JSON.stringify({ ignored, forcedRain, forcedClear, forcedOther, localRain }),
+);
+resetHouseSkyCache();
+const called: string[] = [];
+globalThis.fetch = (async (input: RequestInfo | URL) => {
+  const url = String(input);
+  called.push(url);
+  if (url.includes("/points/")) {
+    return new Response(JSON.stringify({ properties: { forecast: "https://api.weather.gov/gridpoints/OKX/33,37/forecast" } }), { status: 200 });
+  }
+  return new Response(JSON.stringify({ properties: { periods: [{ shortForecast: "Light Rain", temperature: 61, temperatureUnit: "F" }] } }), { status: 200 });
+}) as typeof fetch;
+const live = await houseSky({ lat: 40.7128, lon: -74.006 });
+const again = await houseSky(roundCell(40.74, -73.96));
+globalThis.fetch = (async () => new Response("no", { status: 404 })) as typeof fetch;
+const foreign = await houseSky({ lat: 51.5, lon: -0.1 });
+globalThis.fetch = prevFetch;
+if (prevEnv === undefined) delete process.env.VERCEL_ENV;
+else process.env.VERCEL_ENV = prevEnv;
+const liveBody = JSON.stringify(skyBody(live));
+check(
+  "the forecast uses the rounded cell, stays out of the body, and a miss stays clear",
+  called[0] === "https://api.weather.gov/points/40.7,-74.0" &&
+    called.length === 2 &&
+    again.rain === true &&
+    again.source === "nws" &&
+    live.rain === true &&
+    foreign.rain === false &&
+    foreign.source === "house" &&
+    !/lat|lon|40\.7|-74/.test(liveBody),
+  JSON.stringify({ called, liveBody, foreign }),
+);
+const closeRule = hudCss.slice(hudCss.indexOf(".hudf-closeup {"), hudCss.indexOf(".hudf-closeup[aria-pressed"));
+check(
+  "the close-up control sits below the title with a 44px target",
+  closeRule.includes("position: fixed;") &&
+    closeRule.includes("top: 108px;") &&
+    closeRule.includes("left: 68px;") &&
+    closeRule.includes("min-width: 44px;") &&
+    closeRule.includes("min-height: 44px;") &&
+    !closeRule.includes("right: 8px;"),
+);
+check(
+  "a phone sheet card shrinks to its content",
+  hudCss.includes("bottom: auto;") && hudCss.includes("height: auto;") && hudCss.includes("max-height: calc(100dvh - 132px - 176px);"),
+);
+check(
+  "close-up and the tree no longer read debug offsets",
+  !/cux|cuy|ptx|ptz/.test(zoomSource) && !/cux|cuy|ptx|ptz/.test(weatherSource) && !/cux|cuy|ptx|ptz/.test(hudFrame) && weatherSource.includes("[-4.9, -1.0]"),
+);
+check("name tags repaint when the lens or the view offset changes", tagSource.includes("lens.zoom") && tagSource.includes("offsetX") && tagSource.includes("offsetY") && tagSource.includes("viewMoved"));
 
 const prevDocument = globalThis.document;
 const prevWindow = globalThis.window;
@@ -934,10 +1024,50 @@ for (const [width, height, expected] of zoomCases) {
   const floorCam = new THREE.PerspectiveCamera();
   fitCamera(floorCam, width, height, "kitchen");
   const label = dist.toFixed(1);
-  const ok = wide.zoom >= 1 && near.zoom >= 1.45 && floorCam.zoom >= 1 && closeDist === dist && closeSpan + 1e-6 >= span && (expected == null || label === expected);
+  const safe = hudSafeRect(width, height);
+  const wideBox = projectedHull(wide, width, height);
+  const nearBox = projectedHull(near, width, height);
+  const fits = safe.h + 2 >= wideBox.h && safe.w + 2 >= wideBox.w;
+  const inside = !fits || (nearBox.l >= safe.x - 1.5 && nearBox.t >= safe.y - 1.5 && nearBox.r <= safe.x + safe.w + 1.5 && nearBox.b <= safe.y + safe.h + 1.5);
+  const lensOk = near.zoom >= 1 && near.zoom <= 2 && Number.isFinite(near.zoom);
+  const ok = wide.zoom >= 1 && lensOk && floorCam.zoom >= 1 && closeDist === dist && closeSpan + 1e-6 >= span && inside && (expected == null || label === expected);
   if (!ok) apartmentHolds = false;
-  zoomDetail.push(`${width}x${height} ${label} z${wide.zoom.toFixed(2)}->${near.zoom.toFixed(2)} span${span.toFixed(3)}->${closeSpan.toFixed(3)}`);
+  zoomDetail.push(`${width}x${height} ${label} z${wide.zoom.toFixed(2)}->${near.zoom.toFixed(2)} span${span.toFixed(3)}->${closeSpan.toFixed(3)} in${inside ? 1 : 0}`);
 }
+(globalThis.window as Window).location.search = "?closeup=Infinity&cux=40&cuy=80";
+setCloseUp(true);
+const infinite = new THREE.PerspectiveCamera();
+fitCamera(infinite, 390, 844, null);
+(globalThis.window as Window).location.search = "?closeup=9";
+const huge = new THREE.PerspectiveCamera();
+fitCamera(huge, 390, 844, null);
+(globalThis.window as Window).location.search = "?closeup=1.02";
+const asked = new THREE.PerspectiveCamera();
+const askedDist = fitCamera(asked, 390, 844, null);
+(globalThis.window as Window).location.search = "?closeup=1.02&cux=80&cuy=-40";
+const askedShift = new THREE.PerspectiveCamera();
+fitCamera(askedShift, 390, 844, null);
+const safeZoom = (() => {
+  setCloseUp(true);
+  (globalThis.window as Window).location.search = "";
+  const cam = new THREE.PerspectiveCamera();
+  fitCamera(cam, 390, 844, null);
+  return cam.zoom;
+})();
+check(
+  "a close-up query is a finite lens in [1, 2] and debug offsets are ignored",
+  closeUpZoomQuery() === null &&
+    infinite.zoom === safeZoom &&
+    huge.zoom <= 2 &&
+    huge.zoom <= safeZoom + 1e-6 &&
+    asked.zoom <= 1.02 + 1e-6 &&
+    asked.zoom >= 1 &&
+    askedDist.toFixed(1) === "38.9" &&
+    askedShift.zoom === asked.zoom &&
+    askedShift.view?.offsetX === asked.view?.offsetX &&
+    askedShift.view?.offsetY === asked.view?.offsetY,
+  `inf ${infinite.zoom.toFixed(3)} huge ${huge.zoom.toFixed(3)} asked ${asked.zoom.toFixed(3)} safe ${safeZoom.toFixed(3)}`,
+);
 setCloseUp(false);
 globalThis.document = prevDocument;
 globalThis.window = prevWindow;

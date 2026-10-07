@@ -24,6 +24,10 @@ const FIT: TagRect[] = [];
 for (let i = 0; i < 8; i += 1) STAIRS.push({ l: 0, t: 0, r: 0, b: 0 });
 for (let i = 0; i < 32; i += 1) FIT.push({ l: 0, t: 0, r: 0, b: 0 });
 
+let seenZoom = 0;
+let seenOffsetX = 0;
+let seenOffsetY = 0;
+
 const head = new Vector3();
 const stairBox = new Box3();
 const stairPoint = new Vector3();
@@ -324,7 +328,12 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
     const cx = bucket(camera.position.x);
     const cy = bucket(camera.position.y);
     const cz = bucket(camera.position.z);
+    const lens = camera as Camera & { zoom?: number; view?: { enabled?: boolean; offsetX: number; offsetY: number } | null };
+    const zoomNow = Math.round((lens.zoom ?? 1) * 1000);
+    const offsetXNow = Math.round(lens.view?.enabled ? lens.view.offsetX : 0);
+    const offsetYNow = Math.round(lens.view?.enabled ? lens.view.offsetY : 0);
     if (cx !== SIG[2] || cy !== SIG[3] || cz !== SIG[4] || n !== SIG[5]) dirty = true;
+    if (zoomNow !== seenZoom || offsetXNow !== seenOffsetX || offsetYNow !== seenOffsetY) dirty = true;
     for (let i = 0; i < n; i += 1) {
       const agent = agents[i]!;
       const x = bucket(agent.position.x);
@@ -348,6 +357,10 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
     SIG[7] = awayHi;
     if (!dirty) return;
     const cameraMoved = cx !== SIG[2] || cy !== SIG[3] || cz !== SIG[4];
+    const viewMoved = zoomNow !== seenZoom || offsetXNow !== seenOffsetX || offsetYNow !== seenOffsetY;
+    seenZoom = zoomNow;
+    seenOffsetX = offsetXNow;
+    seenOffsetY = offsetYNow;
     SIG[0] = size.width;
     SIG[1] = size.height;
     SIG[2] = cx;
@@ -377,7 +390,7 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
       }
       blockCount.current = blocks;
     }
-    if (resized || cameraMoved) stairCount.current = projectStairs(scene, camera, size.width, size.height, STAIRS);
+    if (resized || cameraMoved || viewMoved) stairCount.current = projectStairs(scene, camera, size.width, size.height, STAIRS);
     const blocks = blockCount.current;
     VIEW.r = size.width - 8;
     VIEW.b = size.height - 8;

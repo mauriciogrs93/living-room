@@ -251,10 +251,7 @@ function Rain({ phone }: { phone: boolean }) {
   );
 }
 
-const PHONE_TREE: [number, number] = [
-  Number((typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ptx")) || -4.9),
-  Number((typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ptz")) || -1.0),
-];
+const PHONE_TREE: [number, number] = [-4.9, -1.0];
 
 function SceneBody({ mode, phone }: { mode: WeatherScene; phone: boolean }) {
   const root = useRef<THREE.Group>(null);
