@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { signOut } from "@/components/account/me";
 import { useAmbience } from "@/components/room/ambience";
 export { AmbienceContext, type AmbienceValue } from "@/components/room/ambience";
 import { useAtmosphere } from "@/components/room/atmosphere";
+import { closeUpOn, setCloseUp, subscribeCloseUp } from "@/components/room/frame-zoom";
+import { noteHouseSky } from "@/components/room/maquette/weather-scene";
 import { MAQUETTE } from "@/components/room/maquette/config";
 import { anchorPoint } from "@/components/hud/anchors";
 import type { HudModel } from "@/components/hud/model";
@@ -148,6 +150,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const nowRef = useRef(model.now);
   nowRef.current = model.now;
 
+  const closeUp = useSyncExternalStore(subscribeCloseUp, closeUpOn, () => false);
   const owner = role === "owner";
   const radio = model.snapshot?.radio;
   const station = cleanHud(radio?.name, 40);
@@ -205,15 +208,22 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   }, []);
 
   useEffect(() => {
+    const zoom = Number(new URLSearchParams(window.location.search).get("closeup"));
+    if (zoom > 1) setCloseUp(true);
+  }, []);
+
+  useEffect(() => {
     let gone = false;
     fetch("/api/sky")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { ok?: boolean; summary?: unknown; temp?: unknown; rain?: unknown } | null) => {
         if (gone || !data?.ok) return;
+        const rain = data.rain === true;
+        noteHouseSky(rain);
         setSkyReport({
           summary: typeof data.summary === "string" ? data.summary : null,
           temp: typeof data.temp === "string" ? data.temp : null,
-          rain: data.rain === true,
+          rain,
         });
       })
       .catch(() => undefined);
@@ -710,6 +720,9 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         }}
       >
         {children}
+        <button type="button" className="hudf-closeup" data-ctl="view-closeup" aria-pressed={closeUp} onClick={() => setCloseUp(!closeUp)}>
+          Close-up
+        </button>
         {skyReport?.rain ? <div className="hudf-rain" aria-hidden /> : null}
         {!sheet ? card : null}
       </div>

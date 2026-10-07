@@ -132,6 +132,7 @@ export function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number,
   camera.fov = cam ? cam.fov : MAQUETTE.fov;
   camera.near = 0.5;
   camera.far = 120;
+  camera.zoom = 1;
   camera.up.set(0, 1, 0);
   camera.aspect = r.w / r.h;
   _dir.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
@@ -248,7 +249,46 @@ export function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number,
       camera.updateProjectionMatrix();
     }
   }
+  // Close-up is a second view of the same fit: lens zoom 1.45 and +135 css px down. The fit distance
+  // (roomZoom) does not change, and zoom never drops below 1, so the apartment cannot shrink.
+  // ?closeup=<zoom>&cux=<css px>&cuy=<css px> overrides the lens while the view is on.
+  if (!floor && camera.view && closeUpOn()) {
+    const q = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const qz = q ? Number(q.get("closeup")) : NaN;
+    const z = qz > 1 ? qz : 1.45;
+    camera.zoom = Math.max(1, z);
+    camera.view.offsetX += Number(q?.get("cux") || 0);
+    const cuy = q?.get("cuy");
+    camera.view.offsetY += cuy != null && cuy !== "" ? Number(cuy) : 135;
+    camera.updateProjectionMatrix();
+  }
+  if (typeof document !== "undefined" && document.documentElement.dataset.hudFrame === "1") {
+    document.documentElement.dataset.roomLens = camera.zoom.toFixed(2);
+  }
   return dist;
+}
+
+const closeUpListeners = new Set<() => void>();
+
+/** Second view. Stored on the document so the button and the camera share one flag. */
+export function closeUpOn() {
+  return typeof document !== "undefined" && document.documentElement.dataset.viewClose === "1";
+}
+
+export function setCloseUp(on: boolean) {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.viewClose = on ? "1" : "0";
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("hud-closeup"));
+  closeUpListeners.forEach((fn) => fn());
+}
+
+export function subscribeCloseUp(fn: () => void) {
+  closeUpListeners.add(fn);
+  if (typeof window !== "undefined") window.addEventListener("hud-closeup", fn);
+  return () => {
+    closeUpListeners.delete(fn);
+    if (typeof window !== "undefined") window.removeEventListener("hud-closeup", fn);
+  };
 }
 
 const scratchCam = new THREE.PerspectiveCamera(MAQUETTE.fov, 1, 0.5, 120);

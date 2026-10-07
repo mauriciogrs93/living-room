@@ -24,6 +24,8 @@ import { AmbienceContext, HudFrame, type AmbienceValue } from "../../components/
 import type { HudModel } from "../../components/hud/model";
 import type { LiveSnapshot } from "../../components/use-room";
 import { deviceMuted, mutePillIcon, mutePillLabel, mutePillMayUnmute, mutePillVisible, playingLineVisible, RADIO_CONTROLS, radioControlLabel, roomSoundStoredOff, stationRowMayUnmute } from "../../lib/room/room-sound";
+import * as THREE from "three";
+import { fitCamera, setCloseUp } from "../../components/room/frame-zoom";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -862,6 +864,85 @@ check(
     hudCss.includes("color: #2b2d31;") &&
     !hudCss.includes(".hudf-station-fail {\n  position:"),
 );
+
+check(
+  "close-up is a real pressed button and the scene follows the house sky",
+  hudFrame.includes('data-ctl="view-closeup"') &&
+    hudFrame.includes("aria-pressed={closeUp}") &&
+    hudFrame.includes("setCloseUp(!closeUp)") &&
+    hudFrame.includes('fetch("/api/sky")') &&
+    hudFrame.includes("noteHouseSky(rain)") &&
+    !readFileSync(path.join(root, "components/room/maquette/weather-scene.tsx"), "utf8").includes("api.weather.gov") &&
+    !readFileSync(path.join(root, "components/room/maquette/weather-scene.tsx"), "utf8").includes("geolocation"),
+);
+
+function houseSpan(cam: THREE.PerspectiveCamera) {
+  const pts = [
+    new THREE.Vector3(-2.34, -0.36, -0.585),
+    new THREE.Vector3(2.2, 8.28, 2.31),
+    new THREE.Vector3(-2.34, 8.28, 2.31),
+    new THREE.Vector3(2.2, -0.36, -0.585),
+  ];
+  let minX = 9;
+  let maxX = -9;
+  let minY = 9;
+  let maxY = -9;
+  for (const point of pts) {
+    const projected = point.clone().project(cam);
+    minX = Math.min(minX, projected.x);
+    maxX = Math.max(maxX, projected.x);
+    minY = Math.min(minY, projected.y);
+    maxY = Math.max(maxY, projected.y);
+  }
+  return Math.hypot(maxX - minX, maxY - minY);
+}
+
+const prevDocument = globalThis.document;
+const prevWindow = globalThis.window;
+const prevStyle = globalThis.getComputedStyle;
+const frameEl = { dataset: { hudFrame: "1" } as Record<string, string> };
+globalThis.document = {
+  documentElement: frameEl,
+  body: { appendChild() {} },
+  createElement: () => ({ style: {} }),
+  querySelector: () => null,
+} as unknown as Document;
+globalThis.window = {
+  location: { search: "" },
+  addEventListener() {},
+  removeEventListener() {},
+  dispatchEvent() { return true; },
+} as unknown as Window & typeof globalThis;
+globalThis.getComputedStyle = (() => ({ paddingTop: "0", paddingRight: "0", paddingBottom: "0", paddingLeft: "0" })) as unknown as typeof getComputedStyle;
+const zoomCases: Array<[number, number, string | null]> = [
+  [390, 844, "38.9"],
+  [1440, 900, "28.8"],
+  [768, 1024, null],
+  [844, 390, null],
+];
+let apartmentHolds = true;
+const zoomDetail: string[] = [];
+for (const [width, height, expected] of zoomCases) {
+  setCloseUp(false);
+  const wide = new THREE.PerspectiveCamera();
+  const dist = fitCamera(wide, width, height, null);
+  const span = houseSpan(wide);
+  setCloseUp(true);
+  const near = new THREE.PerspectiveCamera();
+  const closeDist = fitCamera(near, width, height, null);
+  const closeSpan = houseSpan(near);
+  const floorCam = new THREE.PerspectiveCamera();
+  fitCamera(floorCam, width, height, "kitchen");
+  const label = dist.toFixed(1);
+  const ok = wide.zoom >= 1 && near.zoom >= 1.45 && floorCam.zoom >= 1 && closeDist === dist && closeSpan + 1e-6 >= span && (expected == null || label === expected);
+  if (!ok) apartmentHolds = false;
+  zoomDetail.push(`${width}x${height} ${label} z${wide.zoom.toFixed(2)}->${near.zoom.toFixed(2)} span${span.toFixed(3)}->${closeSpan.toFixed(3)}`);
+}
+setCloseUp(false);
+globalThis.document = prevDocument;
+globalThis.window = prevWindow;
+globalThis.getComputedStyle = prevStyle;
+check("the apartment never shrinks and the default fit stays 38.9 / 28.8", apartmentHolds, zoomDetail.join(" | "));
 
 const failed = results.filter((ok) => !ok).length;
 console.log(`${results.length - failed}/${results.length}`);

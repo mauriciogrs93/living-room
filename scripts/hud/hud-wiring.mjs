@@ -753,6 +753,42 @@ try {
       await page.waitForTimeout(700);
       const zoomSettled = await page.evaluate(() => document.documentElement.dataset.roomZoom || "");
       check(`${name}: roomZoom is stable from load`, zoomLoad !== "" && zoomLoad === zoomSettled, `${zoomLoad} -> ${zoomSettled}`);
+      const expectedZoom = name === "phone" ? "38.9" : "28.8";
+      const closeBefore = await page.evaluate(() => ({
+        zoom: document.documentElement.dataset.roomZoom || "",
+        lens: document.documentElement.dataset.roomLens || "",
+        pressed: document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") || "",
+      }));
+      check(
+        `${name}: default view is ${expectedZoom} and the apartment is not shrunk`,
+        closeBefore.zoom === expectedZoom && closeBefore.pressed === "false" && Number(closeBefore.lens) >= 1 && Number(closeBefore.lens) < 1.05,
+        JSON.stringify(closeBefore),
+      );
+      await page.click("[data-ctl=view-closeup]");
+      await page.waitForFunction(() => document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "true", null, { timeout: 4000 });
+      const closeOn = await page.evaluate(() => ({
+        zoom: document.documentElement.dataset.roomZoom || "",
+        lens: document.documentElement.dataset.roomLens || "",
+        pressed: document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") || "",
+      }));
+      check(
+        `${name}: close-up keeps the fit distance and enlarges`,
+        closeOn.zoom === expectedZoom && closeOn.pressed === "true" && Number(closeOn.lens) >= 1.45,
+        JSON.stringify(closeOn),
+      );
+      await page.focus("[data-ctl=view-closeup]");
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "false", null, { timeout: 4000 });
+      const closeKeyed = await page.evaluate(() => ({
+        zoom: document.documentElement.dataset.roomZoom || "",
+        lens: document.documentElement.dataset.roomLens || "",
+        pressed: document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") || "",
+      }));
+      check(
+        `${name}: close-up toggles from the keyboard and the fit returns`,
+        closeKeyed.pressed === "false" && closeKeyed.zoom === expectedZoom && Number(closeKeyed.lens) >= 1 && Number(closeKeyed.lens) < 1.05,
+        JSON.stringify(closeKeyed),
+      );
       for (const ctl of ["rail-tv", "rail-radio", "nav-you"]) {
         const dot = await page.evaluate((id) => {
           const btn = document.querySelector(`[data-ctl="${id}"]`);

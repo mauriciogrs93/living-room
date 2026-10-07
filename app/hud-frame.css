@@ -63,6 +63,24 @@
 }
 .hudf-signout { margin: 0; }
 .hudf-stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; border-radius: 12px; overflow: hidden; background: #e4d7c6; box-shadow: inset 0 0 0 1px var(--line); }
+.hudf-closeup {
+  position: absolute;
+  z-index: 6;
+  top: 8px;
+  right: 8px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: #f7f4ee;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: auto;
+}
+.hudf-closeup[aria-pressed="true"] { background: #2b2d31; color: #f7f4ee; border-color: #2b2d31; }
 .hudf-stage .room-stage-slot, .hudf-stage canvas { width: 100%; height: 100%; }
 .hudf.is-sheet .hudf-stage,
 .hudf.is-sheet .hudf-rail,

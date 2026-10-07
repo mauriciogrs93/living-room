@@ -26,6 +26,7 @@ import { SHADOW_LAYER } from "./maquette/kit";
 import { GEO, MAQUETTE } from "./maquette/config";
 import { FRONT } from "./maquette/shell";
 import { camPreset, fitCamera, noteLineupBox } from "./frame-zoom";
+import { HouseWeather } from "./maquette/weather-scene";
 export { camPreset, DEFAULT_CAM } from "./frame-zoom";
 
 /**
@@ -368,33 +369,6 @@ export function lightGrade(hour: number, sky: string, night: boolean): Grade {
   if (sky === "snow") g = { ...g, sun: cool(g.sun, "#EEF2F7", 0.7), sunI: g.sunI * 0.45, hemiI: g.hemiI * 1.45, sky: "#E8EDF3", shadowR: 10, paper: g.paper && cool(g.paper, "#E6E9ED", 0.7) };
   if (!night && g.paper) g = { ...g, paper: "#D0CDC6" };
   return g;
-}
-
-/**
- * Draft 7 option D: a soft ground the plinth stands on, fading into the paper (one draw call, unlit MeshBasicMaterial; no sun-shadow receive, the contact shadow grounds it).
- * Keep receiveShadow OFF: with it on, the stair throws a striped, detached shadow across the ground (Designer, v20).
- */
-function GroundPlane({ grade }: { grade: Grade }) {
-  const mat = useMemo(() => {
-    // v20 (Designer BLOCK fix): unlit, so the amber golden-hour key can't paint an orange disc. toneMapped off so the
-    // ground is the page paper itself (the clear colour is not tone-mapped either), just 5% darker, at every hour/weather.
-    const m = new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, depthWrite: false, toneMapped: false });
-    m.onBeforeCompile = (sh) => {
-      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec2 vGp;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvGp = position.xy;");
-      sh.fragmentShader = sh.fragmentShader
-        .replace("#include <common>", "#include <common>\nvarying vec2 vGp;")
-        .replace("#include <alphamap_fragment>", "#include <alphamap_fragment>\ndiffuseColor.a *= 1.0 - smoothstep(2.4, 8.0, length(vGp));");
-    };
-    return m;
-  }, []);
-  useEffect(() => {
-    mat.color.set(grade.paper ?? "#2B2D31").offsetHSL(0, -0.02, grade.paper ? -0.05 : 0.03);
-  }, [mat, grade.paper]);
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.1, -0.362, 0.6]} material={mat} renderOrder={-1} raycast={() => null} userData={{ noContact: true, skipContact: true }}>
-      <circleGeometry args={[11, 48]} />
-    </mesh>
-  );
 }
 
 /**
@@ -752,9 +726,11 @@ function FixedCamera({ floor }: { floor: FloorName | null }) {
         timer = window.setTimeout(apply, 50);
       };
       window.addEventListener("resize", onResize);
+      window.addEventListener("hud-closeup", apply);
       return () => {
         window.clearTimeout(timer);
         window.removeEventListener("resize", onResize);
+        window.removeEventListener("hud-closeup", apply);
       };
     }
     const refit = () => {
@@ -765,10 +741,12 @@ function FixedCamera({ floor }: { floor: FloorName | null }) {
     refit();
     window.addEventListener("maquette-layout", refit);
     window.addEventListener("hashchange", refit);
+    window.addEventListener("hud-closeup", refit);
     return () => {
       timers.forEach((t) => window.clearTimeout(t));
       window.removeEventListener("maquette-layout", refit);
       window.removeEventListener("hashchange", refit);
+      window.removeEventListener("hud-closeup", refit);
     };
   }, [camera, size.width, size.height, floor, invalidate]);
   return null;
@@ -1042,7 +1020,7 @@ export function RoomCanvas({
                   onSelect={onSelectAgent}
                 />
                 <ContactShadows bakeKey={bakeKey} night={night} lift={lift} />
-                {camPreset()?.ground && <GroundPlane grade={grade} />}
+                <HouseWeather phone={phone} />
                 <LabelSpacing />
                 <HudAnchors snapshot={snapshot} />
                 {hero != null ? <HeroCamera who={hero} agents={snapshot.agents} /> : <FixedCamera floor={floor} />}
