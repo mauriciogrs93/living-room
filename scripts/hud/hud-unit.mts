@@ -8,6 +8,9 @@ import { anchorLift, windowAnchor } from "../../lib/room/anchor-heights";
 import { HUD_CONTROLS, houseControls, yoursCards, yoursControls } from "../../components/hud/frame/controls";
 import { cleanHud, httpLink, httpsUrl } from "../../components/hud/frame/sanitize";
 import * as strings from "../../components/hud/frame/strings";
+import { FALLBACK_STATIONS } from "../../lib/room/house";
+import { forecastUrlAllowed } from "../../lib/room/house-sky";
+import { watchEmbed } from "../../lib/room/watch-live";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -48,9 +51,17 @@ check("httpsUrl keeps only https", httpsUrl("https://example.com/a") === "https:
 check("httpLink allows http and https", httpLink("http://example.com/a") === "http://example.com/a" && httpLink("https://example.com/b") === "https://example.com/b" && httpLink("ftp://example.com") === "");
 
 const text = Object.values(strings).map((item) => (typeof item === "function" ? item("Jazz") : item)).join("\n");
+const stringBody = text.replaceAll("Plays from YouTube.", "");
 for (const banned of ["Open-Meteo", "17TRACK", "Spotify", "YouTube", "youtube", "ytimg", "TODO-WRITER"]) {
-  check(`HUD strings have no ${banned}`, !text.includes(banned));
+  check(`HUD strings have no ${banned}`, !stringBody.includes(banned));
 }
+check("watch live copy is the ship line", strings.WATCH_LIVE === "Watch live" && strings.PLAYS_FROM_YOUTUBE === "Plays from YouTube." && strings.SKY_FOLLOWS === "The sky follows the house.");
+const embed = watchEmbed(5);
+check("watch embed is the nocookie host", embed.startsWith("https://www.youtube-nocookie.com/embed/") && !embed.includes("ytimg") && !embed.includes("www.youtube.com/"));
+check("unknown channels do not invent an embed", watchEmbed(0) === "" && watchEmbed(9) === "");
+check("forecast hosts stay on the weather service", forecastUrlAllowed("https://api.weather.gov/gridpoints/OKX/33,37/forecast") && !forecastUrlAllowed("http://api.weather.gov/forecast") && !forecastUrlAllowed("https://evil.example/forecast"));
+check("curated stations are https and not SomaFM", FALLBACK_STATIONS.length >= 2 && FALLBACK_STATIONS.every((station) => station.url.startsWith("https://") && !/somafm/i.test(station.url + station.name)));
+check("computer search is a local control", HUD_CONTROLS["computer-search"]?.effect === "device:apartment-search" && HUD_CONTROLS["computer-screen"]?.effect === "open:computer" && HUD_CONTROLS["tv-watch"]?.effect === "device:watch-live");
 
 const ownerHouse = houseControls("owner", { radioTune: true, tvChannel: true }, 4);
 const ownerPlain = houseControls("owner", { radioTune: false, tvChannel: false }, 4);
@@ -79,9 +90,11 @@ const files: string[] = [];
 const root = path.resolve(import.meta.dirname, "../..");
 for (const dir of ["app", "components", "lib"]) walk(path.join(root, dir), files);
 const bannedSource = ["Open-Meteo", "17TRACK", "ytimg", "youtube-nocookie", "fonts.googleapis", "TODO-WRITER", "navigator.geolocation"];
+const nocookieFile = path.join(root, "lib/room/watch-live.ts");
 for (const file of files) {
   const body = readFileSync(file, "utf8");
   for (const word of bannedSource) {
+    if (word === "youtube-nocookie" && file === nocookieFile) continue;
     if (body.includes(word)) check(`shipped source has no ${word}`, false, path.relative(root, file));
   }
 }

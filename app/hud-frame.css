@@ -153,3 +153,218 @@
 @media (prefers-reduced-motion: reduce) {
   .hudf, .hudf-card, .hudf-pill { transition: none; }
 }
+
+/* Draft 5c: the room is the whole viewport. Chrome floats. Opening a card never insets the stage. */
+.hudf {
+  display: block;
+  padding: 0;
+  gap: 0;
+  background: rgb(208, 205, 198);
+}
+.hudf-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: rgb(208, 205, 198);
+}
+.hudf-tape {
+  position: absolute;
+  z-index: 52;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: visible;
+  background: #2b2d31;
+  color: #f5f2eb;
+}
+.hudf-tape button {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  color: #f5f2eb;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.hudf-marquee {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.hudf-marquee span {
+  display: inline-block;
+  padding-left: 100%;
+  animation: hudf-marquee 32s linear infinite;
+}
+@keyframes hudf-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+.hudf-top {
+  position: absolute;
+  z-index: 50;
+  top: 48px;
+  left: 8px;
+  right: 8px;
+  width: auto;
+  min-height: 46px;
+  padding: 4px 8px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(248, 246, 241, 0.94);
+  flex-wrap: nowrap;
+}
+.hudf-rail {
+  position: absolute;
+  z-index: 50;
+  top: 108px;
+  right: 8px;
+  width: 56px;
+  background: transparent;
+  justify-content: flex-start;
+}
+.hudf-rail button {
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  min-height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(248, 246, 241, 0.94);
+}
+.hudf-rail button.is-on { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.hudf-here {
+  position: absolute;
+  z-index: 51;
+  left: 8px;
+  bottom: calc(8px + 56px + 8px + 44px + 8px);
+  width: 112px;
+  height: 44px;
+  background: rgba(248, 246, 241, 0.94);
+}
+.hudf-bot {
+  position: absolute;
+  z-index: 50;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hudf-strips { display: flex; flex-direction: column; gap: 8px; }
+.hudf-strip { background: rgba(248, 246, 241, 0.94); }
+.hudf-strip.is-task { margin-left: 120px; }
+.hudf-nav {
+  background: rgba(248, 246, 241, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  min-height: 56px;
+}
+.hudf-nav button {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 11px;
+  font-weight: 600;
+}
+.hudf.is-tucked .hudf-tape,
+.hudf.is-tucked .hudf-rail,
+.hudf.is-tucked .hudf-here,
+.hudf.is-tucked .hudf-bot { display: none; }
+.hudf.is-tucked .hudf-pill {
+  display: flex;
+  position: absolute;
+  z-index: 50;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+}
+.hudf-card.is-sheet { top: 104px; }
+.hudf-card.is-float {
+  top: 108px;
+  right: 84px;
+  max-height: calc(100% - 250px);
+}
+.hudf-well {
+  width: 100%;
+  height: 168px;
+  border: 0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hudf-well .hudf-watch {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 12px;
+}
+.hudf-watch-btn {
+  position: relative;
+  z-index: 1;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 22px;
+  background: rgba(43, 45, 49, 0.78);
+  color: #f5f2eb;
+  font-weight: 600;
+}
+.hudf-search {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #faf8f3;
+  font: inherit;
+  color: inherit;
+}
+.hudf-rain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(100deg, transparent 0 10px, rgba(43, 45, 49, 0.08) 10px 11px);
+}
+@media (min-width: 720px) {
+  .hudf-stage { position: absolute; inset: 0; }
+  .hudf-here {
+    top: 108px;
+    bottom: auto;
+    left: 12px;
+    width: 44px;
+    height: auto;
+    min-height: 88px;
+    padding: 12px 0;
+    flex-direction: column;
+  }
+  .hudf-strip.is-task { margin-left: 0; }
+  .hudf-bot {
+    left: 72px;
+    right: 12px;
+    bottom: 12px;
+    flex-direction: row;
+    align-items: flex-end;
+  }
+  .hudf-strips { flex: 1; min-width: 0; }
+  .hudf-nav { flex: none; min-width: 280px; }
+  .hudf-rail { right: 12px; top: 108px; }
+  .hudf-top { left: 12px; right: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hudf-marquee span { animation: none; padding-left: 0; }
+}

@@ -16,8 +16,10 @@ import { OWNER_BADGE, SIGN_OUT, WATCH_LEAVE } from "@/lib/auth/strings";
 import { houseClockLabel, houseDateKey, sunriseTime, sunsetTime } from "@/lib/house-clock";
 import { CHANNELS, channelById, outsideView } from "@/lib/room/content";
 import type { PublicAgent } from "@/lib/room/types";
+import { clearWatch, holdWatch } from "./one-player";
 import { cleanHud, httpLink, httpsUrl } from "./sanitize";
 import { YOURS_CARDS, yoursCards } from "./controls";
+import { WatchFrame } from "./watch-frame";
 import {
   ACTION_FAIL,
   ACTIVITY,
@@ -31,6 +33,10 @@ import {
   HOUSE,
   LOOK_OUTSIDE,
   MUTE,
+  PLAYS_FROM_YOUTUBE,
+  SEARCH_APARTMENT,
+  SEARCH_EMPTY,
+  SKY_FOLLOWS,
   NEXT,
   NIGHT,
   OFFLINE,
@@ -54,6 +60,7 @@ import {
   TV_OFF,
   TV_OFF_WATCH,
   UNMUTE,
+  WATCH_LIVE,
   WATCH_YOU,
 } from "./strings";
 import "@/app/hud-frame.css";
@@ -68,6 +75,7 @@ export function frameKnown(id: string) {
     id === "radio" ||
     id === "tv" ||
     id === "sky" ||
+    id === "computer" ||
     id === "here" ||
     id === "activity" ||
     id === "invite" ||
@@ -101,7 +109,7 @@ function shownId(section: string | null) {
 
 export function HudFrame({ role, model, section, open, close, children, overlay }: FrameProps) {
   const shown = shownId(section);
-  const { muted, toggleMute, hear } = useAmbience();
+  const { muted, toggleMute, hear, stopRadio } = useAmbience();
   const { place, clock, dusk, night } = useAtmosphere();
   const [sheet, setSheet] = useState(false);
   const [tablet, setTablet] = useState(false);
@@ -114,6 +122,8 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const [actionNote, setActionNote] = useState("");
   const [seenToday, setSeenToday] = useState(0);
   const [ring, setRing] = useState<{ x: number; y: number } | null>(null);
+  const [watchOn, setWatchOn] = useState(false);
+  const [skyReport, setSkyReport] = useState<{ summary: string | null; temp: string | null; rain: boolean } | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -160,6 +170,34 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       setSeenToday(0);
     }
   }, []);
+
+  useEffect(() => {
+    let gone = false;
+    fetch("/api/sky")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { ok?: boolean; summary?: unknown; temp?: unknown; rain?: unknown } | null) => {
+        if (gone || !data?.ok) return;
+        setSkyReport({
+          summary: typeof data.summary === "string" ? data.summary : null,
+          temp: typeof data.temp === "string" ? data.temp : null,
+          rain: data.rain === true,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      gone = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setWatchOn(false);
+  }, [shown, tv.power, tv.channelId]);
+
+  useEffect(() => {
+    if (!watchOn) return;
+    holdWatch(() => setWatchOn(false));
+    return () => clearWatch();
+  }, [watchOn]);
 
   useEffect(() => {
     if (shown !== "today" || !latest) return;
@@ -346,7 +384,13 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
     else toggleMute();
   }
 
+  function goLive() {
+    stopRadio();
+    setWatchOn(true);
+  }
+
   const skyWord = night ? NIGHT : dusk ? DUSK : DAY;
+  const tapeItems = [sunLine, ...tv.headlines.map((item) => headlineTitle(item))].filter((line) => line && !/youtube|watch live|°/i.test(line));
   const cardClass = `hudf-card${sheet ? " is-sheet" : " is-float"}${tablet ? " is-tablet" : ""}`;
   const rootClass = `room-root hudf${night ? " is-night" : ""}${sheet && shown ? " is-sheet" : ""}${tucked ? " is-tucked" : ""}${short ? " is-short" : ""}`;
 
@@ -436,19 +480,33 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         )}
         {shown === "tv" && (
           <>
-            <div className="hudf-row">
-              <div className="hudf-screen" style={{ ["--a" as string]: channel.accent, ["--c" as string]: channel.color }}>
-                <b>{tv.name || channel.name}</b>
-                {!tv.power ? <em>{TV_OFF}</em> : null}
-              </div>
-              {owner ? (
-                <button type="button" className="hudf-play is-sec" data-ctl="tv-power" onClick={() => void postTap({ id: "tv" })}>
-                  {tv.power ? TURN_OFF : TURN_ON}
-                </button>
+            <div className="hudf-screen hudf-well" style={{ ["--a" as string]: channel.accent, ["--c" as string]: channel.color }}>
+              {watchOn && tv.power ? (
+                <WatchFrame channelId={channel.id} />
               ) : (
-                <p className="is-info hudf-quiet">{tv.power ? tv.name || channel.name : TV_OFF_WATCH}</p>
+                <>
+                  <b>{tv.name || channel.name}</b>
+                  {!tv.power ? <em>{TV_OFF}</em> : null}
+                  {tv.power ? (
+                    <button type="button" className="hudf-watch-btn" data-ctl="tv-watch" onClick={goLive}>
+                      {WATCH_LIVE}
+                    </button>
+                  ) : null}
+                </>
               )}
             </div>
+            <p className="is-info">
+              {tv.name || channel.name}
+              {tv.power ? ` · ${PLAYING}` : ""}
+            </p>
+            {watchOn && tv.power ? <p className="is-info hudf-quiet">{PLAYS_FROM_YOUTUBE}</p> : null}
+            {owner ? (
+              <button type="button" className="hudf-play is-sec" data-ctl="tv-power" onClick={() => void postTap({ id: "tv" })}>
+                {tv.power ? TURN_OFF : TURN_ON}
+              </button>
+            ) : (
+              <p className="is-info hudf-quiet">{tv.power ? tv.name || channel.name : TV_OFF_WATCH}</p>
+            )}
             <div className={`hudf-chips${short ? " is-snap" : ""}`}>
               {CHANNELS.map((item) =>
                 owner && MAQUETTE.hudAdditions.tvChannel ? (
@@ -471,6 +529,13 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
               {place}
               {clock ? ` · ${clock}` : ""} · {skyWord}
             </p>
+            <p className="is-info hudf-quiet">{SKY_FOLLOWS}</p>
+            {skyReport?.summary ? (
+              <p className="is-info">
+                {skyReport.summary}
+                {skyReport.temp ? ` · ${skyReport.temp}` : ""}
+              </p>
+            ) : null}
             <p className="is-info hudf-quiet">{view}</p>
             {owner ? (
               <button type="button" className="hudf-play is-sec" data-ctl="sky-look" onClick={() => void postTap({ id: "window" })}>
@@ -484,6 +549,15 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         {shown === "people" && owner ? <DoorSection model={model} /> : null}
         {shown === "activity" && <ActivitySection model={model} watcher={!owner} />}
         {shown === "invite" && owner ? <InviteSection model={model} /> : null}
+        {shown === "computer" && (
+          <ApartmentSearch
+            place={place}
+            sunLine={sunLine}
+            stations={stations}
+            agents={agents.map((agent) => cleanHud(agent.name, 40))}
+            headlines={tv.headlines.map((item) => headlineTitle(item))}
+          />
+        )}
         {yoursCard ? <p className="is-info hudf-quiet">{COMING_SOON}</p> : null}
         {shown === "you" && (
           <>
@@ -526,6 +600,16 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         if (!next || next.closest(".hudf-stage") || !rootRef.current?.contains(next)) setHot(false);
       }}
     >
+      {tapeItems.length ? (
+        <div className="hudf-tape" data-chrome="">
+          <button type="button" data-ctl="tape-today" onClick={(event) => toggle("today", event)}>
+            Today
+          </button>
+          <p className="hudf-marquee">
+            <span>{tapeItems.join("   ·   ")}</span>
+          </p>
+        </div>
+      ) : null}
       <header className="hudf-top" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <div className="hudf-title is-info">
           <b>{owner ? TITLE_OWNER : TITLE_WATCH}</b>
@@ -549,6 +633,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         }}
       >
         {children}
+        {skyReport?.rain ? <div className="hudf-rain" aria-hidden /> : null}
         {!sheet ? card : null}
       </div>
       <div className="hudf-rail" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
@@ -682,6 +767,53 @@ function HereList({ model, agents }: { model: HudModel; agents: PublicAgent[] })
   );
 }
 
+function headlineTitle(item: unknown) {
+  if (!item || typeof item !== "object") return "";
+  return cleanHud((item as { title?: unknown }).title, 90);
+}
+
+function ApartmentSearch({
+  place,
+  sunLine,
+  stations,
+  agents,
+  headlines,
+}: {
+  place: string;
+  sunLine: string;
+  stations: string[];
+  agents: string[];
+  headlines: string[];
+}) {
+  const [query, setQuery] = useState("");
+  const pool = [place, sunLine, ...stations, ...agents, ...headlines, ...CHANNELS.map((item) => item.name)].filter(Boolean);
+  const needle = query.trim().toLowerCase();
+  const hits = (needle ? pool.filter((item) => item.toLowerCase().includes(needle)) : pool).slice(0, 8);
+  return (
+    <>
+      <label className="hudf-quiet" htmlFor="apt-search">
+        {SEARCH_APARTMENT}
+      </label>
+      <input
+        id="apt-search"
+        className="hudf-search"
+        data-ctl="computer-search"
+        value={query}
+        placeholder={SEARCH_APARTMENT}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <div className="hudf-list">
+        {hits.map((hit) => (
+          <div key={hit} className="is-info">
+            {hit}
+          </div>
+        ))}
+        {needle && hits.length === 0 ? <p className="is-info hudf-quiet">{SEARCH_EMPTY}</p> : null}
+      </div>
+    </>
+  );
+}
+
 function Headline({ item }: { item: unknown }) {
   if (!item || typeof item !== "object") return null;
   const record = item as { title?: unknown; source?: unknown; link?: unknown };
@@ -716,6 +848,7 @@ function cardTitle(shown: string, channelName: string) {
   if (shown === "radio") return "Radio";
   if (shown === "tv") return channelName ? `TV · ${channelName}` : "TV";
   if (shown === "sky") return "Sky";
+  if (shown === "computer") return "Computer";
   if (shown === "here") return HERE;
   if (shown === "activity") return ACTIVITY;
   if (shown === "invite") return "Invite";

@@ -142,11 +142,20 @@ try {
     check(`${name}: owner title`, (await page.locator(".hudf-title b").innerText()) === "Your apartment");
     const loadedOutside = bag.outside.length;
     check(`${name}: no outside request on load`, loadedOutside === 0, bag.outside.join(" "));
+    check(`${name}: no forbidden origin on first paint`, bag.aborted.length === 0, bag.aborted.join(" "));
+    const stageOf = () => page.evaluate(() => {
+      const stage = document.querySelector(".hudf-stage")?.getBoundingClientRect();
+      return stage ? { x: Math.round(stage.x), y: Math.round(stage.y), w: Math.round(stage.width), h: Math.round(stage.height) } : null;
+    });
+    const stageBefore = await stageOf();
     const before = await canvasBox(page);
     await clickCtl(page, "rail-today", "owner", name);
     await page.waitForSelector(".hudf-card h2");
     const after = await canvasBox(page);
+    const stageAfter = await stageOf();
     check(`${name}: opening Today does not resize the canvas`, Boolean(before && after && before.w === after.w && before.h === after.h), `${before?.w}x${before?.h} -> ${after?.w}x${after?.h}`);
+    check(`${name}: stage rect is unchanged when Today opens`, Boolean(stageBefore && stageAfter && JSON.stringify(stageBefore) === JSON.stringify(stageAfter)), `${stageBefore?.w}x${stageBefore?.h} -> ${stageAfter?.w}x${stageAfter?.h}`);
+    check(`${name}: stage is the full viewport`, Boolean(stageBefore && stageBefore.x === 0 && stageBefore.y === 0 && stageBefore.w === width && stageBefore.h === height), JSON.stringify(stageBefore));
     const sheet = (await page.locator(".hudf.is-sheet").count()) > 0;
     const scrim = (await page.locator("[data-ctl=sheet-scrim]").count()) > 0;
     const floating = (await page.locator(".hudf-card.is-float").count()) > 0;
@@ -179,7 +188,20 @@ try {
       await clickCtl(page, "tv-chip-3", "owner", name);
       await page.waitForTimeout(300);
       check("phone: a channel chip calls tap", bag.api.some((line) => line.includes("/api/tap")));
-      await page.keyboard.press("Escape");
+      const canvasLive = await canvasBox(page);
+      const stageLive = await stageOf();
+      check("phone: no watch iframe before Watch live", (await page.locator("iframe.hudf-watch").count()) === 0);
+      await page.waitForSelector("[data-ctl=tv-watch]", { timeout: 8000 });
+      await clickCtl(page, "tv-watch", "owner", name);
+      await page.waitForSelector("iframe.hudf-watch", { timeout: 4000 });
+      const src = await page.locator("iframe.hudf-watch").getAttribute("src");
+      check("phone: Watch live uses the nocookie host", Boolean(src && src.startsWith("https://www.youtube-nocookie.com/embed/") && !src.includes("ytimg") && !src.includes("www.youtube.com/")), src || "");
+      const canvasHeld = await canvasBox(page);
+      const stageHeld = await stageOf();
+      check("phone: Watch live does not resize the canvas", Boolean(canvasLive && canvasHeld && canvasLive.w === canvasHeld.w && canvasLive.h === canvasHeld.h), `${canvasLive?.w}x${canvasLive?.h} -> ${canvasHeld?.w}x${canvasHeld?.h}`);
+      check("phone: Watch live does not move the stage", Boolean(stageLive && stageHeld && JSON.stringify(stageLive) === JSON.stringify(stageHeld)));
+      await clickCtl(page, "card-close", "owner", name);
+      check("phone: Close removes the watch iframe", (await page.locator("iframe.hudf-watch").count()) === 0);
       const minted = await page.evaluate(async () => {
         const res = await fetch("/api/apartment/invite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "watch" }) });
         const body = await res.json();

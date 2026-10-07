@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useAmbience } from "@/components/room/ambience";
 import { useAtmosphere } from "@/components/room/atmosphere";
 import { MAQUETTE } from "@/components/room/maquette/config";
+import { releaseWatch } from "@/components/hud/frame/one-player";
 import type { LiveSnapshot } from "@/components/use-room";
 
 type Intent = "on" | "off" | "next" | "prev" | "tune";
@@ -63,6 +64,7 @@ export function RadioBridge({ snapshot }: { snapshot: LiveSnapshot | null }) {
             notice("stream");
             return;
           }
+          releaseWatch();
           heard.current = true;
           hear(data.url);
         }

@@ -17,8 +17,8 @@ export const FOOD = ["eggs", "an orange", "milk", "bread", "a cookie"];
 
 export const FALLBACK_STATIONS: RadioStation[] = [
   { name: "Radio Paradise", url: "https://stream.radioparadise.com/aac-320" },
-  { name: "SomaFM Groove Salad", url: "https://ice6.somafm.com/groovesalad-128-mp3" },
-  { name: "SomaFM Drone Zone", url: "https://ice6.somafm.com/dronezone-128-mp3" },
+  { name: "KEXP", url: "https://kexp-mp3-128.streamguys1.com/kexp128.mp3" },
+  { name: "FIP", url: "https://icecast.radiofrance.fr/fip-midfi.mp3" },
 ];
 
 export type DogMemory = {

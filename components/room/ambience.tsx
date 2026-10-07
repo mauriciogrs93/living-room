@@ -215,7 +215,12 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
       void audio.play().catch(() => setHearing(false));
     },
     stopRadio: () => {
-      audioRef.current?.pause();
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      }
       setHearing(false);
       heardUrl.current = "";
     },

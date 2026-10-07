@@ -603,6 +603,7 @@ export function lightGrade(hour: number, sky: string, night: boolean): Grade {
   if (sky === "rain") g = { ...g, sun: cool(g.sun, "#C9D3E0", 0.75), sunI: g.sunI * 0.32, hemiI: g.hemiI * 1.3, sky: cool(g.sky, "#AEB8C6", 0.7), ground: cool(g.ground, "#8E8E8C", 0.5), fill: "#B8C4D4", shadowR: 11, drift: 0.12, paper: g.paper && cool(g.paper, "#C9CDD2", 0.75), exposure: g.exposure - 0.04 };
   if (sky === "fog") g = { ...g, sun: cool(g.sun, "#F0F0EE", 0.7), sunI: g.sunI * 0.35, hemiI: g.hemiI * 1.55, sky: "#E6E6E3", shadowR: 12, paper: g.paper && cool(g.paper, "#DEDDDA", 0.8), fog: g.paper && cool(g.paper, "#E4E3E0", 0.85) };
   if (sky === "snow") g = { ...g, sun: cool(g.sun, "#EEF2F7", 0.7), sunI: g.sunI * 0.45, hemiI: g.hemiI * 1.45, sky: "#E8EDF3", shadowR: 10, paper: g.paper && cool(g.paper, "#E6E9ED", 0.7) };
+  if (!night && g.paper) g = { ...g, paper: "#D0CDC6" };
   return g;
 }
 
