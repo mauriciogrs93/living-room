@@ -60,6 +60,7 @@ export function DoorSection({ model }: { model: HudModel }) {
             className="hud-chip door-more-btn"
             aria-label="More"
             aria-expanded={menu}
+            data-ctl="door-menu"
             onClick={() => setMenu((open) => !open)}
           >
             ⋯
@@ -67,11 +68,11 @@ export function DoorSection({ model }: { model: HudModel }) {
           {menu ? (
             <div className="door-menu" role="menu">
               {paused ? (
-                <button type="button" role="menuitem" onClick={() => { setMenu(false); void run("resume"); }}>
+                <button type="button" role="menuitem" data-ctl="door-resume" onClick={() => { setMenu(false); void run("resume"); }}>
                   <span>Resume invites</span>
                 </button>
               ) : (
-                <button type="button" role="menuitem" onClick={() => { setMenu(false); setPhase("idle"); void run("pause"); }}>
+                <button type="button" role="menuitem" data-ctl="door-pause" onClick={() => { setMenu(false); setPhase("idle"); void run("pause"); }}>
                   <span>Pause invites</span>
                   <small>Old invites stop working.</small>
                 </button>
@@ -82,10 +83,8 @@ export function DoorSection({ model }: { model: HudModel }) {
       </div>
       {paused ? (
         <div className="hud-row door-paused">
-          <button type="button" className="hud-chip door-invite" disabled aria-disabled="true">
-            Invites paused
-          </button>
-          <button type="button" className="door-link" onClick={() => void run("resume")}>
+          <p className="hud-quiet">Invites paused</p>
+          <button type="button" className="door-link" data-ctl="door-resume" onClick={() => void run("resume")}>
             Resume
           </button>
         </div>
@@ -94,6 +93,7 @@ export function DoorSection({ model }: { model: HudModel }) {
           type="button"
           className={`hud-chip is-solid door-invite${phase === "busy" ? " is-busy" : ""}`}
           onClick={invite}
+          data-ctl="door-invite"
           aria-busy={phase === "busy"}
         >
           {phase === "busy" ? <span className="door-spin" aria-hidden /> : null}
@@ -109,7 +109,7 @@ export function DoorSection({ model }: { model: HudModel }) {
           </p>
         </div>
       ) : null}
-      <button type="button" className="door-link" aria-expanded={people} onClick={() => setPeople((open) => !open)}>
+      <button type="button" className="door-link" data-ctl="door-people" aria-expanded={people} onClick={() => setPeople((open) => !open)}>
         People
       </button>
       {people ? (
@@ -121,10 +121,10 @@ export function DoorSection({ model }: { model: HudModel }) {
               <p className="hud-line">
                 {person.emoji} {person.name}
               </p>
-              <button type="button" className="hud-chip" onClick={() => void run("trust", person.id)}>
+              <button type="button" className="hud-chip" data-ctl="door-trust" onClick={() => void run("trust", person.id)}>
                 Trust
               </button>
-              <button type="button" className="hud-chip" onClick={() => void run("remove", person.id)}>
+              <button type="button" className="hud-chip" data-ctl="door-remove" onClick={() => void run("remove", person.id)}>
                 Remove
               </button>
             </div>
@@ -135,7 +135,7 @@ export function DoorSection({ model }: { model: HudModel }) {
               <p className="hud-line">
                 {person.emoji} {person.name}
               </p>
-              <button type="button" className="hud-chip" onClick={() => void run("untrust", person.id)}>
+              <button type="button" className="hud-chip" data-ctl="door-untrust" onClick={() => void run("untrust", person.id)}>
                 Remove
               </button>
             </div>
@@ -146,7 +146,7 @@ export function DoorSection({ model }: { model: HudModel }) {
               <p className="hud-line">
                 {person.emoji} {person.name}
               </p>
-              <button type="button" className="hud-chip" onClick={() => void run("unblock", person.id)}>
+              <button type="button" className="hud-chip" data-ctl="door-unblock" onClick={() => void run("unblock", person.id)}>
                 Unblock
               </button>
             </div>

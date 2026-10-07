@@ -35,7 +35,7 @@ export function BookReader({ onClose }: { onClose: () => void }) {
       <div className="book-card flex max-h-[min(78dvh,640px)] w-full max-w-[420px] flex-col">
         <div className="flex items-center justify-between gap-3 px-5 pt-4">
           <p className="book-kicker">THE SHELF · BOOKSHELF B–2</p>
-          <button type="button" className="book-btn" onClick={onClose}>
+          <button type="button" className="book-btn" data-ctl="book-close" onClick={onClose}>
             CLOSE
           </button>
         </div>
@@ -50,6 +50,7 @@ export function BookReader({ onClose }: { onClose: () => void }) {
                   key={item.id}
                   type="button"
                   className={`book-chip${itemIndex === index ? " is-on" : ""}`}
+                  data-ctl="book-open"
                   onClick={() => {
                     setIndex(itemIndex);
                     setPage(0);
@@ -64,7 +65,7 @@ export function BookReader({ onClose }: { onClose: () => void }) {
               <p className="mt-4 text-[15px] leading-relaxed whitespace-pre-wrap">{text}</p>
             </article>
             <div className="book-foot flex items-center justify-between px-5 pb-4">
-              <button type="button" className="h-11 px-1 disabled:opacity-30" disabled={page <= 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>
+              <button type="button" className="h-11 px-1 disabled:opacity-30" data-ctl="book-prev" disabled={page <= 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>
                 PREVIOUS
               </button>
               <span>
@@ -73,6 +74,7 @@ export function BookReader({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 className="h-11 px-1 disabled:opacity-30"
+                data-ctl="book-next"
                 disabled={page >= pages.length - 1}
                 onClick={() => setPage((current) => current + 1)}
               >

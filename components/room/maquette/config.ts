@@ -23,6 +23,12 @@ export const MAQUETTE = {
   sunElevationDeg: 40,
   /** Figures are 1.16x the prototype units, so a standing hip lands on the engine's 0.72 m hip height. */
   figureScale: 1.16,
+  /** HUD frame. `false` keeps the v21 card and the "N HERE" button. */
+  hudFrame: true,
+  /** Yours cards (title, "Coming soon.", close). Hidden while this is false. */
+  yoursComingSoon: false,
+  /** Additions A and B. When false, previous and the station rows and channel chips are info, not controls. */
+  hudAdditions: { radioTune: true, tvChannel: true },
 } as const;
 
 /** Palette A "Zurich" + the spec PBR matrix (founder-spec.md). Hex only, no bitmaps anywhere. */

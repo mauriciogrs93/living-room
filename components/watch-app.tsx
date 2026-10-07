@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Ambience } from "./room/ambience";
 import { AtmosphereProvider, useAtmosphere } from "./room/atmosphere";
 import { BookReader } from "./room/house-ui";
@@ -13,6 +13,7 @@ import { useRoom } from "./use-room";
 import { signOut } from "./account/me";
 import { OWNER_BADGE, SIGN_OUT, WATCH_LEAVE } from "@/lib/auth/strings";
 import { HudChrome } from "./hud/chrome";
+import { frameKnown, HudFrame } from "./hud/frame/frame";
 import { useHudHash } from "./hud/hash";
 import type { HudModel } from "./hud/model";
 import { RadioBridge, tapRadio } from "./hud/radio";
@@ -20,6 +21,7 @@ import { sectionKnown } from "./hud/registry";
 import { hudTokens } from "./hud/tokens";
 import { WhisperLayer } from "./hud/whispers";
 import { MAQUETTE } from "./room/maquette/config";
+import { OwnerOnlyToast, setCardTaps, setViewerRole, tapDog } from "./room/viewer-tap";
 import type { DoorMeshProps } from "./room/maquette/door-mesh";
 
 const RoomCanvas = dynamic(() => import("@/components/room/room-canvas").then((mod) => mod.RoomCanvas), {
@@ -42,7 +44,14 @@ export function WatchApp({ origin = "", role = "owner" }: { origin?: string; rol
 function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "owner" | "watch" }) {
   const { snapshot, status } = useRoom();
   const { night } = useAtmosphere();
-  const hud = useHudHash(sectionKnown);
+  const known = useCallback((id: string) => {
+    if (!MAQUETTE.hudFrame) return sectionKnown(id);
+    if (!MAQUETTE.yoursComingSoon && id.startsWith("yours-")) return false;
+    if (role === "watch" && (id === "invite" || id.startsWith("yours-"))) return false;
+    return frameKnown(id);
+  }, [role]);
+  const hud = useHudHash(known);
+  if (MAQUETTE.hudFrame && typeof document !== "undefined") document.documentElement.dataset.hudFrame = "1";
   const [now, setNow] = useState(() => Date.now());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [readerOpen, setReaderOpen] = useState(false);
@@ -57,16 +66,35 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
     return () => clearInterval(timer);
   }, []);
 
+  useLayoutEffect(() => {
+    if (!MAQUETTE.hudFrame) return;
+    document.documentElement.dataset.hudFrame = "1";
+    return () => {
+      delete document.documentElement.dataset.hudFrame;
+    };
+  }, []);
+
+  useEffect(() => {
+    setViewerRole(role);
+    if (!MAQUETTE.hudFrame) {
+      setCardTaps(false);
+      return;
+    }
+    setCardTaps(true, (id) => hud.open(id));
+    return () => setCardTaps(false);
+  }, [role, hud.open]);
+
   // Desktop width toggle (undecided by the Founder): open the room card on first load on desktop when the flag is on.
   const opened = useRef(false);
   useEffect(() => {
-    if (opened.current) return;
+    if (MAQUETTE.hudFrame || opened.current) return;
     opened.current = true;
     if (MAQUETTE.desktopCardOpenByDefault && window.innerWidth >= 800 && !window.location.hash) hud.open("now");
   }, [hud]);
 
-  // The camera frames the house into the space the card leaves; phone notes yield to an open sheet.
+  // The old card narrows the camera. The frame keeps the stage full and never sets data-card.
   useEffect(() => {
+    if (MAQUETTE.hudFrame) return;
     const root = document.documentElement;
     if (hud.section) root.dataset.card = hud.section;
     else delete root.dataset.card;
@@ -94,7 +122,11 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
         open: !publicDoor.locked,
         knocking: publicDoor.knocking || (doorAccess && ownerKnocks > 0),
         knocks: doorAccess ? ownerKnocks : 0,
-        onTap: doorAccess ? () => hud.open("door") : undefined,
+        onTap: MAQUETTE.hudFrame
+          ? () => hud.open(role === "owner" ? "people" : "here")
+          : doorAccess
+            ? () => hud.open("door")
+            : undefined,
       }
     : null;
 
@@ -109,6 +141,54 @@ function RoomWatch({ origin = "", role = "owner" }: { origin?: string; role?: "o
     diaryOpen,
     setDiaryOpen,
   };
+
+  const stage = (
+    <div className="room-stage-slot absolute inset-0">
+      {snapshot ? (
+        <RoomStageBoundary fallback={<HouseFallback agents={snapshot.agents} />}>
+          <RoomCanvas
+            snapshot={snapshot}
+            selectedId={selectedId}
+            onSelectAgent={selectAgent}
+            deck="min"
+            door={door}
+            onOpenBooks={() => setReaderOpen(true)}
+            onTapRadio={() => (MAQUETTE.hudFrame ? hud.open("radio") : tapRadio("on"))}
+            onTapDog={() => {
+              if (MAQUETTE.hudFrame) tapDog();
+              else void fetch("/api/dog", { method: "POST" });
+            }}
+          />
+        </RoomStageBoundary>
+      ) : (
+        <HouseFallback />
+      )}
+    </div>
+  );
+
+  if (MAQUETTE.hudFrame) {
+    return (
+      <Ambience snapshot={snapshot}>
+        <RadioBridge snapshot={snapshot} />
+        <HudFrame
+          role={role}
+          model={model}
+          section={hud.section}
+          open={hud.open}
+          close={hud.close}
+          overlay={
+            <>
+              <GlobalTape />
+              <OwnerOnlyToast />
+              {readerOpen && <BookReader onClose={() => setReaderOpen(false)} />}
+            </>
+          }
+        >
+          {stage}
+        </HudFrame>
+      </Ambience>
+    );
+  }
 
   return (
     <Ambience snapshot={snapshot}>

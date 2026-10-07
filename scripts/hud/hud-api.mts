@@ -13,25 +13,30 @@ function check(name: string, ok: unknown) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}`);
 }
 
-const { RoomEngine } = await import("../../lib/room/engine.ts");
-const { directory } = await import("../../lib/apartments/directory.ts");
-const { freshApartmentState, mintWatch, redeemWatch, WATCH_COOKIE, roomFor } = await import("../../lib/apartments/resolve.ts");
-const { POST: radioPost } = await import("../../app/api/radio/route.ts");
-const { POST: tapPost } = await import("../../app/api/tap/route.ts");
+const { RoomEngine } = await import("../../lib/room/engine");
+const { directory } = await import("../../lib/apartments/directory");
+const { freshApartmentState, mintWatch, redeemWatch, WATCH_COOKIE, roomFor } = await import("../../lib/apartments/resolve");
+const { POST: radioPost } = await import("../../app/api/radio/route");
+const { POST: tapPost } = await import("../../app/api/tap/route");
 
 const engine = new RoomEngine();
-const start = engine.house.radioIndex;
+const internals = engine as unknown as {
+  house: { radioIndex: number; radioOn: boolean; stations: { name: string }[] };
+  objects: Map<string, { state: { power?: boolean; channel?: number; channelName?: string } }>;
+  events: { text: string }[];
+};
+const start = internals.house.radioIndex;
 const prev = engine.controlRadio("prev");
-check("owner prev turns the radio on and steps back", prev.ok === true && engine.house.radioOn && engine.house.radioIndex === start - 1);
+check("owner prev turns the radio on and steps back", prev.ok === true && internals.house.radioOn && internals.house.radioIndex === start - 1);
 const tuned = engine.controlRadio("tune", undefined, 1);
-check("owner tune sets that station", tuned.ok === true && engine.house.radioOn && engine.house.radioIndex === 1 && tuned.ok && tuned.name.length > 0);
+check("owner tune sets that station", tuned.ok === true && internals.house.radioOn && internals.house.radioIndex === 1 && tuned.ok && tuned.name.length > 0);
 const snap = engine.snapshot();
 check("snapshot lists station names and the index", Array.isArray(snap.radio.stations) && snap.radio.stations.length >= 2 && snap.radio.index === 1 && snap.radio.stations.every((name) => !name.includes("http")));
 
-const index = engine.house.radioIndex;
-for (const station of [-1, engine.house.stations.length, 1.5, "1", null, undefined]) {
+const index = internals.house.radioIndex;
+for (const station of [-1, internals.house.stations.length, 1.5, "1", null, undefined]) {
   const bad = engine.controlRadio("tune", undefined, station);
-  check(`tune ${String(station)} is 400`, bad.ok === false && bad.ok === false && "status" in bad && bad.status === 400 && engine.house.radioIndex === index);
+  check(`tune ${String(station)} is 400`, bad.ok === false && bad.ok === false && "status" in bad && bad.status === 400 && internals.house.radioIndex === index);
 }
 
 const on = engine.controlRadio("on");
@@ -40,18 +45,18 @@ const next = engine.controlRadio("next");
 check("on off next still work", on.ok && off.ok && off.on === false && next.ok && next.on === true);
 
 const channel = engine.setTvChannel(3);
-const tv = engine.objects.get("tv");
+const tv = internals.objects.get("tv");
 check("owner channel 3 turns the TV on", channel.ok === true && tv?.state.power === true && tv?.state.channel === 3 && tv?.state.channelName === "Cartoon Hour");
-const logged = engine.events.some((event) => event.text === "A viewer switched the television to Cartoon Hour.");
+const logged = internals.events.some((event) => event.text === "A viewer switched the television to Cartoon Hour.");
 check("channel log keeps the viewer line", logged);
 const power = tv?.state.power;
 engine.viewerTap({ id: "tv" });
-check("plain tv tap still toggles power", engine.objects.get("tv")?.state.power === !power);
+check("plain tv tap still toggles power", internals.objects.get("tv")?.state.power === !power);
 
 for (const n of [0, 6, 2.5, "3"]) {
-  const before = engine.objects.get("tv")?.state.channel;
+  const before = internals.objects.get("tv")?.state.channel;
   const bad = engine.setTvChannel(n);
-  check(`channel ${String(n)} is 400`, bad.ok === false && "status" in bad && bad.status === 400 && engine.objects.get("tv")?.state.channel === before);
+  check(`channel ${String(n)} is 400`, bad.ok === false && "status" in bad && bad.status === 400 && internals.objects.get("tv")?.state.channel === before);
 }
 
 let blocked: { ok: boolean; retryAfter: number } = { ok: true, retryAfter: 0 };

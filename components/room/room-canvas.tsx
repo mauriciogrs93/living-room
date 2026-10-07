@@ -92,6 +92,9 @@ function safeInsets() {
  * (or the open Tonight sheet), the "N HERE" button, the room card, plus safe-area insets. Works for any viewport.
  */
 function freeRect(W: number, H: number) {
+  if (typeof document !== "undefined" && document.documentElement.dataset.hudFrame === "1") {
+    return { x: 4, y: 4, w: Math.max(160, W - 8), h: Math.max(160, H - 8) };
+  }
   const phone = W < 800;
   const safe = safeInsets();
   const rect = (sel: string) => {
@@ -268,7 +271,7 @@ function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number, floor:
   }
   // phones, full view: the model is usually width-bound, so balance the leftover height: slide it down until the gap
   // under the plinth matches the gap above the walls, as long as no plinth point lands on the "N HERE" button
-  if (!floor && W < 800) {
+  if (!floor && W < 800 && document.documentElement.dataset.hudFrame !== "1") {
     const visible = (sel: string) => {
       const b = document.querySelector<HTMLElement>(sel)?.getBoundingClientRect();
       return b && b.height > 0 && b.width > 0 ? b : null;
@@ -839,12 +842,17 @@ function FixedCamera({ floor }: { floor: FloorName | null }) {
       timers = [90, 260, 520].map((ms) => window.setTimeout(fit, ms));
     };
     refit();
-    window.addEventListener("maquette-layout", refit);
-    window.addEventListener("hashchange", refit);
+    const frameOn = document.documentElement.dataset.hudFrame === "1";
+    if (frameOn) window.addEventListener("hud-stage", refit);
+    else {
+      window.addEventListener("maquette-layout", refit);
+      window.addEventListener("hashchange", refit);
+    }
     return () => {
       timers.forEach((t) => window.clearTimeout(t));
       window.removeEventListener("maquette-layout", refit);
       window.removeEventListener("hashchange", refit);
+      window.removeEventListener("hud-stage", refit);
     };
   }, [camera, size.width, size.height, floor, invalidate]);
   return null;

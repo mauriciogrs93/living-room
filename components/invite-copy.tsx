@@ -122,6 +122,7 @@ function OwnerCopy({ variant }: { variant: "landing" | "hud" }) {
         className={variant === "landing" ? "invite-copy mono" : "hud-chip is-solid invite-copy-hud"}
         onClick={copy}
         aria-busy={busy}
+        data-ctl={variant === "hud" ? "bring-agent" : undefined}
       >
         {busy ? <span className="copy-spin" aria-hidden /> : phase === "copied" ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
         {variant === "landing" ? label.toUpperCase() : label}

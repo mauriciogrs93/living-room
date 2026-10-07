@@ -10,7 +10,7 @@ import type { HudModel } from "../model";
 import { ACTIVITY_LIMIT } from "../tokens";
 import { mutedHex } from "@/components/room/maquette/color";
 
-export function ActivitySection({ model }: { model: HudModel }) {
+export function ActivitySection({ model, watcher = false }: { model: HudModel; watcher?: boolean }) {
   const agents = model.snapshot?.agents ?? [];
   const events = [...(model.snapshot?.events ?? [])].reverse().slice(0, ACTIVITY_LIMIT);
   const selected = agents.find((agent) => agent.id === model.selectedId) ?? null;
@@ -25,7 +25,7 @@ export function ActivitySection({ model }: { model: HudModel }) {
           </p>
           <p className="hud-quiet">{selected.status}</p>
           {selected.speech && <p className="hud-quiet">“{selected.speech.text}”</p>}
-          <button type="button" className="hud-text" onClick={() => model.selectAgent(selected.id)}>
+          <button type="button" className="hud-text" data-ctl="activity-close" onClick={() => model.selectAgent(selected.id)}>
             Close
           </button>
         </div>
@@ -34,18 +34,22 @@ export function ActivitySection({ model }: { model: HudModel }) {
       <StatusLine snapshot={model.snapshot} />
       <p className="hud-kicker">Latest</p>
       <OwnerActivity events={events} now={model.now} />
-      <button type="button" className="hud-chip" onClick={() => model.setDiaryOpen(!model.diaryOpen)}>
+      <button type="button" className="hud-chip" data-ctl="activity-diary" onClick={() => model.setDiaryOpen(!model.diaryOpen)}>
         {model.diaryOpen ? "Hide the diary" : "Open the diary"}
       </button>
       {model.diaryOpen && <DiaryList lines={model.snapshot?.diary ?? []} now={model.now} />}
-      <button type="button" className="hud-chip" onClick={model.openBooks}>
+      <button type="button" className="hud-chip" data-ctl="activity-books" onClick={model.openBooks}>
         Read the shelf
       </button>
-      <p className="hud-kicker">Bring your agent</p>
-      <BringYourAgent variant="hud" />
-      <Link href="/" className="hud-text">
-        Front door
-      </Link>
+      {watcher ? null : (
+        <>
+          <p className="hud-kicker">Bring your agent</p>
+          <BringYourAgent variant="hud" />
+          <Link href="/" className="hud-text" data-ctl="activity-door">
+            Front door
+          </Link>
+        </>
+      )}
     </div>
   );
 }
@@ -67,6 +71,7 @@ function AgentList({
           <button
             type="button"
             className={`hud-person-btn${agent.id === selectedId ? " is-on" : ""}`}
+            data-ctl="activity-agent"
             onClick={() => onFocus(agent.id)}
           >
             <span className="hud-swatch" style={{ background: mutedHex(agent.color) }} />

@@ -72,7 +72,7 @@ function CopyField({
         {shown?.value ?? "\u00a0"}
       </p>
       <div className="invite-copy-row">
-        <button type="button" className="hud-chip is-solid invite-copy-hud" onClick={onCopy} aria-busy={phase === "busy"}>
+        <button type="button" className="hud-chip is-solid invite-copy-hud" data-ctl={kind === "line" ? "invite-copy-line" : "invite-copy-watch"} onClick={onCopy} aria-busy={phase === "busy"}>
           {phase === "busy" ? <span className="copy-spin" aria-hidden /> : phase === "copied" ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
           {phase === "copied" ? "Copied" : "Copy"}
         </button>
@@ -252,7 +252,7 @@ export function InviteSection({ model }: { model: HudModel }) {
       <p className="hud-quiet invite-intro">Copy one and send it right away. Each works once.</p>
       <CopyField label="Invite an agent" kind="line" shown={shown.line} phase={phase.line} updated={isUpdated("line")} onCopy={() => copy("line")} />
       <CopyField label="Let a person watch" kind="watch" shown={shown.watch} phase={phase.watch} updated={isUpdated("watch")} onCopy={() => copy("watch")}>
-        <button type="button" className="invite-revoke mono" onClick={() => void endWatchLinks()} data-watch-revoke="">
+        <button type="button" className="invite-revoke mono" onClick={() => void endWatchLinks()} data-watch-revoke="" data-ctl="invite-revoke">
           {WATCH_REVOKE_BUTTON}
         </button>
         {revokeNote ? (

@@ -282,7 +282,7 @@ function SendHome({ name }: { name: string }) {
     <div className="hud-stack" data-send-home={step}>
       <p className="hud-kicker">Send {name} home</p>
       {step === "ask" && (
-        <button type="button" className="hud-chip" onClick={() => setStep("confirm")}>
+        <button type="button" className="hud-chip" data-ctl="note-ask" onClick={() => setStep("confirm")}>
           Send {name} home
         </button>
       )}
@@ -290,13 +290,13 @@ function SendHome({ name }: { name: string }) {
         <>
           <p className="hud-line">Send {name} home now? They can come back with this same link.</p>
           <div className="hud-row" style={{ flexWrap: "wrap" }}>
-            <button type="button" className="hud-chip is-solid" onClick={() => void go(false)}>
+            <button type="button" className="hud-chip is-solid" data-ctl="note-home" onClick={() => void go(false)}>
               Send home
             </button>
-            <button type="button" className="hud-chip" onClick={() => void go(true)}>
+            <button type="button" className="hud-chip" data-ctl="note-block" onClick={() => void go(true)}>
               Block
             </button>
-            <button type="button" className="hud-chip" onClick={() => setStep("ask")}>
+            <button type="button" className="hud-chip" data-ctl="note-back" onClick={() => setStep("ask")}>
               Cancel
             </button>
           </div>
@@ -385,7 +385,7 @@ export function OwnerThread() {
             placeholder="Put the kettle on."
           />
           <div className="hud-row">
-            <button type="submit" className="hud-chip is-solid" disabled={tone === "sending" || full || message.trim().length === 0}>
+            <button type="submit" className="hud-chip is-solid" data-ctl="note-send" disabled={tone === "sending" || full || message.trim().length === 0}>
               {tone === "sending" ? "Sending…" : "Send"}
             </button>
             <p className="hud-quiet">

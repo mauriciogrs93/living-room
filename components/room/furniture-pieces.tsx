@@ -83,8 +83,8 @@ function SofaModel() {
   return (
     <Tap
       onTap={() => {
+        if (!tapObject("sofa")) return;
         puffCushion();
-        tapObject("sofa");
         say("Cushion fluffed");
       }}
     >
@@ -103,9 +103,9 @@ function TvModel({ state }: { state: Record<string, unknown> }) {
   return (
     <Tap
       onTap={() => {
+        if (!tapObject("tv")) return;
         const next = !power;
         setPower(next);
-        tapObject("tv");
         say(next ? "Television on" : "Television off");
       }}
     >
@@ -129,10 +129,10 @@ function LampModel({ id, on: serverOn, onLabel, offLabel }: { id: string; on: bo
   return (
     <Tap
       onTap={() => {
+        if (!tapObject(id)) return;
         const next = !on;
         setOn(next);
         setLightOn(id, next);
-        tapObject(id);
         say(next ? onLabel : offLabel);
       }}
     >
@@ -158,8 +158,8 @@ function FridgeModel({ state }: { state: Record<string, unknown> }) {
   return (
     <Tap
       onTap={() => {
+        if (!tapObject("fridge")) return;
         peekFridge();
-        tapObject("fridge");
         say(openUntil > Date.now() || fridgeUntil > Date.now() ? "Fridge shut" : "Fridge open");
       }}
     >
@@ -181,9 +181,9 @@ function ShelfModel() {
   return (
     <Tap
       onTap={() => {
+        if (!tapObject("bookshelf")) return;
         toggleBook();
         onOpenBooks();
-        tapObject("bookshelf");
         say(bookOut ? "Book slid back" : "A book slides out");
       }}
     >
@@ -206,9 +206,9 @@ function SinkModel({ running: serverOn }: { running: boolean }) {
   return (
     <Tap
       onTap={() => {
+        if (!tapObject("sink")) return;
         const next = !running;
         setRunning(next);
-        tapObject("sink");
         say(next ? "Tap running" : "Tap off");
       }}
     >
@@ -228,9 +228,9 @@ function StoveModel({ hot: serverOn }: { hot: boolean }) {
   return (
     <Tap
       onTap={() => {
+        if (!tapObject("stove")) return;
         const next = !hot;
         setHot(next);
-        tapObject("stove");
         say(next ? "Stove on" : "Stove off");
       }}
     >
@@ -259,7 +259,7 @@ function GrowingPlant({ stage }: { stage: number }) {
       position={[0, 0, 0]}
       scale={scale}
       onTap={() => {
-        tapObject("plant");
+        if (!tapObject("plant")) return;
         say("Plant watered");
       }}
     />
@@ -326,9 +326,9 @@ function KettleModel({ heating: serverOn }: { heating: boolean }) {
   return (
     <Tap
       onTap={() => {
+        if (!tapObject("kettle")) return;
         const next = !heating;
         setHeating(next);
-        tapObject("kettle");
         say(next ? "Kettle on" : "Kettle quiet");
       }}
     >
@@ -362,10 +362,10 @@ function SwitchTap({ id, on: serverOn, wallDz }: { id: string; on: boolean; wall
   return (
     <Tap
       onTap={() => {
+        if (!tapObject(id)) return;
         const next = !on;
         setOn(next);
         setLightOn(id, next);
-        tapObject(id);
         say(next ? `${name} on` : `${name} off`);
       }}
     >
@@ -393,9 +393,9 @@ function WardrobeTap({ open: serverOn }: { open: boolean }) {
   return (
     <Tap
       onTap={() => {
+        if (!tapObject("wardrobe")) return;
         const next = !open;
         setOpen(next);
-        tapObject("wardrobe");
         say(next ? "Wardrobe open" : "Wardrobe shut");
       }}
     >
@@ -411,7 +411,7 @@ function DogBedTap() {
   return (
     <Tap
       onTap={() => {
-        tapObject("dog-bed");
+        if (!tapObject("dog-bed")) return;
         say("Dog bed");
       }}
     >

@@ -218,8 +218,8 @@ function MaquetteWindow({ position, w, h, catalog = false }: { position: [number
   return (
     <Tap
       onTap={() => {
+        if (catalog && !tapObject("window")) return;
         toggleCurtains();
-        if (catalog) tapObject("window");
         say(curtainsOpen ? "Curtains drawn" : "Curtains open");
       }}
     >

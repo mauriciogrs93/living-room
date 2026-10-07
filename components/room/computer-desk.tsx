@@ -68,6 +68,7 @@ export function DeskModel({ state }: { state: Record<string, unknown> }) {
     button.type = "button";
     button.className = "computer-hit";
     button.setAttribute("aria-label", "Look at the computer screen");
+    button.dataset.ctl = "computer-screen";
     host.appendChild(button);
     hit.current = button;
     return () => {
@@ -77,8 +78,8 @@ export function DeskModel({ state }: { state: Record<string, unknown> }) {
   }, [gl]);
 
   const open = useCallback(() => {
+    if (!tapObject("computer")) return;
     const next = !power;
-    tapObject("computer");
     show({
       user,
       mode: next ? (mode === "off" ? "browse" : mode) : "off",
