@@ -183,7 +183,8 @@ try {
     await owner.setViewportSize({ width, height });
     await shot(owner, width, height, "owner", "tucked");
   }
-  await owner.goto("about:blank", { waitUntil: "commit" });
+  // The Playwright clock is still installed, and navigating about:blank does not commit while it is.
+  await owner.close();
   await watcher.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await watcher.evaluate(() => localStorage.setItem("lr-hud-seen", "1"));
   await watcher.clock.install();
