@@ -21,7 +21,7 @@ const check = (name, ok, detail = "") => {
 const ALLOW = new Set([
   "sign-in", "show-password", "magic", "create-account", "magic-submit", "back-to-password",
   "resend", "different-email", "back-to-signin", "create-submit", "save-password", "not-now",
-  "offer-show", "you-set-password", "sign-out", "leave",
+  "offer-show", "offer-scrim", "offer-close", "you-set-password", "sign-out", "leave",
 ]);
 
 const browser = await chromium.launch({ executablePath: CHROME, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
@@ -132,10 +132,10 @@ try {
   await page.waitForSelector("[data-password-saved]", { timeout: 15000 });
   check("Save password confirms and mentions other devices", (await page.locator("[data-password-saved]").innerText()) === "Password saved. You're signed out on your other devices.");
   await page.waitForSelector("[data-password-offer]", { state: "detached", timeout: 5000 });
-  const badge = await page.locator("[data-auth-control=sign-out]").boundingBox();
-  const badgeColor = await page.locator("[data-auth-control=sign-out]").evaluate((el) => getComputedStyle(el).color);
+  const badge = await page.locator("[data-ctl=signout]").boundingBox();
+  const badgeColor = await page.locator("[data-ctl=signout]").evaluate((el) => getComputedStyle(el).color);
   check("Sign out is at least 44px and not red", Boolean(badge) && badge.height >= 44 && badgeColor !== "rgb(163, 58, 28)", badgeColor);
-  await page.click("[data-auth-control=sign-out]");
+  await page.click("[data-ctl=signout]");
   await page.waitForSelector("[data-signin]", { timeout: 15000 });
   check("after Sign out the page says you're signed out", (await page.locator(".signin-note").innerText()).includes("You're signed out."));
   await page.fill("#signin-email", linkEmail);
