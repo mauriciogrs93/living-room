@@ -1,0 +1,33 @@
+const I={
+today:'<path d="M5 7h14v12H5z"/><path d="M5 10.5h14M9 4.5v4M15 4.5v4"/><path d="M12 13l.9 1.8 2 .3-1.45 1.4.35 2-1.8-.95-1.8.95.35-2L9.1 15.1l2-.3z"/>',
+radio:'<rect x="4" y="8" width="16" height="11" rx="2"/><path d="M8 8l8-4"/><circle cx="15.5" cy="13.5" r="2.6"/><path d="M7 12h3M7 15h3"/>',
+tv:'<rect x="3.5" y="5.5" width="17" height="11" rx="1.6"/><path d="M9 20h6M12 16.5V20"/><path d="M10.5 9v4l3.5-2z"/>',
+sky:'<circle cx="9" cy="9" r="3"/><path d="M9 3.5v1.2M3.5 9h1.2M5.1 5.1l.85.85M12.9 5.1l-.85.85"/><path d="M8 19h9a3.2 3.2 0 0 0 .3-6.4A4.5 4.5 0 0 0 9 14.2 2.4 2.4 0 0 0 8 19z"/>',
+box:'<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8M8 6l8 4"/>',
+music:'<path d="M9 17V6l10-2v11"/><circle cx="6.8" cy="17" r="2.2"/><circle cx="16.8" cy="15" r="2.2"/>',
+city:'<path d="M3.5 20h17"/><path d="M5 20V10h5v10M10 20V5.5h6V20M16 20v-7h3.5v7"/><path d="M12.2 9h1.6M12.2 12h1.6M12.2 15h1.6M7 13h1M7 16h1"/>',
+people:'<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="16.5" cy="9.5" r="2.4"/><path d="M15.5 14.2A4.5 4.5 0 0 1 20.5 19"/>',
+eye:'<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
+clock:'<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
+rain:'<path d="M7 15h10a3.2 3.2 0 0 0 .3-6.4A4.5 4.5 0 0 0 8.6 9.8 2.6 2.6 0 0 0 7 15z"/><path d="M9 17.5l-.8 2M12.5 17.5l-.8 2M16 17.5l-.8 2"/>',
+house:'<path d="M4 11l8-6.5 8 6.5"/><path d="M6 9.5V19h12V9.5"/><path d="M10 19v-5h4v5"/>',
+activity:'<path d="M3.5 12h4l2-5 4 10 2-5h5"/>',
+invite:'<path d="M6 4h12v16H6z"/><circle cx="14.5" cy="12" r=".9" fill="currentColor"/><path d="M3 20h18"/>',
+me:'<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+chev:'<path d="M10 7l5 5-5 5"/>',
+chevup:'<path d="M7 14l5-5 5 5"/>',
+chevdown:'<path d="M7 10l5 5 5-5"/>',
+lock:'<rect x="6" y="11" width="12" height="9" rx="2"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>',
+task:'<path d="M5 12.5l4 4 10-10"/>',
+chat:'<path d="M4 6h16v10H10l-4 3.5V16H4z"/>',
+crown:'<path d="M4 17l1.5-9 4.5 4 2-6 2 6 4.5-4L20 17z"/>',
+stop:'<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/>',
+play:'<path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/>',
+close:'<path d="M7 7l10 10M17 7L7 17"/>',
+prev:'<path d="M15 6l-6 6 6 6"/>',
+next:'<path d="M9 6l6 6-6 6"/>',
+vol:'<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10"/>',
+eq:'<path d="M6 18v-6M10 18V8M14 18v-8M18 18V6"/>'
+};
+function svg(n,s){return `<svg width="${s}" height="${s}" viewBox="0 0 24 24">${I[n]}</svg>`}
+document.querySelectorAll('[data-i]').forEach(e=>{e.insertAdjacentHTML('afterbegin',svg(e.dataset.i,+(e.dataset.s||22)))});
