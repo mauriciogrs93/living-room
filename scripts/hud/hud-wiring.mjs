@@ -400,8 +400,16 @@ async function activityPin(page, size) {
       return { x: box.x, y: box.y, hidden: node.hidden };
     }, joined.id);
     await page.click("[data-ctl=view-closeup]");
-    await page.waitForFunction(() => document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "true", null, { timeout: 4000 });
-    await page.waitForTimeout(250);
+    await page.waitForFunction(
+      (arg) => {
+        const node = document.querySelector(`[data-agent-id="${arg.id}"]`);
+        if (!node || node.hidden) return false;
+        const box = node.getBoundingClientRect();
+        return Math.hypot(box.x - arg.x, box.y - arg.y) >= 8;
+      },
+      { id: joined.id, x: parked.x, y: parked.y },
+      { timeout: 8000 },
+    );
     const followed = await page.evaluate((id) => {
       const node = document.querySelector(`[data-agent-id="${id}"]`);
       if (!node) return null;
@@ -421,8 +429,16 @@ async function activityPin(page, size) {
       JSON.stringify({ parked, followed, followDelta }),
     );
     await page.click("[data-ctl=view-closeup]");
-    await page.waitForFunction(() => document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "false", null, { timeout: 4000 });
-    await page.waitForTimeout(250);
+    await page.waitForFunction(
+      (arg) => {
+        const node = document.querySelector(`[data-agent-id="${arg.id}"]`);
+        if (!node) return false;
+        const box = node.getBoundingClientRect();
+        return Math.hypot(box.x - arg.x, box.y - arg.y) <= 12;
+      },
+      { id: joined.id, x: parked.x, y: parked.y },
+      { timeout: 8000 },
+    );
     const restored = await page.evaluate((id) => {
       const node = document.querySelector(`[data-agent-id="${id}"]`);
       if (!node) return null;

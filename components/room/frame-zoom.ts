@@ -125,8 +125,7 @@ export function hudSafeRect(W: number, H: number): ScreenRect {
   const here = shownChrome(".hudf-here");
   const bot = shownChrome(".hudf-bot");
   const pill = shownChrome(".hudf-pill");
-  const rail = shownChrome(".hudf-rail");
-  const measured = Boolean(tape || title || here || bot || pill || rail);
+  const measured = Boolean(tape || title || here || bot || pill);
   let top = phone ? 102 : 36;
   let bottom = phone ? H - 176 : H - 68;
   let left = 8;
@@ -141,7 +140,6 @@ export function hudSafeRect(W: number, H: number): ScreenRect {
     if (pill && pill.top > H * 0.5) floors.push(pill.top);
     if (here && here.top > H * 0.45) floors.push(here.top);
     if (floors.length) bottom = Math.min(bottom, Math.min(...floors) - gap);
-    if (rail && rail.left > W * 0.6) right = Math.min(right, rail.left - gap);
     if (here && here.right < W * 0.45 && here.top < bottom && here.bottom > top) left = Math.max(left, here.right + gap);
   }
   const w = Math.max(120, right - left);
