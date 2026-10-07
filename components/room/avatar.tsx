@@ -625,7 +625,8 @@ export const AgentAvatar = memo(function AgentAvatar({
     }
     if (ring.current) {
       ring.current.position.set(staged.x, lift + 0.008, staged.z);
-      ring.current.visible = focused && !agent.lie && !agent.away;
+      const material = ring.current.material as MeshBasicMaterial;
+      ring.current.visible = focused && !agent.lie && !agent.away && material.userData.tapReady === true;
     }
     const label = stack.current;
     const host = gl.domElement.parentElement;
@@ -885,7 +886,7 @@ export const AgentAvatar = memo(function AgentAvatar({
       <mesh name="avatar-blob" ref={shadow} frustumCulled={false} rotation={[-Math.PI / 2, 0, 0]} position={[agent.position.x, 0.006, agent.position.z]} material={blob} renderOrder={2} raycast={() => null}>
         <planeGeometry args={[0.8 * FIG * 1.12, 0.8 * FIG * 1.12]} />
       </mesh>
-      <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[agent.position.x, 0.008, agent.position.z]} renderOrder={3} raycast={() => null} material={ringMat(night)}>
+      <mesh name="selection-ring" ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[agent.position.x, 0.008, agent.position.z]} renderOrder={3} raycast={() => null} material={ringMat(night)}>
         <ringGeometry args={[0.3, 0.325, 48]} />
       </mesh>
       <group

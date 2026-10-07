@@ -10,9 +10,21 @@ import type { HudModel } from "../model";
 import { ACTIVITY_LIMIT } from "../tokens";
 import { mutedHex } from "@/components/room/maquette/color";
 import { walkedInLine } from "@/lib/room/name-tags";
+import { CLOSE } from "../frame/strings";
+
+function uniqueAgents(agents: PublicAgent[]) {
+  const seen = new Set<string>();
+  const rows: PublicAgent[] = [];
+  for (const agent of agents) {
+    if (!agent.id || seen.has(agent.id)) continue;
+    seen.add(agent.id);
+    rows.push(agent);
+  }
+  return rows;
+}
 
 export function ActivitySection({ model, watcher = false }: { model: HudModel; watcher?: boolean }) {
-  const agents = model.snapshot?.agents ?? [];
+  const agents = uniqueAgents(model.snapshot?.agents ?? []);
   const events = [...(model.snapshot?.events ?? [])].reverse().slice(0, ACTIVITY_LIMIT);
   const selected = agents.find((agent) => agent.id === model.selectedId) ?? null;
 
@@ -21,14 +33,11 @@ export function ActivitySection({ model, watcher = false }: { model: HudModel; w
       <p className="hud-kicker">In the house</p>
       {selected && (
         <div className="hud-person">
-          <p>
-            <span className="hud-swatch is-inline" style={{ background: mutedHex(selected.color) }} aria-hidden /> {selected.name}
-          </p>
+          <button type="button" className="hudf-x" data-ctl="activity-close" aria-label={CLOSE} onClick={() => model.selectAgent(selected.id)}>
+            <span aria-hidden="true">×</span>
+          </button>
           <p className="hud-quiet">{selected.status === "just walked in" ? walkedInLine(selected.name) : selected.status}</p>
           {selected.speech && <p className="hud-quiet">“{selected.speech.text}”</p>}
-          <button type="button" className="hud-text" data-ctl="activity-close" onClick={() => model.selectAgent(selected.id)}>
-            Close
-          </button>
         </div>
       )}
       <AgentList agents={agents} selectedId={model.selectedId} onFocus={model.selectAgent} />

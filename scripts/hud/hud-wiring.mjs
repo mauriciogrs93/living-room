@@ -188,7 +188,7 @@ async function stackRows(page, size) {
     btn.setAttribute("aria-label", "2 more: Ada, Bea");
     btn.textContent = "+2";
     btn.style.left = "80px";
-    btn.style.top = "140px";
+    btn.style.top = "420px";
     btn.style.pointerEvents = "auto";
     layer.append(btn);
     btn.click();
@@ -221,6 +221,81 @@ async function stackRows(page, size) {
   await page.locator("[data-stack-close]").click();
   const back = await page.evaluate(() => document.activeElement?.getAttribute("data-tag-key") || "");
   check(`${size}: × closes the list and returns to the pill`, (await page.locator("[data-name-stack]").count()) === 0 && back === "stack-test", back);
+  await page.evaluate(() => document.querySelector("[data-stack-test]")?.remove());
+}
+
+async function stackCrowd(page, size, count) {
+  const report = await page.evaluate((count) => {
+    const layer = document.querySelector("[data-name-tags]");
+    if (!layer) return { err: "no-layer" };
+    document.querySelector("[data-stack-test]")?.remove();
+    document.querySelector("[data-name-stack]")?.remove();
+    const all = ["Ada", "Bea", "Cid", "Dee", "Eve", "Fay", "Gil", "Hua", "Ian", "Jo"];
+    const names = all.slice(0, count);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "agent-tag";
+    btn.dataset.nameTag = "";
+    btn.dataset.stackTest = "";
+    btn.dataset.stackIds = names.map((_, index) => `agent-${index}`).join("\n");
+    btn.dataset.stackNames = names.join("\n");
+    btn.dataset.stackColors = names.map(() => "#6fa35a").join("\n");
+    btn.dataset.tagKey = "stack-crowd";
+    btn.setAttribute("aria-label", `${count} more: ${names.join(", ")}`);
+    btn.textContent = `+${count}`;
+    btn.style.left = "48px";
+    btn.style.top = "360px";
+    btn.style.pointerEvents = "auto";
+    layer.append(btn);
+    btn.click();
+    const menu = document.querySelector("[data-name-stack]");
+    const scroll = menu?.querySelector(".tag-stack-scroll");
+    const rows = [...(menu?.querySelectorAll("[data-stack-pick]") || [])];
+    if (!menu || !scroll) return { err: "no-menu", count: rows.length };
+    const menuBox = menu.getBoundingClientRect();
+    const pill = btn.getBoundingClientRect();
+    const port = scroll.getBoundingClientRect();
+    const obstacles = [".hudf-here", ".hudf-nav", ".hudf-toast", ".hudf-strip.is-chat", ".hudf-strip.is-task"].flatMap((sel) => {
+      const node = document.querySelector(sel);
+      if (!node) return [];
+      const box = node.getBoundingClientRect();
+      if (box.width < 1 || box.height < 1) return [];
+      return [box];
+    });
+    const overlap = obstacles.some((box) => menuBox.left < box.right && menuBox.right > box.left && menuBox.top < box.bottom && menuBox.bottom > box.top);
+    const hits = rows.map((row) => {
+      row.scrollIntoView({ block: "center" });
+      const rect = row.getBoundingClientRect();
+      const y = Math.min(port.bottom - 4, Math.max(port.top + 4, rect.top + rect.height / 2));
+      const hit = document.elementFromPoint(rect.left + 28, y);
+      return {
+        name: row.querySelector("span")?.textContent || "",
+        label: row.getAttribute("aria-label") || "",
+        h: Math.round(rect.height),
+        ok: hit === row || (hit instanceof Node && row.contains(hit)),
+      };
+    });
+    return {
+      count: rows.length,
+      hits,
+      above: Math.abs(menuBox.bottom - pill.top) <= 2,
+      inView: menuBox.top >= 0 && menuBox.left >= 0 && menuBox.right <= window.innerWidth && menuBox.bottom <= window.innerHeight,
+      overlap,
+      cap: Math.round(parseFloat(menu.style.maxHeight) || 0),
+      overflow: getComputedStyle(scroll).overflowY,
+      scrollbar: getComputedStyle(scroll).scrollbarWidth,
+      z: getComputedStyle(menu).zIndex,
+      links: menu.querySelectorAll("a").length,
+    };
+  }, count);
+  const rowsOk = Array.isArray(report.hits) && report.hits.length === count && report.hits.every((row) => row.ok && row.h >= 44 && row.name === row.label);
+  check(`${size}: ${count} stack rows scroll, hit, and stay in view`, report.count === count && report.above && report.inView && !report.overlap && report.overflow === "auto" && report.scrollbar === "none" && Number(report.z) > 60 && report.links === 0 && rowsOk, JSON.stringify(report).slice(0, 500));
+  await page.keyboard.press("Escape");
+  const back = await page.evaluate(() => ({
+    menu: document.querySelectorAll("[data-name-stack]").length,
+    focus: document.activeElement?.getAttribute("data-tag-key") || "",
+  }));
+  check(`${size}: Esc closes the crowd list and returns to the pill`, back.menu === 0 && back.focus === "stack-crowd", JSON.stringify(back));
   await page.evaluate(() => document.querySelector("[data-stack-test]")?.remove());
 }
 
@@ -301,7 +376,22 @@ try {
       const zoomSettled = await page.evaluate(() => document.documentElement.dataset.roomZoom || "");
       check(`${name}: roomZoom is stable from load`, zoomLoad !== "" && zoomLoad === zoomSettled, `${zoomLoad} -> ${zoomSettled}`);
       for (const ctl of ["rail-tv", "rail-radio", "nav-you"]) {
-        await clickCtl(page, ctl, "owner", name);
+        const dot = await page.evaluate((id) => {
+          const btn = document.querySelector(`[data-ctl="${id}"]`);
+          btn.click();
+          const after = document.querySelector(".hudf-dot");
+          const style = after ? getComputedStyle(after) : null;
+          const box = after ? after.getBoundingClientRect() : null;
+          return {
+            present: Boolean(after),
+            visibility: style?.visibility || "",
+            display: style?.display || "",
+            w: box ? Math.round(box.width) : 0,
+          };
+        }, ctl);
+        taps.push({ role: "owner", ctl, size: name, at: Date.now() });
+        const hidden = !dot.present || dot.visibility === "hidden" || dot.display === "none" || dot.w === 0;
+        check(`${name}: ${ctl} hides the rail dot at t=0`, hidden, JSON.stringify(dot));
         await page.waitForSelector(".hudf-card", { timeout: 8000 });
         const zoomOpen = await page.evaluate(() => document.documentElement.dataset.roomZoom || "");
         check(`${name}: roomZoom stays ${zoomLoad} while ${ctl} is open`, zoomOpen === zoomLoad, `${zoomLoad} -> ${zoomOpen}`);
@@ -310,6 +400,36 @@ try {
       }
       await assertCatalog(page, "owner", name);
       await stackRows(page, name);
+      await stackCrowd(page, name, 9);
+      await stackCrowd(page, name, 8);
+      const away = await page.evaluate(() => {
+        const layer = document.querySelector("[data-name-tags]");
+        if (!layer) return { err: "no-layer" };
+        document.querySelector("[data-name-stack]")?.remove();
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "agent-tag";
+        btn.dataset.nameTag = "";
+        btn.dataset.stackIds = "agent-ada\nagent-bea";
+        btn.dataset.stackNames = "Ada\nBea";
+        btn.dataset.stackIdle = "0\n1";
+        btn.dataset.stackColors = "#6fa35a\n#3c6d94";
+        btn.dataset.tagKey = "stack-away";
+        btn.style.left = "48px";
+        btn.style.top = "360px";
+        layer.append(btn);
+        btn.click();
+        const row = document.querySelector("[data-stack-pick='agent-bea']");
+        const text = row?.querySelector("span")?.textContent || "";
+        return { text, label: row?.getAttribute("aria-label") || "", html: row?.querySelector("span")?.innerHTML || "" };
+      });
+      check(`${size}: an away stack row is plain text`, away.text === "Bea · Away" && away.label === "Bea · Away" && away.html === "Bea · Away", JSON.stringify(away));
+      await page.click("[data-ctl=nav-activity]");
+      const closed = await page.evaluate(() => document.querySelectorAll("[data-name-stack]").length);
+      check(`${size}: opening Activity closes the +N list`, closed === 0, String(closed));
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+      await page.evaluate(() => document.querySelector("[data-tag-key='stack-away']")?.remove());
       await missBesideTag(page, "owner", name, "object:tv", "card");
     }
     check(`${name}: owner title`, (await page.locator(".hudf-title b").innerText()) === "Your apartment");
@@ -419,7 +539,7 @@ try {
         btn.style.top = "360px";
         layer.append(btn);
         btn.click();
-        const menu = layer.querySelector("[data-name-stack]");
+        const menu = document.querySelector("[data-name-stack]");
         const labels = [...(menu?.querySelectorAll("[data-stack-pick] span") ?? [])].map((node) => node.textContent);
         const item = menu?.querySelector("button");
         return {

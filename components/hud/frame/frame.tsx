@@ -9,6 +9,7 @@ import { MAQUETTE } from "@/components/room/maquette/config";
 import { anchorPoint } from "@/components/hud/anchors";
 import type { HudModel } from "@/components/hud/model";
 import { onRadioNotice, tapRadio } from "@/components/hud/radio";
+import { unmuteFromStationTap } from "@/components/room/ambience";
 import { ActivitySection } from "@/components/hud/sections/activity";
 import { DoorSection } from "@/components/hud/sections/door";
 import { InviteSection } from "@/components/hud/sections/invite";
@@ -236,6 +237,11 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
     }
     setPortalHost(watchOn ? wellRef.current : parkRef.current);
   }, [watchLive, watchOn, shown]);
+
+  useEffect(() => {
+    if (!shown) return;
+    window.dispatchEvent(new Event("hud-sheet"));
+  }, [shown]);
 
   useEffect(() => {
     if (shown !== "today" || !latest) return;
@@ -514,7 +520,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
             <div className="hudf-list">
               {stations.map((name, index) =>
                 owner && tune ? (
-                  <button key={name + index} type="button" data-ctl={`radio-row-${index}`} className={index === radio?.index ? "is-on" : ""} onClick={() => tapRadio("tune", index)}>
+                  <button key={name + index} type="button" data-ctl={`radio-row-${index}`} className={index === radio?.index ? "is-on" : ""} onClick={() => { unmuteFromStationTap(); tapRadio("tune", index); }}>
                     {name}
                   </button>
                 ) : owner ? (
@@ -698,7 +704,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
       </div>
       <div className="hudf-rail" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <p className="is-info mono">{HOUSE}</p>
-        <Rail id="today" label="Today" on={shown === "today"} dot={dot} onClick={(event) => toggle("today", event)} />
+        <Rail id="today" label="Today" on={shown === "today"} dot={dot && shown !== "tv" && shown !== "radio" && shown !== "you"} onClick={(event) => toggle("today", event)} />
         <Rail id="radio" label="Radio" on={shown === "radio"} bars={Boolean(radio?.on)} paused={Boolean(radio?.on && muted)} onClick={(event) => toggle("radio", event)} />
         <Rail id="tv" label="TV" on={shown === "tv"} onClick={(event) => toggle("tv", event)} />
         <Rail id="sky" label="Sky" on={shown === "sky"} onClick={(event) => toggle("sky", event)} />

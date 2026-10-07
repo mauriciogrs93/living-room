@@ -5,7 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { Box3, Vector3, type Camera, type Object3D } from "three";
 import type { PublicAgent } from "@/lib/room/types";
 import { stagePose } from "@/lib/room/layout";
-import { TAG_H, fitTagBoxes, placeTags, plainName, type MeasuredTag, type TagOut, type TagPoint, type TagRect } from "@/lib/room/name-tags";
+import { TAG_H, fitTagBoxes, placeTags, stackListBox, stackRowCopy, type MeasuredTag, type StackBand, type TagOut, type TagPoint, type TagRect } from "@/lib/room/name-tags";
 import { mutedHex } from "./maquette/color";
 
 const MAX = 32;
@@ -16,7 +16,7 @@ const BLOCKS: TagRect[] = [];
 const SIG = new Int32Array(MAX * 3 + 8);
 for (let i = 0; i < MAX; i += 1) {
   POINTS.push({ id: "", x: 0, y: 0, depth: 0, name: "", idle: false, color: "" });
-  OUTS.push({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "", who: "", ids: "", dots: "" });
+  OUTS.push({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "", who: "", ids: "", dots: "", away: "" });
 }
 for (let i = 0; i < 24; i += 1) BLOCKS.push({ l: 0, t: 0, r: 0, b: 0 });
 const STAIRS: TagRect[] = [];
@@ -71,11 +71,33 @@ function projectStairs(scene: Object3D, camera: Camera, width: number, height: n
   return n;
 }
 
-function openStack(layer: HTMLElement, btn: HTMLButtonElement, closeMenu: () => void) {
+function ceilingTop() {
+  const tape = document.querySelector(".hudf-tape");
+  const top = document.querySelector(".hudf-top");
+  const tapeBottom = tape ? tape.getBoundingClientRect().bottom : 0;
+  const titleBottom = top ? top.getBoundingClientRect().bottom : 0;
+  return Math.max(8, tapeBottom, titleBottom);
+}
+
+/** Chrome the list must not sit under. Read once, when the list opens. */
+function stackBands(): StackBand[] {
+  const bands: StackBand[] = [];
+  for (const sel of [".hudf-toast", ".hudf-here", ".hudf-strip.is-chat", ".hudf-strip.is-task", ".hudf-nav", ".hudf-top", ".hudf-tape"]) {
+    const node = document.querySelector(sel);
+    if (!node) continue;
+    const box = node.getBoundingClientRect();
+    if (box.width < 1 || box.height < 1) continue;
+    bands.push({ top: box.top, bottom: box.bottom });
+  }
+  return bands;
+}
+
+function openStack(layer: HTMLElement, btn: HTMLButtonElement, closeMenu: () => void, onPick: (id: string) => void) {
   closeMenu();
   const ids = (btn.dataset.stackIds || "").split("\n").filter(Boolean);
   const names = (btn.dataset.stackNames || "").split("\n");
   const colors = (btn.dataset.stackColors || "").split("\n");
+  const away = (btn.dataset.stackIdle || "").split("\n");
   if (!ids.length) return;
   const menu = document.createElement("div");
   menu.className = "tag-stack";
@@ -92,33 +114,83 @@ function openStack(layer: HTMLElement, btn: HTMLButtonElement, closeMenu: () => 
   mark.setAttribute("aria-hidden", "true");
   mark.textContent = "×";
   close.append(mark);
-  menu.append(close);
+  const scroll = document.createElement("div");
+  scroll.className = "tag-stack-scroll";
   ids.forEach((id, index) => {
-    const name = plainName(names[index] || "") || "Someone";
+    const text = stackRowCopy(names[index] || "", away[index] === "1");
     const item = document.createElement("button");
     item.type = "button";
     item.className = "tag-stack-row";
     item.dataset.stackPick = id;
-    item.setAttribute("aria-label", name);
+    item.setAttribute("aria-label", text);
     const dot = document.createElement("i");
     dot.className = "agent-swatch";
     dot.setAttribute("aria-hidden", "true");
     dot.style.background = mutedHex(colors[index] || "#8d99a6");
     const label = document.createElement("span");
-    label.textContent = name;
+    label.textContent = text;
     const chevron = document.createElement("b");
     chevron.setAttribute("aria-hidden", "true");
     chevron.textContent = "›";
     item.append(dot, label, chevron);
-    menu.append(item);
+    scroll.append(item);
   });
-  const left = Number.parseFloat(btn.style.left) || 0;
-  const top = Number.parseFloat(btn.style.top) || 0;
+  menu.append(close, scroll);
+  const pill = btn.getBoundingClientRect();
+  const box = stackListBox(pill.top, ceilingTop(), stackBands());
+  let left = pill.left;
+  const width = Math.max(132, Math.min(200, pill.width || 160));
+  left = Math.min(Math.max(8, left), Math.max(8, window.innerWidth - width - 8));
+  const here = document.querySelector(".hudf-here")?.getBoundingClientRect();
+  if (here && here.width > 1 && left < here.right + 8 && left + width > here.left && box.top < here.bottom && box.bottom > here.top) {
+    const shifted = Math.min(window.innerWidth - width - 8, here.right + 8);
+    if (shifted >= 8) left = shifted;
+  }
   menu.style.left = `${left}px`;
-  menu.style.top = `${top + 32}px`;
-  layer.append(menu);
+  menu.style.right = "auto";
+  menu.style.top = "auto";
+  menu.style.bottom = `${Math.max(0, window.innerHeight - pill.top)}px`;
+  menu.style.maxHeight = `${Math.max(0, Math.min(box.maxHeight, window.innerHeight - 8))}px`;
+  menu.style.width = `${width}px`;
+  document.body.append(menu);
+  if (scroll.scrollHeight > scroll.clientHeight + 1) scroll.classList.add("is-overflow");
   btn.setAttribute("aria-expanded", "true");
-  menu.querySelector<HTMLButtonElement>("button.tag-stack-row")?.focus();
+  const returnFocus = () => {
+    const back = menu.dataset.returnFocus;
+    closeMenu();
+    if (back) layer.querySelector<HTMLButtonElement>(`button[data-tag-key="${back}"]`)?.focus();
+  };
+  menu.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button[data-stack-close]")) {
+      event.preventDefault();
+      event.stopPropagation();
+      returnFocus();
+      return;
+    }
+    const pick = target?.closest("button[data-stack-pick]");
+    if (!(pick instanceof HTMLButtonElement)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = pick.dataset.stackPick;
+    closeMenu();
+    if (id) onPick(id);
+  });
+  menu.addEventListener("keydown", (event) => {
+    const keys = [...menu.querySelectorAll<HTMLButtonElement>("button[data-stack-pick]")];
+    const index = keys.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      returnFocus();
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const next = event.key === "ArrowDown" ? Math.min(keys.length - 1, index + 1) : Math.max(0, index - 1);
+    keys[index < 0 ? 0 : next]?.focus();
+  });
+  scroll.querySelector<HTMLButtonElement>("button.tag-stack-row")?.focus();
 }
 
 function bucket(n: number) {
@@ -165,11 +237,11 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
       dots.push(dot);
     }
     const closeMenu = () => {
-      layer.querySelector("[data-name-stack]")?.remove();
+      document.querySelector("[data-name-stack]")?.remove();
       layer.querySelectorAll("button[aria-expanded='true']").forEach((node) => node.setAttribute("aria-expanded", "false"));
     };
     const onDocPointer = (event: PointerEvent) => {
-      const menu = layer.querySelector("[data-name-stack]");
+      const menu = document.querySelector("[data-name-stack]");
       if (!menu) return;
       if (event.target instanceof Node && menu.contains(event.target)) return;
       if (event.target instanceof Element && event.target.closest("button[data-stack-ids]")) return;
@@ -178,7 +250,7 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
     layer.addEventListener("click", (event) => {
       const target = event.target as HTMLElement | null;
       const closer = target?.closest("button[data-stack-close]");
-      if (closer instanceof HTMLButtonElement && layer.contains(closer)) {
+      if (closer instanceof HTMLButtonElement) {
         event.preventDefault();
         event.stopPropagation();
         const menu = closer.closest<HTMLElement>("[data-name-stack]");
@@ -188,7 +260,7 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
         return;
       }
       const pick = target?.closest("button[data-stack-pick]");
-      if (pick instanceof HTMLButtonElement && layer.contains(pick)) {
+      if (pick instanceof HTMLButtonElement) {
         event.preventDefault();
         event.stopPropagation();
         const id = pick.dataset.stackPick;
@@ -201,14 +273,14 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
       event.preventDefault();
       event.stopPropagation();
       if (btn.dataset.stackIds) {
-        openStack(layer, btn, closeMenu);
+        openStack(layer, btn, closeMenu, (id) => selectRef.current(id));
         return;
       }
       const id = btn.dataset.agentId;
       if (id) selectRef.current(id);
     });
     layer.addEventListener("keydown", (event) => {
-      const menu = layer.querySelector<HTMLElement>("[data-name-stack]");
+      const menu = document.querySelector<HTMLElement>("[data-name-stack]");
       if (!menu) return;
       const keys = menu.querySelectorAll<HTMLButtonElement>("button[data-stack-pick]");
       const current = document.activeElement;
@@ -226,13 +298,16 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
       const next = event.key === "ArrowDown" ? Math.min(keys.length - 1, index + 1) : Math.max(0, index - 1);
       keys[index < 0 ? 0 : next]?.focus();
     });
+    const onSheet = () => closeMenu();
     document.addEventListener("pointerdown", onDocPointer);
+    window.addEventListener("hud-sheet", onSheet);
     host.append(layer);
     nodes.current = buttons;
     labels.current = spans;
     swatches.current = dots;
     return () => {
       document.removeEventListener("pointerdown", onDocPointer);
+      window.removeEventListener("hud-sheet", onSheet);
       layer.remove();
       nodes.current = [];
     };
@@ -261,6 +336,16 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
       SIG[base + 1] = y;
       SIG[base + 2] = z;
     }
+    let awayLo = 0;
+    let awayHi = 0;
+    for (let i = 0; i < n; i += 1) {
+      if (!agents[i]!.away) continue;
+      if (i < 16) awayLo |= 1 << i;
+      else awayHi |= 1 << (i - 16);
+    }
+    if (awayLo !== SIG[6] || awayHi !== SIG[7]) dirty = true;
+    SIG[6] = awayLo;
+    SIG[7] = awayHi;
     if (!dirty) return;
     const cameraMoved = cx !== SIG[2] || cy !== SIG[3] || cz !== SIG[4];
     SIG[0] = size.width;
@@ -389,6 +474,7 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
         btn.dataset.stackIds = slot.ids;
         btn.dataset.stackNames = slot.who;
         btn.dataset.stackColors = slot.dots;
+        btn.dataset.stackIdle = slot.away;
         btn.setAttribute("aria-haspopup", "dialog");
         dot.hidden = true;
       } else {
@@ -396,6 +482,7 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
         delete btn.dataset.stackIds;
         delete btn.dataset.stackNames;
         delete btn.dataset.stackColors;
+        delete btn.dataset.stackIdle;
         btn.removeAttribute("aria-haspopup");
         dot.hidden = false;
         dot.style.background = mutedHex(slot.color || "#8d99a6");

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { LiveSnapshot } from "@/components/use-room";
+import { stationRowMayUnmute } from "@/lib/room/room-sound";
 import { useAtmosphere } from "./atmosphere";
 
 type AmbienceValue = {
@@ -36,6 +37,26 @@ function subscribeMute(listener: () => void) {
   return () => {
     muteListeners.delete(listener);
   };
+}
+
+/** The user switched Room sound off. A missing key is the default mute, not that switch. */
+export function roomSoundOff(): boolean {
+  try {
+    return localStorage.getItem("living-room-mute") === "1";
+  } catch {
+    return true;
+  }
+}
+
+let radioAudio: HTMLAudioElement | null = null;
+
+/** Local station-row tap only. Does not assign a src and does not touch the YouTube player. */
+export function unmuteFromStationTap() {
+  if (!stationRowMayUnmute(roomSoundOff(), "station-row")) return;
+  writeMuted(false);
+  const audio = radioAudio;
+  if (!audio?.getAttribute("src")) return;
+  void audio.play().catch(() => undefined);
 }
 
 const AmbienceContext = createContext<AmbienceValue>({
@@ -76,16 +97,17 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
   }, [hearing]);
 
   useEffect(() => {
-    const arm = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest("[data-mute]")) return;
-      try {
-        if (localStorage.getItem("living-room-mute") === "1") return;
-      } catch {
-        return;
-      }
-      if (!readMuted()) return;
-      writeMuted(false);
+    radioAudio = audioRef.current;
+    return () => {
+      if (radioAudio === audioRef.current) radioAudio = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const arm = () => {
+      if (readMuted()) return;
+      const ctx = ctxRef.current;
+      if (ctx?.state === "suspended") void ctx.resume();
     };
     window.addEventListener("pointerdown", arm);
     return () => window.removeEventListener("pointerdown", arm);
@@ -223,9 +245,11 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
     hear: (url: string) => {
       const audio = audioRef.current;
       if (!url || !audio) return;
-      writeMuted(false);
-      heardUrl.current = url;
-      audio.src = url;
+      if (audio.getAttribute("src") !== url) {
+        heardUrl.current = url;
+        audio.src = url;
+      }
+      if (readMuted()) return;
       setHearing(true);
       void audio.play().catch(() => setHearing(false));
     },

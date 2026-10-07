@@ -397,55 +397,63 @@ function GroundPlane({ grade }: { grade: Grade }) {
   );
 }
 
-/** Warm our own materials after first paint, one short idle slice at a time. */
-function WarmHouse() {
+/**
+ * The first name-tag tap draws the selection ring, a material the idle scene never uses.
+ * Warm that program only. KHR_parallel_shader_compile compiles it off the main thread;
+ * otherwise one program is compiled per frame. The ring stays undrawn until it is ready,
+ * so the tap does not pay the compile. The rest of the house is left to the first frames.
+ */
+function WarmTapPrograms() {
   const { gl, scene, camera } = useThree();
-  useEffect(() => {
-    const meshes: THREE.Object3D[] = [];
-    const seen = new Set<string>();
-    scene.traverse((object) => {
-      const mesh = object as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const material = mesh.material;
-      const list = Array.isArray(material) ? material : [material];
-      const key = list.map((item) => item?.uuid ?? "").join(",");
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      meshes.push(mesh);
-    });
-    let index = 0;
-    let idle = 0;
-    let rafA = 0;
-    let rafB = 0;
-    let cancelled = false;
-    const slice = (deadline?: IdleDeadline) => {
-      const start = performance.now();
-      while (index < meshes.length) {
-        const remaining = deadline && typeof deadline.timeRemaining === "function" ? deadline.timeRemaining() : 12;
-        if (remaining < 6 || performance.now() - start > 40) break;
-        try {
-          gl.compile(meshes[index]!, camera);
-        } catch {
-          /* a mesh with nothing to compile yet */
-        }
-        index += 1;
-      }
-      if (!cancelled && index < meshes.length) idle = window.requestIdleCallback(slice, { timeout: 1000 });
-    };
-    const start = () => {
-      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(slice, { timeout: 1500 });
-      else idle = window.setTimeout(() => slice(), 300) as unknown as number;
-    };
-    rafA = window.requestAnimationFrame(() => {
-      rafB = window.requestAnimationFrame(start);
-    });
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(rafA);
-      window.cancelAnimationFrame(rafB);
-      if (typeof window.cancelIdleCallback === "function" && idle) window.cancelIdleCallback(idle);
-    };
-  }, [gl, scene, camera]);
+  const seen = useRef(new Set<string>());
+  const queue = useRef<THREE.Mesh[]>([]);
+  const drawing = useRef<THREE.Mesh | null>(null);
+  const parallel = useRef<boolean | null>(null);
+  const done = useRef(false);
+  useFrame(() => {
+    const finishing = drawing.current;
+    if (finishing) {
+      const mat = finishing.material as THREE.MeshBasicMaterial;
+      if (typeof finishing.userData.warmOpacity === "number") mat.opacity = finishing.userData.warmOpacity as number;
+      delete finishing.userData.warmOpacity;
+      mat.userData.tapReady = true;
+      drawing.current = null;
+    }
+    if (done.current) return;
+    if (parallel.current === null) parallel.current = Boolean(gl.getContext().getExtension("KHR_parallel_shader_compile"));
+    if (queue.current.length === 0) {
+      scene.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh || mesh.name !== "selection-ring") return;
+        const material = mesh.material as THREE.Material | undefined;
+        if (!material || Array.isArray(mesh.material) || seen.current.has(material.uuid)) return;
+        seen.current.add(material.uuid);
+        queue.current.push(mesh);
+      });
+    }
+    if (seen.current.size > 0 && queue.current.length === 0 && !drawing.current) done.current = true;
+    const mesh = queue.current[0];
+    if (!mesh) return;
+    queue.current.shift();
+    const material = mesh.material as THREE.Material;
+    if (parallel.current) {
+      gl.compileAsync(mesh, camera, scene).then(
+        () => {
+          material.userData.tapReady = true;
+        },
+        () => {
+          material.userData.tapReady = true;
+        },
+      );
+      return;
+    }
+    gl.compile(mesh, camera, scene);
+    const basic = material as THREE.MeshBasicMaterial;
+    mesh.userData.warmOpacity = basic.opacity;
+    basic.opacity = 0;
+    mesh.visible = true;
+    drawing.current = mesh;
+  });
   return null;
 }
 
@@ -963,7 +971,7 @@ export function RoomCanvas({
                   if (mini) setFloor(null);
                 }}
               >
-                <WarmHouse />
+                <WarmTapPrograms />
                 <FurniturePointer />
                 <Picture grade={grade} />
                 <LightRig night={night} phone={phone} mapSize={budget.shadow} grade={grade} />

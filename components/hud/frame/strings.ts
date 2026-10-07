@@ -47,6 +47,10 @@ export const TURN_OFF = "Turn off";
 export const LOOK_OUTSIDE = "Look outside";
 export const WATCH_LIVE = "Watch live";
 export const PLAYS_FROM_YOUTUBE = "Plays from YouTube.";
+/** Writer: visible label on the muted-autoplay retry. The button's accessible name is WATCH_PLAY_LABEL. */
+export const WATCH_PLAY_LABEL = "Play video";
+/** Writer: shown when the nocookie player errors or never starts. No link. */
+export const WATCH_CANT_PLAY = "This video can't play here.";
 export const SKY_FOLLOWS = "The sky follows the house.";
 export const SEARCH_APARTMENT = "Search the apartment";
 export const SEARCH_EMPTY = "Nothing in the apartment matches.";

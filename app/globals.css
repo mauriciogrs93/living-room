@@ -187,10 +187,10 @@
 }
 
 .room-stage canvas {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 0;
   display: block;
-  transform: translateZ(0);
 }
 
 /* ---------- agent callouts: mono drawing-label tags with a hairline leader, drawing-note bubbles */
@@ -206,8 +206,8 @@
 .name-tags {
   position: absolute;
   inset: 0;
-  z-index: 8;
-  overflow: hidden;
+  z-index: 5;
+  overflow: visible;
   pointer-events: none;
 }
 
@@ -281,19 +281,38 @@
 }
 
 .tag-stack {
-  position: absolute;
-  z-index: 8;
+  position: fixed;
+  z-index: 80;
   display: flex;
   flex-direction: column;
   min-width: 132px;
   max-width: 200px;
   padding: 32px 4px 4px;
+  overflow: hidden;
   background: #f7f4ee;
   border: 1px solid rgba(43, 45, 49, 0.2);
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(43, 45, 49, 0.14);
   color: #2b2d31;
   pointer-events: auto;
+}
+.tag-stack-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.tag-stack-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.tag-stack-scroll.is-overflow {
+  -webkit-mask-image: linear-gradient(#000 0, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(#000 0, #000 calc(100% - 12px), transparent);
+}
+.tag-stack:not(:has(.tag-stack-row)) {
+  display: none;
 }
 
 .tag-stack-x {
@@ -418,7 +437,8 @@
     font-size: 14px;
   }
   .agent-tag {
-    height: 28px;
+    height: auto;
+    min-height: 28px;
     font-size: 11.5px;
   }
   /* the note yields to an open sheet so the house keeps the screen */

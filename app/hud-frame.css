@@ -137,6 +137,9 @@
 .hudf-quiet { color: var(--muted); font-size: 13px; line-height: 1.4; }
 .hudf-switch { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
 .hudf-toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 16px); transform: translateX(-50%); z-index: 60; max-width: min(420px, calc(100% - 24px)); padding: 10px 14px; border-radius: 12px; background: #2b2d31; color: #f5f2eb; font-size: 14px; }
+.hudf-toast:empty,
+.hudf-list:empty,
+[data-warm-sheet] { display: none !important; }
 .hudf-ring { position: absolute; z-index: 2; width: 46px; height: 46px; margin: -23px 0 0 -23px; border: 1.5px dashed rgba(184, 103, 78, 0.9); border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 4px rgba(184, 103, 78, 0.12); }
 .hudf-overlay { position: absolute; inset: 0; z-index: 70; pointer-events: none; }
 .hudf-overlay > * { pointer-events: auto; }
@@ -306,6 +309,7 @@
 .hudf.is-sheet .hudf-rail,
 .hudf.is-sheet .hudf-rail * { pointer-events: none; visibility: hidden; }
 .hudf.is-sheet .hudf-rail { z-index: 30; }
+.hudf.is-sheet .hudf-dot { display: none; visibility: hidden; transition: none; }
 .hudf.is-tucked .hudf-tape,
 .hudf.is-tucked .hudf-rail,
 .hudf.is-tucked .hudf-here,
@@ -335,7 +339,62 @@
   align-items: center;
   justify-content: center;
 }
-.hudf-well.is-watching { background: #111; }
+.hudf-well.is-watching {
+  background: #f7f4ee;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+.hudf .hudf-watch-play,
+.hudf .hudf-watch-fail {
+  position: absolute;
+  z-index: 2;
+  background: #f7f4ee;
+  color: #2b2d31;
+}
+.hudf-watch-fail {
+  inset: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.hudf .hudf-watch-play {
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: #2b2d31;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.hudf .hudf-watch-play span {
+  font-size: 14px;
+  line-height: 1;
+  color: #fff;
+}
+.hudf .hudf-watch-play:hover,
+.hudf .hudf-watch-play:focus-visible {
+  border-color: #2b2d31;
+  outline: none;
+  box-shadow: 0 0 0 2px #2b2d31;
+}
 .hudf-watch-park { position: absolute; left: 0; top: 0; width: 160px; height: 90px; visibility: hidden; pointer-events: none; }
 .hudf-watch-park .hudf-watch { width: 160px; height: 90px; border: 0; }
 .hudf-well .hudf-watch {

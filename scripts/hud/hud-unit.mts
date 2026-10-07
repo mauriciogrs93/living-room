@@ -11,8 +11,9 @@ import * as strings from "../../components/hud/frame/strings";
 import { FALLBACK_STATIONS } from "../../lib/room/house";
 import { forecastUrlAllowed } from "../../lib/room/house-sky";
 import { lineupCount, lineupDraws, lineupEnabled } from "../../lib/room/lineup";
-import { acceptPlayerEvent, embedOrigin, watchEmbed, YT_ORIGIN } from "../../lib/room/watch-live";
-import { fitTagBoxes, joinToast, placeTags, plainName, stackLabel, tagCopy, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
+import { acceptPlayerEvent, embedOrigin, readPlayerSignal, watchEmbed, YT_ORIGIN } from "../../lib/room/watch-live";
+import { fitTagBoxes, joinToast, placeTags, plainName, stackLabel, stackListBox, stackRowCopy, tagCopy, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
+import { stationRowMayUnmute } from "../../lib/room/room-sound";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -61,7 +62,8 @@ check("watch live copy is the ship line", strings.WATCH_LIVE === "Watch live" &&
 check("watcher title uses a display name or The apartment", strings.apartmentTitle(null) === "The apartment" && strings.apartmentTitle("  ") === "The apartment" && strings.apartmentTitle("Ada") === "Ada's apartment" && strings.apartmentTitle("Ada Lovelace") === "Ada Lovelace's apartment");
 check("watcher title never uses an email", strings.apartmentTitle("ada@example.com") === "The apartment" && strings.apartmentTitle("ada@example.com's apartment") === "The apartment");
 const embed = watchEmbed(5);
-check("watch embed is the nocookie host", embed.startsWith("https://www.youtube-nocookie.com/embed/") && !embed.includes("ytimg") && !embed.includes("www.youtube.com/") && embed.includes("enablejsapi=1") && embed.includes("mute=1"));
+check("watch embed is the nocookie host", embed.startsWith("https://www.youtube-nocookie.com/embed/") && !embed.includes("ytimg") && !embed.includes("www.youtube.com/") && embed.includes("enablejsapi=1") && embed.includes("autoplay=1") && embed.includes("mute=1") && embed.includes("playsinline=1"));
+check("a playing signal is state 1 and an error is not a hand-off", readPlayerSignal('{"event":"infoDelivery","info":{"playerState":1}}').state === 1 && readPlayerSignal({ event: "onError", info: 150 }).error && !readPlayerSignal({ event: "onStateChange", info: -1 }).error);
 const previewOrigin = embedOrigin({ origin: "https://living-room-psi.vercel.app" });
 const midnight = watchEmbed(2, { origin: previewOrigin });
 check("embed origin is the page origin and ignores a query", previewOrigin === "https://living-room-psi.vercel.app" && embedOrigin({ origin: "https://evil.test/?next=https://living-room-psi.vercel.app" }) === "");
@@ -173,7 +175,7 @@ check("icons are bundled SVG components", iconSource.includes("<path") && !iconS
 check("player commands never use a wildcard target", frameSource.includes("YT_ORIGIN") && !frameSource.includes("'*'") && !frameSource.includes('"*"'));
 check("watch origin comes from window.location only", frameSource.includes("embedOrigin(window.location)") && !frameSource.includes("location.search") && !frameSource.includes("location.href") && !frameSource.includes("location.hash"));
 check("incoming player messages check origin and source", frameSource.includes("event.origin !== YT_ORIGIN") && frameSource.includes("event.source !== frame"));
-check("mute posts only after the iframe has loaded", frameSource.includes("if (!ready.current) return") && frameSource.includes("onLoad={onLoad}") && !frameSource.includes(".src ="));
+check("mute posts only after the iframe has loaded", frameSource.includes("if (!ready.current || !muted) return") && frameSource.includes("onLoad={onLoad}") && !frameSource.includes(".src =") && !frameSource.includes("unMute"));
 check("the iframe mounts only after Watch live and close removes it", hudFrame.includes("{watchLive && portalHost ? createPortal(") && hudFrame.includes("if (!watchLive)"));
 const eqAt = hudCss.indexOf("@keyframes hudf-eq");
 const eqBlock = eqAt >= 0 ? hudCss.slice(eqAt, eqAt + 180) : "";
@@ -190,7 +192,7 @@ check("join rows name the person", walkedInLine("Ada Lovelace") === "Ada Lovelac
 const view: TagRect = { l: 0, t: 0, r: 400, b: 320 };
 const blocks: TagRect[] = [{ l: 0, t: 260, r: 400, b: 320 }];
 const order = new Uint16Array(8);
-const fresh = (): TagOut[] => Array.from({ length: 8 }, () => ({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "", who: "", ids: "", dots: "" }));
+const fresh = (): TagOut[] => Array.from({ length: 8 }, () => ({ id: "", x: 0, y: 0, text: "", label: "", more: 0, color: "", who: "", ids: "", dots: "", away: "" }));
 const idleOut = fresh();
 const idle: TagPoint[] = [{ id: "ada", x: 120, y: 90, depth: 1, name: "Ada", idle: true, color: "#888" }];
 check("an idle tag keeps the name", placeTags(idle, 1, blocks, 0, view, order, idleOut) === 1 && idleOut[0]?.text === "Ada · Away" && idleOut[0]?.label === "Ada · Away" && tagCopy("Ada", true).text === "Ada · Away");
@@ -204,8 +206,24 @@ check("join toast names the person", joinToast("Ada just walked in") === "Ada wa
 check("the watch badge is sentence case", strings.BADGE_WATCH === "Watching" && hudFrame.includes("BADGE_WATCH") && !hudFrame.includes("WATCHING"));
 check("desktop does not render the Here tab", hudFrame.includes("narrow ? (") && hudFrame.includes('data-ctl="here-tab"'));
 check("name tags use zero letter spacing", /\.agent-tag \{[^}]*letter-spacing:\s*0;/.test(globals));
-check("a stack opens a plain-text name list", tagLayer.includes("data-stack-pick") && tagLayer.includes("plainName") && tagLayer.includes("textContent") && tagLayer.includes('event.key === "Escape"') && tagLayer.includes("data-stack-close") && !tagLayer.includes("innerHTML") && !tagLayer.includes("<a "));
-check("stack rows are 44px ink on plaster", globals.includes(".tag-stack-row {") && globals.includes("min-height: 44px") && globals.includes("rgba(43, 45, 49, 0.06)") && globals.includes("outline: 2px solid #2b2d31"));
+check("a stack opens a plain-text name list", tagLayer.includes("data-stack-pick") && tagLayer.includes("stackRowCopy") && tagLayer.includes("label.textContent = text") && tagLayer.includes('event.key === "Escape"') && tagLayer.includes("data-stack-close") && !tagLayer.includes("innerHTML") && !tagLayer.includes("<a "));
+check("stack rows are 44px ink on plaster", globals.includes(".tag-stack-row {") && globals.includes("min-height: 44px") && globals.includes("rgba(43, 45, 49, 0.06)") && globals.includes("outline: 2px solid #2b2d31") && globals.includes("scrollbar-width: none") && globals.includes("mask-image: linear-gradient") && !globals.includes(".tag-stack-scroll { filter"));
+const tall = stackListBox(400, 40, []);
+const blocked = stackListBox(400, 40, [{ top: 200, bottom: 244 }]);
+const below = stackListBox(400, 40, [{ top: 460, bottom: 504 }]);
+check("a tall stack caps at five rows above the pill", tall.maxHeight === 5 * 44 + 36 && tall.top === 400 - tall.maxHeight && tall.bottom === 400);
+check("a stack leaves 8px under chrome that sits above the pill", blocked.maxHeight === 400 - 252 && blocked.top === 252 && blocked.bottom === 400);
+check("chrome below the pill does not shrink the upward list", below.maxHeight === tall.maxHeight && below.bottom === 400);
+const awayRow = stackRowCopy("Ada <b>Lovelace</b>", true);
+check("an away stack row is plain text", awayRow === "Ada Lovelace · Away" && stackRowCopy("Ada", false) === "Ada" && !awayRow.includes("<"));
+const piled: TagPoint[] = [
+  { id: "near", x: 80, y: 80, depth: 1, name: "Near", idle: false, color: "#888" },
+  { id: "far", x: 82, y: 82, depth: 9, name: "Bea", idle: true, color: "#888" },
+];
+const piledOut = fresh();
+placeTags(piled, 2, blocks, 0, view, order, piledOut);
+const pile = piledOut.find((slot) => slot.more > 0);
+check("an away person folded into +N keeps the flag", pile !== undefined && pile.away.split("\n").includes("1") && stackRowCopy("Bea", true) === "Bea · Away");
 check("the watcher notice is the short sentence", strings.OWNER_ONLY === "Only the owner can change this." && strings.WATCH_YOU.includes("Only the owner can change this."));
 check("the mute control cannot grow with the sheet", /\.hudf-body > \.hudf-play\[data-ctl="radio-mute"\] \{[^}]*max-height:\s*44px/.test(hudCss));
 check("the playing meter is 14px ink bars", hudCss.includes(".hudf-now .hudf-eq i { width: 3px; height: 14px; background: var(--ink); }"));
@@ -236,9 +254,68 @@ check(
   hudFrame.includes('data-owner-line="station"') && hudFrame.includes("OWNER_STATION") && hudFrame.includes('data-owner-line="channel"') && hudFrame.includes("OWNER_CHANNEL") && hudFrame.includes('aria-disabled="true"'),
 );
 check("the card close control is named Close", hudFrame.includes("aria-label={CLOSE}") && hudFrame.includes('aria-hidden="true">×</span>'));
-check("shader warm-up is idle and stays on our own meshes", canvasSource.includes("requestIdleCallback") && canvasSource.includes("gl.compile") && !canvasSource.includes("youtube") && !canvasSource.includes("preconnect"));
+check(
+  "shader warm-up compiles only the selection ring",
+  canvasSource.includes("compileAsync") &&
+    canvasSource.includes("KHR_parallel_shader_compile") &&
+    canvasSource.includes('mesh.name !== "selection-ring"') &&
+    canvasSource.includes("gl.compile") &&
+    !canvasSource.includes("requestIdleCallback") &&
+    !canvasSource.includes("youtube") &&
+    !canvasSource.includes("preconnect") &&
+    avatarSource.includes('name="selection-ring"') &&
+    avatarSource.includes("tapReady"),
+);
 check("the framed camera ignores stage changes", canvasSource.includes("window.innerWidth") && !canvasSource.includes('addEventListener("hud-stage"'));
 check("rail bars follow playback", hudFrame.includes("data-rail-eq") && hudFrame.includes("paused={Boolean(radio?.on && muted)}"));
+check(
+  "the rail dot drops when tv, radio, or you opens",
+  hudFrame.includes('dot={dot && shown !== "tv" && shown !== "radio" && shown !== "you"}') && hudCss.includes(".hudf.is-sheet .hudf-dot { display: none; visibility: hidden; transition: none; }"),
+);
+check(
+  "watch live retries in the same nocookie frame",
+  frameSource.includes('allow="autoplay; encrypted-media; picture-in-picture"') &&
+    frameSource.includes('referrerPolicy="strict-origin-when-cross-origin"') &&
+    watchEmbed(3, { origin: "http://127.0.0.1:3921" }).includes("playsinline=1") &&
+    frameSource.includes('playerCommand("playVideo")') &&
+    frameSource.includes("WATCH_PLAY_LABEL") &&
+    frameSource.includes("WATCH_CANT_PLAY") &&
+    strings.WATCH_PLAY_LABEL === "Play video" &&
+    strings.WATCH_CANT_PLAY === "This video can't play here." &&
+    strings.PLAY === "Play" &&
+    !frameSource.includes("www.youtube.com") &&
+    !frameSource.includes("<a ") &&
+    !frameSource.includes("fullscreen") &&
+    !frameSource.includes("unMute"),
+);
+const ambienceSource = readFileSync(path.join(root, "components/room/ambience.tsx"), "utf8");
+const activitySource = readFileSync(path.join(root, "components/hud/sections/activity.tsx"), "utf8");
+check("a local station row may unmute", stationRowMayUnmute(false, "station-row") === true);
+check("room sound off blocks a station-row unmute", stationRowMayUnmute(true, "station-row") === false);
+check("a remote station change never unmutes", stationRowMayUnmute(false, "remote") === false && stationRowMayUnmute(true, "remote") === false);
+check(
+  "station unmute is only the local row tap and does not post unMute",
+  hudFrame.includes("unmuteFromStationTap()") &&
+    hudFrame.includes('data-ctl={`radio-row-${index}`}') &&
+    ambienceSource.includes("stationRowMayUnmute(roomSoundOff(), \"station-row\")") &&
+    !ambienceSource.includes("writeMuted(false);\n      heardUrl") &&
+    !frameSource.includes("unMute"),
+);
+check(
+  "activity closes with the shared × control",
+  activitySource.includes("aria-label={CLOSE}") && activitySource.includes('aria-hidden="true">×</span>') && !activitySource.includes(">Close<") && activitySource.includes("uniqueAgents"),
+);
+check(
+  "name tags stack above the canvas",
+  globals.includes("z-index: 5;") &&
+    globals.includes("overflow: visible;") &&
+    /\.room-stage canvas \{[\s\S]*?z-index: 0;/.test(globals) &&
+    !globals.includes("translateZ(0)") &&
+    globals.includes("mask-image: linear-gradient") &&
+    !globals.includes(".tag-stack-scroll { filter") &&
+    !globals.includes(".tag-stack-scroll.is-overflow {\n  filter"),
+);
+check("opening a sheet closes the +N list", hudFrame.includes('new Event("hud-sheet")') && tagLayer.includes('addEventListener("hud-sheet"'));
 
 const failed = results.filter((ok) => !ok).length;
 console.log(`${results.length - failed}/${results.length}`);

@@ -37,6 +37,8 @@ export type TagOut = {
   ids: string;
   /** Newline-separated swatch colors for that stack. */
   dots: string;
+  /** Newline-separated 1/0 flags, parallel to who. 1 means that person is away. */
+  away: string;
 };
 
 /** Registered spelling, with markup, control characters, and bidi marks removed. */
@@ -58,6 +60,16 @@ export function tagCopy(name: string, idle: boolean): { text: string; label: str
     return { text, label: text };
   }
   return { text: clean, label: clean };
+}
+
+/**
+ * +N row. The visible string and the accessible name are this same value.
+ * Built from plainName, with " · Away" appended as plain text.
+ */
+export function stackRowCopy(name: string, idle: boolean): string {
+  const clean = plainName(name) || "Someone";
+  if (!idle) return clean;
+  return `${clean} · ${AWAY_LABEL}`;
 }
 
 /** Join toast and task line. "just walked in" never reaches the screen. */
@@ -139,7 +151,8 @@ export function placeTags(
   const pileId: string[] = [];
   const pileName: string[] = [];
   const pileColor: string[] = [];
-  const hold = (id: string, name: string, x: number, y: number, color: string) => {
+  const pileAway: string[] = [];
+  const hold = (id: string, name: string, x: number, y: number, color: string, idle: boolean) => {
     if (collapsed === 0) {
       ax = x;
       ay = y;
@@ -147,6 +160,7 @@ export function placeTags(
     pileId.push(id);
     pileName.push(plainName(name) || "Someone");
     pileColor.push(color || "#8d99a6");
+    pileAway.push(idle ? "1" : "0");
     collapsed += 1;
   };
   for (let k = 0; k < n; k += 1) {
@@ -159,7 +173,7 @@ export function placeTags(
     const y = nudged.y;
     if (hitsBlock(x, y, blocks, blockCount)) continue;
     if (!inside(x, y, view) || !fits(x, y, blocks, blockCount, view, out, placed)) {
-      hold(point.id, point.name, x, y, point.color);
+      hold(point.id, point.name, x, y, point.color, point.idle);
       continue;
     }
     const copy = tagCopy(point.name, point.idle);
@@ -174,6 +188,7 @@ export function placeTags(
     slot.who = "";
     slot.ids = "";
     slot.dots = "";
+    slot.away = "";
     placed += 1;
   }
   if (collapsed > 0 && placed < out.length) {
@@ -191,7 +206,8 @@ export function placeTags(
       }
       if (home >= 0 || placed === 0) break;
       const dropped = out[placed - 1]!;
-      hold(dropped.id, dropped.text, dropped.x, dropped.y, dropped.color);
+      const source = points.find((item) => item.id === dropped.id);
+      hold(dropped.id, source?.name || dropped.text, dropped.x, dropped.y, dropped.color, Boolean(source?.idle));
       placed -= 1;
     }
     if (home >= 0) {
@@ -207,10 +223,33 @@ export function placeTags(
       slot.who = pileName.join("\n");
       slot.ids = pileId.join("\n");
       slot.dots = pileColor.join("\n");
+      slot.away = pileAway.join("\n");
       placed += 1;
     }
   }
   return placed;
+}
+
+export const STACK_ROW = 44;
+/** Close control plus the list's own padding. Five rows plus this is the cap. */
+export const STACK_PAD = 36;
+
+export type StackBand = { top: number; bottom: number };
+
+/**
+ * The +N list opens upward. Its bottom edge sits on the pill.
+ * Height is five rows, or the free space above the pill, whichever is smaller.
+ * A band whose bottom is still above the pill (toast, chat, tabs, the title) leaves an 8px gap.
+ */
+export function stackListBox(pillTop: number, ceiling: number, bands: StackBand[] = []) {
+  const five = 5 * STACK_ROW + STACK_PAD;
+  let limit = ceiling;
+  for (const band of bands) {
+    if (band.bottom <= pillTop + 0.5 && band.bottom + 8 > limit) limit = band.bottom + 8;
+  }
+  const above = Math.max(0, pillTop - limit);
+  const maxHeight = Math.min(five, above);
+  return { maxHeight, top: pillTop - maxHeight, bottom: pillTop };
 }
 
 export type MeasuredTag = { x: number; y: number; w: number; h: number; ax: number; ay: number };
