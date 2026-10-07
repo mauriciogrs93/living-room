@@ -235,7 +235,7 @@ export function InviteSection({ model }: { model: HudModel }) {
       const body = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
       if (!mounted.current) return;
       if (!res.ok || !body.ok) {
-        setRevokeNote(body.error ?? "Couldn't end the watch links. Try again.");
+        setRevokeNote("Couldn't stop watching. Try again.");
         return;
       }
       setShown((cur) => ({ ...cur, watch: null }));

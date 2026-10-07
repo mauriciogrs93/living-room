@@ -11,7 +11,7 @@ export function YouSection() {
   });
   return (
     <div className="hud-stack">
-      <button type="button" className="door-link" data-auth-control="you-set-password" onClick={() => reopenPasswordOffer()}>
+      <button type="button" className="door-link" data-ctl="you-set-password" data-auth-control="you-set-password" onClick={() => reopenPasswordOffer()}>
         {YOU_SET_PASSWORD}
       </button>
       <OwnerThread />

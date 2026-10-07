@@ -81,8 +81,13 @@ export function PasswordOffer({ passwordSet }: { passwordSet: boolean }) {
 
   return (
     <div className="password-offer" data-password-offer="">
-      <section className="signin-card">
-        <h2 className="landing-title signin-title">{OFFER_TITLE}</h2>
+      <button type="button" className="password-offer-scrim" aria-label="Close" data-ctl="offer-scrim" data-auth-control="offer-scrim" onClick={() => dismissPasswordOffer()} />
+      <section className="signin-card password-offer-sheet" role="dialog" aria-modal="true" aria-labelledby="offer-title">
+        <span className="password-offer-grab" aria-hidden="true" />
+        <button type="button" className="password-offer-close" aria-label="Close" data-ctl="offer-close" data-auth-control="offer-close" onClick={() => dismissPasswordOffer()}>
+          ×
+        </button>
+        <h2 id="offer-title" className="landing-title signin-title">{OFFER_TITLE}</h2>
         <p className="signin-hint">{OFFER_BODY}</p>
         {saved ? (
           <p className="signin-note" role="status" data-password-saved="">
@@ -115,12 +120,13 @@ export function PasswordOffer({ passwordSet }: { passwordSet: boolean }) {
               </button>
             </div>
             <p className="signin-hint">{PASSWORD_HINT}</p>
-            <button type="submit" className="invite-copy signin-submit mono" data-auth-control="save-password" disabled={busy} aria-busy={busy}>
+            <button type="submit" className="invite-copy signin-submit mono" data-ctl="offer-save" data-auth-control="save-password" disabled={busy} aria-busy={busy}>
               {busy ? SAVING : SAVE_PASSWORD}
             </button>
             <button
               type="button"
               className="signin-text"
+              data-ctl="offer-not-now"
               data-auth-control="not-now"
               onClick={() => dismissPasswordOffer()}
             >

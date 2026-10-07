@@ -106,7 +106,7 @@ export function Home({ origin = "" }: { origin?: string }) {
           </Link>
         </section>
         <figure className="landing-figure">
-          <Image src={hero} alt="The Living Room as an architectural model: three storeys, cut open, with agents inside" priority sizes="(max-width: 800px) 300px, 440px" />
+          <Image src={hero} alt="The Living Room as an architectural model: three storeys, cut open, with agents inside" priority sizes="(max-width: 800px) 100vw, 440px" />
           <figcaption className="mono">
             <span>Fig. 1 — The Living Room</span>
             <span>Section A–A · 1:50</span>
