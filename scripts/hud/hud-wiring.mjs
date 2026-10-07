@@ -192,6 +192,28 @@ try {
       const stageLive = await stageOf();
       check("phone: no watch iframe before Watch live", (await page.locator("iframe.hudf-watch").count()) === 0);
       await page.waitForSelector("[data-ctl=tv-watch]", { timeout: 8000 });
+      const sheetHits = await page.evaluate(() => {
+        function topCtl(node) {
+          const rect = node.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return hit?.closest?.("[data-ctl]")?.getAttribute("data-ctl") || "";
+        }
+        const stolen = [...document.querySelectorAll(".hudf-rail [data-ctl]")].flatMap((node) => {
+          const rect = node.getBoundingClientRect();
+          if (rect.width < 1 || rect.height < 1) return [];
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          const ctl = hit?.closest?.("[data-ctl]")?.getAttribute("data-ctl") || "";
+          return ctl.startsWith("rail-") || hit?.closest?.(".hudf-rail") ? [ctl || "rail"] : [];
+        });
+        const missed = ["tv-watch", "card-close", "tv-power", "tv-chip-3"].flatMap((id) => {
+          const node = document.querySelector(`[data-ctl="${id}"]`);
+          if (!node) return [`${id}:missing`];
+          const ctl = topCtl(node);
+          return ctl === id ? [] : [`${id}->${ctl || "none"}`];
+        });
+        return { stolen, missed };
+      });
+      check("phone: TV sheet controls win taps over the rail", sheetHits.stolen.length === 0 && sheetHits.missed.length === 0, [...sheetHits.stolen, ...sheetHits.missed].join(" "));
       await clickCtl(page, "tv-watch", "owner", name);
       await page.waitForSelector("iframe.hudf-watch", { timeout: 4000 });
       const src = await page.locator("iframe.hudf-watch").getAttribute("src");
@@ -202,6 +224,14 @@ try {
       check("phone: Watch live does not move the stage", Boolean(stageLive && stageHeld && JSON.stringify(stageLive) === JSON.stringify(stageHeld)));
       await clickCtl(page, "card-close", "owner", name);
       check("phone: Close removes the watch iframe", (await page.locator("iframe.hudf-watch").count()) === 0);
+      const railBack = await page.evaluate(() => {
+        const node = document.querySelector("[data-ctl=rail-tv]");
+        if (!node) return "";
+        const rect = node.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return hit?.closest?.("[data-ctl]")?.getAttribute("data-ctl") || "";
+      });
+      check("phone: rail takes taps again after the TV sheet closes", railBack === "rail-tv", railBack);
       const minted = await page.evaluate(async () => {
         const res = await fetch("/api/apartment/invite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "watch" }) });
         const body = await res.json();

@@ -282,6 +282,10 @@
 .hudf.is-sheet .hudf-nav,
 .hudf.is-sheet .hudf-top,
 .hudf.is-sheet .hudf-tape { pointer-events: auto; }
+/* Phone sheet paints over the HOUSE medals. Rail hits stay off until the sheet closes. */
+.hudf.is-sheet .hudf-rail,
+.hudf.is-sheet .hudf-rail * { pointer-events: none; }
+.hudf.is-sheet .hudf-rail { z-index: 35; }
 .hudf.is-tucked .hudf-tape,
 .hudf.is-tucked .hudf-rail,
 .hudf.is-tucked .hudf-here,
@@ -294,7 +298,7 @@
   bottom: 12px;
   transform: translateX(-50%);
 }
-.hudf-card.is-sheet { top: 132px; bottom: 176px; }
+.hudf-card.is-sheet { top: 132px; bottom: 176px; z-index: 45; }
 .hudf-card.is-float {
   top: 108px;
   right: 84px;
