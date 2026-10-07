@@ -641,12 +641,22 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
     JSON.stringify({ ...mutedLook, radioPosts, audioReqs }),
   );
   check(`${size}: no audio requests while muted`, audioReqs.length === 0, audioReqs.join(" "));
+  await clickCtl(page, "rail-radio", "owner", size);
+  await page.waitForSelector("[data-ctl=radio-mute]", { timeout: 8000 });
+  check(`${size}: the card renders Unmute while this device is muted`, (await page.locator("[data-ctl=radio-mute]").innerText()).trim() === "Unmute");
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+  await page.waitForSelector("[data-ctl=mute-pill]", { timeout: 4000 });
   await page.click("[data-ctl=mute-pill]");
   await page.waitForTimeout(150);
   check(`${size}: Unmute restores Mute`, (await page.locator("[data-ctl=mute-pill]").innerText()).trim() === "Mute");
   await clickCtl(page, "nav-activity", "owner", size);
   await page.waitForTimeout(200);
-  check(`${size}: the mute pill is absent from the DOM while a sheet is open`, (await page.locator("[data-ctl=mute-pill]").count()) === 0);
+  const sheetQuiet = await page.evaluate(() => ({
+    pill: document.querySelectorAll("[data-ctl=mute-pill]").length,
+    unmute: [...document.querySelectorAll("button")].filter((btn) => (btn.textContent || "").trim() === "Unmute").length,
+  }));
+  check(`${size}: an open sheet leaves no pill and no Unmute button`, sheetQuiet.pill === 0 && sheetQuiet.unmute === 0, JSON.stringify(sheetQuiet));
   await page.keyboard.press("Escape");
   await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
   await page.waitForSelector("[data-ctl=mute-pill]", { timeout: 4000 });
@@ -665,9 +675,10 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
       text: pill ? (pill.textContent || "").trim() : "",
       stored: localStorage.getItem("living-room-mute"),
       src: audio ? audio.getAttribute("src") : null,
+      unmute: [...document.querySelectorAll("button")].filter((btn) => (btn.textContent || "").trim() === "Unmute").length,
     };
   });
-  check(`${size}: Room sound Off removes the mute pill and the stream`, soundOff.count === 0 && soundOff.text !== "Unmute" && soundOff.stored === "1" && soundOff.src == null, JSON.stringify(soundOff));
+  check(`${size}: Room sound Off leaves no pill, no Unmute button, and no stream`, soundOff.count === 0 && soundOff.unmute === 0 && soundOff.stored === "1" && soundOff.src == null, JSON.stringify(soundOff));
   await clickCtl(page, "nav-you", "owner", size);
   if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) !== "true") {
     await clickCtl(page, "room-sound", "owner", size);
@@ -1230,7 +1241,7 @@ try {
   check("watcher: title is The apartment", (await watcher.locator(".hudf-title b").innerText()) === "The apartment");
   check("watcher: the header pill says Watching", (await watcher.locator(".hudf-badge[data-watch-badge]").innerText()).trim() === "Watching");
   await clickCtl(watcher, "rail-radio", "watch", "phone");
-  await watcher.waitForSelector("[data-ctl=radio-mute], [data-ctl=radio-resume], .hudf-quiet", { timeout: 8000 });
+  await watcher.waitForSelector("[data-ctl=radio-mute], [data-ctl=radio-resume]", { timeout: 8000 });
   const watchRadio = await watcher.evaluate(() => {
     const mute = document.querySelector("[data-ctl=radio-mute]");
     const resume = document.querySelector("[data-ctl=radio-resume]");
@@ -1239,29 +1250,38 @@ try {
     const muteBox = mute?.getBoundingClientRect();
     const resumeBox = resume?.getBoundingClientRect();
     const meterBox = meter?.getBoundingClientRect();
+    const bits = [];
+    if (resume) {
+      for (const node of resume.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) bits.push(node.textContent || "");
+        else if (node.nodeType === Node.ELEMENT_NODE && node.getAttribute("aria-hidden") !== "true") bits.push(node.textContent || "");
+      }
+    }
     return {
       mute: mute?.textContent?.trim() || "",
       muteH: muteBox ? Math.round(muteBox.height) : 0,
-      resume: resume?.getAttribute("aria-label") || "",
-      glyph: resume?.textContent?.trim() || "",
-      resumeW: resumeBox ? Math.round(resumeBox.width) : 0,
+      acc: bits.join("").replace(/\s+/g, " ").trim(),
+      visible: (resume?.innerText || "").replace(/\s+/g, " ").trim(),
       resumeH: resumeBox ? Math.round(resumeBox.height) : 0,
       playing: Boolean(playing),
       meterH: meterBox ? Math.round(meterBox.height) : 0,
-      pill: Boolean(document.querySelector("[data-ctl=mute-pill]")),
+      pill: document.querySelectorAll("[data-ctl=mute-pill]").length,
+      unmute: [...document.querySelectorAll("button")].filter((btn) => (btn.textContent || "").trim() === "Unmute").length,
     };
   });
-  check("phone: a fresh watcher does not read Unmute", watchRadio.mute !== "Unmute" && watchRadio.resume !== "Unmute", JSON.stringify(watchRadio));
+  check("phone: a fresh watcher does not read Unmute", watchRadio.mute !== "Unmute" && watchRadio.unmute === 0 && watchRadio.pill === 0, JSON.stringify(watchRadio));
   if (watchRadio.playing) {
-    check("phone: radio mute is at least 44px", watchRadio.muteH >= 44 && watchRadio.muteH <= 48, JSON.stringify(watchRadio));
+    check("phone: the card renders Mute while audio is playing", watchRadio.mute === "Mute" && watchRadio.muteH >= 44 && watchRadio.muteH <= 48, JSON.stringify(watchRadio));
     check("phone: the playing meter is about 14px tall", watchRadio.meterH >= 12 && watchRadio.meterH <= 16, JSON.stringify(watchRadio));
-  } else if (watchRadio.resume === "Play") {
-    check("phone: blocked autoplay is a 96 by 44 Play control", watchRadio.glyph === "▶" && watchRadio.resumeW === 96 && watchRadio.resumeH === 44 && watchRadio.meterH === 0 && watchRadio.pill === false, JSON.stringify(watchRadio));
   } else if (watchRadio.mute === "Mute") {
-    check("phone: radio mute is at least 44px", watchRadio.muteH >= 44 && watchRadio.muteH <= 48, JSON.stringify(watchRadio));
+    check("phone: the card renders Mute before this device is hearing", watchRadio.muteH >= 44 && watchRadio.muteH <= 48, JSON.stringify(watchRadio));
     check("phone: the Playing line stays hidden until audio plays", watchRadio.meterH === 0, JSON.stringify(watchRadio));
   } else {
-    check("phone: the radio card is quiet while the radio is off", watchRadio.mute === "" && watchRadio.resume === "", JSON.stringify(watchRadio));
+    check(
+      "phone: the card renders Play when this device is not hearing",
+      watchRadio.acc === "Play" && watchRadio.visible.includes("▶") && watchRadio.visible.includes("Play") && watchRadio.resumeH === 44 && watchRadio.meterH === 0 && watchRadio.pill === 0 && watchRadio.unmute === 0,
+      JSON.stringify(watchRadio),
+    );
   }
   await watcher.keyboard.press("Escape");
   check("watcher: Invite is not in the nav", (await watcher.locator("[data-ctl=nav-invite]").count()) === 0);

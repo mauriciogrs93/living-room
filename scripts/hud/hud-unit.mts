@@ -17,7 +17,10 @@ import { orderAgents } from "../../lib/room/activity-pin";
 import { STATIONS, stationUrl } from "../../lib/room/fixed-stations";
 import { createRadioPlayback, type RadioSink } from "../../lib/room/radio-playback";
 import { connectRadio, playFromCard, pressMutePill, roomSoundOff, setRoomSoundOff } from "../../components/room/ambience";
-import { deviceMuted, mutePillIcon, mutePillLabel, mutePillMayUnmute, mutePillVisible, playingLineVisible, radioControlLabel, roomSoundStoredOff, stationRowMayUnmute } from "../../lib/room/room-sound";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { RadioActionButtons } from "../../components/hud/frame/radio-actions";
+import { deviceMuted, mutePillIcon, mutePillLabel, mutePillMayUnmute, mutePillVisible, playingLineVisible, RADIO_CONTROLS, radioControlLabel, roomSoundStoredOff, stationRowMayUnmute } from "../../lib/room/room-sound";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -341,16 +344,77 @@ check(
   deviceMuted(false, false) === false &&
     deviceMuted(true, false) === true &&
     deviceMuted(false, true) === true &&
-    radioControlLabel({ hearing: false, held: false, live: false, roomSoundOff: true, blocked: false }) === "Play" &&
-    radioControlLabel({ hearing: false, held: false, live: true, roomSoundOff: false, blocked: false }) === "Play" &&
-    radioControlLabel({ hearing: false, held: true, live: true, roomSoundOff: false, blocked: false }) === "Unmute" &&
-    radioControlLabel({ hearing: false, held: true, live: false, roomSoundOff: false, blocked: false }) === "Play" &&
-    radioControlLabel({ hearing: true, held: false, live: true, roomSoundOff: false, blocked: false }) === "Mute" &&
-    radioControlLabel({ hearing: true, held: false, live: true, roomSoundOff: false, blocked: true }) === "Play" &&
+    radioControlLabel({ hearing: false, held: false, live: false, roomSoundOff: true, blocked: false }) === RADIO_CONTROLS.play &&
+    radioControlLabel({ hearing: false, held: false, live: true, roomSoundOff: false, blocked: false }) === RADIO_CONTROLS.play &&
+    radioControlLabel({ hearing: false, held: true, live: true, roomSoundOff: false, blocked: false }) === RADIO_CONTROLS.unmute &&
+    radioControlLabel({ hearing: false, held: true, live: false, roomSoundOff: false, blocked: false }) === RADIO_CONTROLS.play &&
+    radioControlLabel({ hearing: true, held: false, live: true, roomSoundOff: false, blocked: false }) === RADIO_CONTROLS.mute &&
+    radioControlLabel({ hearing: true, held: false, live: true, roomSoundOff: false, blocked: true }) === RADIO_CONTROLS.play &&
     playingLineVisible(true, false) === true &&
     playingLineVisible(false, false) === false &&
-    playingLineVisible(true, true) === false,
+    playingLineVisible(true, true) === false &&
+    strings.PLAY === "Play" &&
+    strings.MUTE === "Mute" &&
+    strings.UNMUTE === "Unmute",
 );
+type SoundPage = {
+  hearing: boolean;
+  held: boolean;
+  live: boolean;
+  roomSoundOff: boolean;
+  blocked: boolean;
+  failed: boolean;
+  sheetOpen: boolean;
+  started: boolean;
+  owner: boolean;
+  radioOpen: boolean;
+};
+function soundPage(input: SoundPage) {
+  const action = radioControlLabel(input);
+  const pill = mutePillVisible(input);
+  return renderToStaticMarkup(
+    createElement(
+      "div",
+      null,
+      pill ? createElement("button", { type: "button", "data-ctl": "mute-pill" }, input.held ? strings.UNMUTE : strings.MUTE) : null,
+      input.radioOpen ? createElement(RadioActionButtons, { action, owner: input.owner, live: input.live }) : null,
+    ),
+  );
+}
+function noUnmute(html: string) {
+  return !html.includes('data-ctl="mute-pill"') && !html.includes(strings.UNMUTE);
+}
+const soundBase: SoundPage = {
+  hearing: false,
+  held: false,
+  live: true,
+  roomSoundOff: false,
+  blocked: false,
+  failed: false,
+  sheetOpen: false,
+  started: true,
+  owner: false,
+  radioOpen: true,
+};
+const playHtml = soundPage({ ...soundBase, roomSoundOff: true, live: false, started: false });
+check(
+  "Play state renders a Play button",
+  playHtml.includes(`>${strings.PLAY}<`) && playHtml.includes("▶") && playHtml.includes('data-ctl="radio-resume"') && noUnmute(playHtml),
+);
+const muteHtml = soundPage({ ...soundBase, hearing: true });
+check(
+  "Mute state renders a Mute button",
+  muteHtml.includes(`>${strings.MUTE}<`) && muteHtml.includes('data-ctl="radio-mute"') && !muteHtml.includes(strings.UNMUTE),
+);
+const unmuteHtml = soundPage({ ...soundBase, held: true });
+check(
+  "Unmute state renders an Unmute button",
+  unmuteHtml.includes(`>${strings.UNMUTE}<`) && unmuteHtml.includes('data-ctl="radio-mute"') && unmuteHtml.includes('data-ctl="mute-pill"'),
+);
+check("Room sound Off leaves no pill and no Unmute button", noUnmute(soundPage({ ...soundBase, roomSoundOff: true, held: true, hearing: true })));
+check("a blocked play leaves no pill and no Unmute button", noUnmute(soundPage({ ...soundBase, blocked: true, held: true, hearing: true })));
+check("a failed play leaves no pill and no Unmute button", noUnmute(soundPage({ ...soundBase, failed: true, held: true, hearing: true })));
+check("an open sheet leaves no pill and no Unmute button", noUnmute(soundPage({ ...soundBase, sheetOpen: true, held: true, hearing: true, radioOpen: false })));
 check("room sound off blocks the mute pill", mutePillMayUnmute(false) === true && mutePillMayUnmute(true) === false);
 check(
   "the mute pill reads Mute or Unmute and crosses the speaker for Unmute",
@@ -555,11 +619,11 @@ function installStorage(value?: string | null) {
   );
   player.onPlaying();
   setRoomSoundOff(true);
-  check("turning Room sound Off pauses, drops src, and the card reads Play", audio.getAttribute("src") === null && audio.calls.pause > 0 && roomSoundOff() === true && radioControlLabel({ hearing: false, held: false, live: true, roomSoundOff: true, blocked: false }) === "Play");
+  check("turning Room sound Off pauses, drops src, and the card reads Play", audio.getAttribute("src") === null && audio.calls.pause > 0 && roomSoundOff() === true && radioControlLabel({ hearing: false, held: false, live: true, roomSoundOff: true, blocked: false }) === RADIO_CONTROLS.play);
   const plays = audio.calls.play;
   setRoomSoundOff(false);
   player.follow(0);
-  check("turning Room sound On starts no audio and the card stays Play", audio.calls.play === plays && audio.getAttribute("src") === null && radioControlLabel({ hearing: false, held: false, live: true, roomSoundOff: false, blocked: false }) === "Play");
+  check("turning Room sound On starts no audio and the card stays Play", audio.calls.play === plays && audio.getAttribute("src") === null && radioControlLabel({ hearing: false, held: false, live: true, roomSoundOff: false, blocked: false }) === RADIO_CONTROLS.play);
   playFromCard();
   player.onPlaying();
   pressMutePill();
@@ -575,13 +639,19 @@ check(
   "the pinned Activity focus ring is inset 4px",
   hudCssFile.includes(".hud-people > li.is-pin .hud-person-btn:focus-visible") && hudCssFile.includes("outline-offset: -4px"),
 );
+const warmAt = canvasSource.indexOf("function WarmTapPrograms");
+const warmFn = warmAt >= 0 ? canvasSource.slice(warmAt, canvasSource.indexOf("function Picture", warmAt)) : "";
 check(
-  "selection-ring warm-up stops after one pass when no ring is in the room",
-  canvasSource.includes("passes.current") &&
-    canvasSource.includes("passes.current > 0") &&
-    canvasSource.includes("done.current = true") &&
-    canvasSource.includes("gl.compile(mesh, camera, scene)") &&
-    canvasSource.includes("gl.compileAsync(mesh, camera, scene)") &&
+  "selection-ring warm-up walks once, then once more when the first agent arrives",
+  warmFn.includes("walks.current === 0") &&
+    warmFn.includes("waitForAgent") &&
+    warmFn.includes("if (count.current === 0) return") &&
+    warmFn.includes("if (done.current) return") &&
+    canvasSource.includes("<WarmTapPrograms agents=") &&
+    warmFn.includes("gl.compile(mesh, camera, scene)") &&
+    warmFn.includes("gl.compileAsync(mesh, camera, scene)") &&
+    warmFn.split("scene.traverse(").length === 2 &&
+    !warmFn.includes("traverseVisible") &&
     !canvasSource.includes("outputColorSpace: THREE.SRGBColorSpace"),
 );
 check(
@@ -607,11 +677,15 @@ check(
     hudFrame.includes('data-radio-cluster=""') &&
     !hudFrame.includes('data-ctl="pill-mute"'),
 );
+const radioActions = readFileSync(path.join(root, "components/hud/frame/radio-actions.tsx"), "utf8");
 check(
   "blocked autoplay shows a Play control and the Playing line is gated on hearing",
-  hudFrame.includes('data-ctl="radio-resume"') &&
-    hudFrame.includes('aria-hidden="true">▶</span>') &&
-    hudFrame.includes("{PLAY}") &&
+  hudFrame.includes("<RadioActionButtons") &&
+    radioActions.includes('data-ctl="radio-resume"') &&
+    radioActions.includes('aria-hidden="true">▶</span>') &&
+    radioActions.includes("{PLAY}") &&
+    radioActions.includes("RADIO_CONTROLS.play") &&
+    !radioActions.includes("aria-label={PLAY}") &&
     !hudFrame.includes("aria-label={PLAY}") &&
     hudFrame.includes("data-playing=") &&
     hudFrame.includes("playingLineVisible(hearing, blocked)") &&

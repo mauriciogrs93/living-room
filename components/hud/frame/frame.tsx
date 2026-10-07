@@ -11,6 +11,7 @@ import type { HudModel } from "@/components/hud/model";
 import { onRadioNotice, tapRadio } from "@/components/hud/radio";
 import { playFromCard } from "@/components/room/ambience";
 import { mutePillVisible, playingLineVisible, radioControlLabel } from "@/lib/room/room-sound";
+import { RadioActionButtons } from "./radio-actions";
 import { ActivitySection } from "@/components/hud/sections/activity";
 import { DoorSection } from "@/components/hud/sections/door";
 import { InviteSection } from "@/components/hud/sections/invite";
@@ -54,7 +55,6 @@ import {
   PLAYING,
   PLAYS,
   PREVIOUS,
-  RADIO_OFF,
   ROOM_SOUND,
   SHOW_CONTROLS,
   STOP,
@@ -439,7 +439,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   const skyWord = night ? NIGHT : dusk ? DUSK : DAY;
   const tapeItems = [sunLine, ...tv.headlines.map((item) => headlineTitle(item))].filter((line) => line && !/youtube|watch live|°/i.test(line));
   const cardClass = `hudf-card${sheet ? " is-sheet" : " is-float"}${tablet ? " is-tablet" : ""}`;
-  const action = radioControlLabel({ hearing, held, live: Boolean(radio?.on), roomSoundOff: soundOff, blocked });
+  const action = radioControlLabel({ hearing, held, live: Boolean(radio?.on), roomSoundOff: soundOff, blocked, failed });
   const showPlaying = playingLineVisible(hearing, blocked);
   const pillShown = mutePillVisible({
     started,
@@ -448,6 +448,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
     roomSoundOff: soundOff,
     sheetOpen: Boolean(shown),
     blocked,
+    failed,
   });
   const rootClass = `room-root hudf${night ? " is-night" : ""}${sheet && shown ? " is-sheet" : ""}${tucked ? " is-tucked" : ""}${short ? " is-short" : ""}${pillShown ? " has-mute-pill" : ""}`;
 
@@ -512,23 +513,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
                 </button>
               </div>
             ) : null}
-            {action === "play" && (radio?.on || !owner) ? (
-              <button type="button" className="hudf-play is-resume" data-ctl="radio-resume" onClick={() => playFromCard()}>
-                <span aria-hidden="true">▶</span>
-                {PLAY}
-              </button>
-            ) : null}
-            {action === "unmute" ? (
-              <button type="button" className="hudf-play" data-ctl="radio-mute" onClick={pressMutePill}>
-                {UNMUTE}
-              </button>
-            ) : null}
-            {action === "mute" && !owner ? (
-              <button type="button" className="hudf-play" data-ctl="radio-mute" onClick={pressMutePill}>
-                {MUTE}
-              </button>
-            ) : null}
-            {!owner && !radio?.on && action !== "play" ? <p className="is-info hudf-quiet">{RADIO_OFF}</p> : null}
+            <RadioActionButtons action={action} owner={owner} live={Boolean(radio?.on)} />
             {failed ? (
               <p className="hudf-station-fail" data-station-fail="" role="status" aria-live="polite">
                 {STATION_CANT_PLAY}

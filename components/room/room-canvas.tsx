@@ -399,18 +399,35 @@ function GroundPlane({ grade }: { grade: Grade }) {
 
 /**
  * The first name-tag tap draws the selection ring, a material the idle scene never uses.
- * Warm that program only. KHR_parallel_shader_compile compiles it off the main thread;
- * otherwise one program is compiled per frame. The ring stays undrawn until it is ready,
- * so the tap does not pay the compile. The rest of the house is left to the first frames.
+ * Warm that program only. An empty room is walked once and then left alone.
+ * The first agent arms one more walk, so the ring is compiled before the tap.
+ * KHR_parallel_shader_compile compiles it off the main thread; otherwise one
+ * program is compiled per frame. The ring stays undrawn until it is ready.
  */
-function WarmTapPrograms() {
+function WarmTapPrograms({ agents }: { agents: number }) {
   const { gl, scene, camera } = useThree();
   const seen = useRef(new Set<string>());
   const queue = useRef<THREE.Mesh[]>([]);
   const drawing = useRef<THREE.Mesh | null>(null);
   const parallel = useRef<boolean | null>(null);
   const done = useRef(false);
-  const passes = useRef(0);
+  const walks = useRef(0);
+  const waitForAgent = useRef(false);
+  const count = useRef(agents);
+  count.current = agents;
+
+  function collect() {
+    walks.current += 1;
+    scene.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh || mesh.name !== "selection-ring") return;
+      const material = mesh.material as THREE.Material | undefined;
+      if (!material || Array.isArray(mesh.material) || seen.current.has(material.uuid)) return;
+      seen.current.add(material.uuid);
+      queue.current.push(mesh);
+    });
+  }
+
   useFrame(() => {
     const finishing = drawing.current;
     if (finishing) {
@@ -423,26 +440,29 @@ function WarmTapPrograms() {
     if (done.current) return;
     if (parallel.current === null) parallel.current = Boolean(gl.getContext().getExtension("KHR_parallel_shader_compile"));
     if (queue.current.length === 0 && !drawing.current) {
-      // One walk. An empty room has no ring, and searching again every frame never ends.
-      if (passes.current > 0) {
-        done.current = true;
-        return;
-      }
-      passes.current += 1;
-      scene.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (!mesh.isMesh || mesh.name !== "selection-ring") return;
-        const material = mesh.material as THREE.Material | undefined;
-        if (!material || Array.isArray(mesh.material) || seen.current.has(material.uuid)) return;
-        seen.current.add(material.uuid);
-        queue.current.push(mesh);
-      });
-      if (queue.current.length === 0) {
+      if (walks.current === 0) {
+        collect();
+        if (queue.current.length === 0) {
+          if (count.current === 0) {
+            waitForAgent.current = true;
+            return;
+          }
+          done.current = true;
+          return;
+        }
+      } else if (waitForAgent.current) {
+        if (count.current === 0) return;
+        waitForAgent.current = false;
+        collect();
+        if (queue.current.length === 0) {
+          done.current = true;
+          return;
+        }
+      } else {
         done.current = true;
         return;
       }
     }
-    if (seen.current.size > 0 && queue.current.length === 0 && !drawing.current) done.current = true;
     const mesh = queue.current[0];
     if (!mesh) return;
     queue.current.shift();
@@ -982,7 +1002,7 @@ export function RoomCanvas({
                   if (mini) setFloor(null);
                 }}
               >
-                <WarmTapPrograms />
+                <WarmTapPrograms agents={(lineup ? lineupAgents(snapshot.agents) : snapshot.agents).filter((agent) => !above(agent.position.z)).length} />
                 <FurniturePointer />
                 <Picture grade={grade} />
                 <LightRig night={night} phone={phone} mapSize={budget.shadow} grade={grade} />

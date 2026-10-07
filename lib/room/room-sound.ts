@@ -18,19 +18,30 @@ export function deviceMuted(roomSoundOff: boolean, held: boolean): boolean {
   return roomSoundOff || held;
 }
 
+/** Which local radio button to show. These are control ids, not the visible words. */
+export const RADIO_CONTROLS = {
+  play: "play",
+  unmute: "unmute",
+  mute: "mute",
+} as const;
+
+export type RadioControl = (typeof RADIO_CONTROLS)[keyof typeof RADIO_CONTROLS];
+
 export type RadioControlInput = {
   hearing: boolean;
   held: boolean;
   live: boolean;
   roomSoundOff: boolean;
   blocked: boolean;
+  failed?: boolean;
 };
 
 /** Unmute only after this device tapped Mute while the station is live. Otherwise Play, unless audio is actually playing. */
-export function radioControlLabel(input: RadioControlInput): "Play" | "Unmute" | "Mute" {
-  if (!input.roomSoundOff && input.held && input.live) return "Unmute";
-  if (!input.roomSoundOff && input.hearing && !input.blocked && !input.held) return "Mute";
-  return "Play";
+export function radioControlLabel(input: RadioControlInput): RadioControl {
+  if (input.roomSoundOff || input.blocked || input.failed) return RADIO_CONTROLS.play;
+  if (input.held && input.live) return RADIO_CONTROLS.unmute;
+  if (input.hearing && !input.held) return RADIO_CONTROLS.mute;
+  return RADIO_CONTROLS.play;
 }
 
 /** The Playing line is on only while audio is actually playing. */
@@ -45,6 +56,7 @@ export type MutePillInput = {
   roomSoundOff: boolean;
   sheetOpen: boolean;
   blocked: boolean;
+  failed?: boolean;
 };
 
 /**
@@ -53,7 +65,7 @@ export type MutePillInput = {
  * here, and while autoplay is blocked.
  */
 export function mutePillVisible(input: MutePillInput): boolean {
-  if (input.sheetOpen || input.roomSoundOff || input.blocked || !input.started) return false;
+  if (input.sheetOpen || input.roomSoundOff || input.blocked || input.failed || !input.started) return false;
   return input.hearing || input.held;
 }
 
