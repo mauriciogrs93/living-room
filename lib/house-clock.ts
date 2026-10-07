@@ -66,3 +66,67 @@ export function houseNight(now: number | Date = Date.now()) {
 export function houseDusk(now: number | Date = Date.now()) {
   return sunElevation(now) < 6;
 }
+
+const HORIZON = -0.833;
+
+function asDate(now: number | Date) {
+  return typeof now === "number" ? new Date(now) : now;
+}
+
+/** Civil date in the house zone, used to memo sunrise and sunset once per house day. */
+export function houseDateKey(now: number | Date = Date.now(), tz = HOUSE_TZ) {
+  const date = asDate(now);
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  return fmt.format(date);
+}
+
+function offsetMinutes(tz: string, at: number) {
+  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset", hour: "numeric" });
+  const name = fmt.formatToParts(new Date(at)).find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+  const match = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name);
+  if (!match) return 0;
+  const sign = match[1] === "-" ? -1 : 1;
+  return sign * (Number(match[2]) * 60 + Number(match[3] ?? 0));
+}
+
+/** Local noon in the house zone, as a UTC timestamp. */
+function localNoon(now: number | Date, tz = HOUSE_TZ) {
+  const date = asDate(now);
+  const key = houseDateKey(date, tz);
+  const [year, month, day] = key.split("-").map(Number);
+  const guess = Date.UTC(year!, month! - 1, day!, 12, 0, 0);
+  const off = offsetMinutes(tz, guess);
+  return guess - off * 60_000;
+}
+
+function bisect(lo: number, hi: number, falling: boolean, lat: number, lon: number) {
+  for (let i = 0; i < 48; i += 1) {
+    const mid = (lo + hi) / 2;
+    const above = sunElevation(mid, lat, lon) > HORIZON;
+    if (falling ? above : !above) lo = mid;
+    else hi = mid;
+  }
+  return Math.round((lo + hi) / 2 / 60_000) * 60_000;
+}
+
+/** Sunset: the sun crossing −0.833° between solar noon and twelve hours later. Minutes only. */
+export function sunsetTime(now: number | Date = Date.now(), lat = HOUSE_LAT, lon = HOUSE_LON) {
+  const noon = localNoon(now);
+  let peak = noon;
+  let best = sunElevation(noon, lat, lon);
+  for (let step = -180; step <= 180; step += 10) {
+    const at = noon + step * 60_000;
+    const elev = sunElevation(at, lat, lon);
+    if (elev > best) {
+      best = elev;
+      peak = at;
+    }
+  }
+  return new Date(bisect(peak, peak + 12 * 60 * 60_000, true, lat, lon));
+}
+
+/** The next sunrise after that day's sunset. */
+export function sunriseTime(now: number | Date = Date.now(), lat = HOUSE_LAT, lon = HOUSE_LON) {
+  const set = sunsetTime(now, lat, lon).getTime();
+  return new Date(bisect(set, set + 18 * 60 * 60_000, false, lat, lon));
+}
