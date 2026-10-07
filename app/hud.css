@@ -393,6 +393,11 @@
   gap: 8px;
 }
 .hud-people > li.is-pin .hud-person-btn { flex: 1; min-width: 0; }
+.hud-people > li.is-pin .hud-person-btn:focus,
+.hud-people > li.is-pin .hud-person-btn:focus-visible {
+  outline: 2px solid var(--hud-ink, #2b2d31);
+  outline-offset: -4px;
+}
 .hud-people > li.is-pin .hudf-x { flex: none; margin-top: 6px; }
 
 .hud-person {

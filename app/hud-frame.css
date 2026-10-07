@@ -339,6 +339,28 @@
 }
 .hudf button.hudf-mute-pill.is-in { opacity: 1; pointer-events: auto; }
 .hudf button.hudf-mute-pill:focus { outline: 2px solid rgb(43, 45, 49); outline-offset: 2px; }
+.hudf button.hudf-mute-pill .hudf-eq { height: 12px; margin-right: 0; }
+.hudf button.hudf-mute-pill .hudf-eq i { height: 12px; }
+.hudf button.hudf-play.is-resume {
+  box-sizing: border-box;
+  width: 96px;
+  min-width: 96px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #2b2d31;
+  color: #fff;
+  border-radius: 22px;
+  font-size: 16px;
+  line-height: 1;
+}
+.hudf button.hudf-play.is-resume:focus,
+.hudf button.hudf-play.is-resume:focus-visible {
+  outline: 2px solid #2b2d31;
+  outline-offset: 2px;
+}
 @media (max-width: 719px) {
   .hudf.has-mute-pill .hudf-strip.is-chat { margin-right: 108px; }
   .hudf.has-mute-pill:not(.is-sheet) .hudf-strips { pointer-events: none; }
@@ -347,6 +369,10 @@
 @media (min-width: 720px) {
   .hudf button.hudf-mute-pill { right: 16px; bottom: 18px; }
   .hudf.has-mute-pill .hudf-bot { right: 120px; }
+}
+@media (min-width: 1440px) {
+  .hudf button.hudf-mute-pill { right: 16px; bottom: 18px; }
+  .hudf.is-tucked button.hudf-mute-pill { right: 16px; bottom: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hudf button.hudf-mute-pill { transition: none; }

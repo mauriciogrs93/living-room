@@ -14,7 +14,9 @@ import { lineupCount, lineupDraws, lineupEnabled } from "../../lib/room/lineup";
 import { acceptPlayerEvent, embedOrigin, readPlayerSignal, watchEmbed, YT_ORIGIN } from "../../lib/room/watch-live";
 import { fitTagBoxes, joinToast, placeTags, plainName, stackLabel, stackListBox, stackRowCopy, tagCopy, walkedInLine, type TagOut, type TagPoint, type TagRect } from "../../lib/room/name-tags";
 import { orderAgents } from "../../lib/room/activity-pin";
-import { mutePillIcon, mutePillLabel, mutePillMayUnmute, mutePillVisible, stationRowMayUnmute } from "../../lib/room/room-sound";
+import { STATIONS, stationUrl } from "../../lib/room/fixed-stations";
+import { createRadioPlayback, type RadioSink } from "../../lib/room/radio-playback";
+import { deviceMuted, mutePillIcon, mutePillLabel, mutePillMayUnmute, mutePillVisible, playingLineVisible, radioControlLabel, stationRowMayUnmute } from "../../lib/room/room-sound";
 
 const results: boolean[] = [];
 function check(name: string, ok: unknown, detail = "") {
@@ -268,7 +270,7 @@ check(
     avatarSource.includes("tapReady"),
 );
 check("the framed camera ignores stage changes", canvasSource.includes("window.innerWidth") && !canvasSource.includes('addEventListener("hud-stage"'));
-check("rail bars follow playback", hudFrame.includes("data-rail-eq") && hudFrame.includes("paused={Boolean(radio?.on && silent)}"));
+check("rail bars follow playback", hudFrame.includes("data-rail-eq") && hudFrame.includes("paused={!hearing}"));
 check(
   "the rail dot drops when tv, radio, or you opens",
   hudFrame.includes('dot={dot && shown !== "tv" && shown !== "radio" && shown !== "you"}') && hudCss.includes(".hudf.is-sheet .hudf-dot { display: none; visibility: hidden; transition: none; }"),
@@ -296,7 +298,7 @@ check("room sound off blocks a station-row unmute", stationRowMayUnmute(true, "s
 check("a remote station change never unmutes", stationRowMayUnmute(false, "remote") === false && stationRowMayUnmute(true, "remote") === false);
 check(
   "station unmute is only the local row tap and does not post unMute",
-  hudFrame.includes("unmuteFromStationTap()") &&
+  hudFrame.includes("unmuteFromStationTap(index)") &&
     hudFrame.includes('data-ctl={`radio-row-${index}`}') &&
     ambienceSource.includes("stationRowMayUnmute(roomSoundOff(), \"station-row\")") &&
     !ambienceSource.includes("writeMuted(false);\n      heardUrl") &&
@@ -317,9 +319,29 @@ check(
     !globals.includes(".tag-stack-scroll.is-overflow {\n  filter"),
 );
 check("opening a sheet closes the +N list", hudFrame.includes('new Event("hud-sheet")') && tagLayer.includes('addEventListener("hud-sheet"'));
+const pillBase = { started: true, hearing: true, held: false, roomSoundOff: false, sheetOpen: false, blocked: false };
 check(
-  "the mute pill shows only while this device is playing and no sheet is open",
-  mutePillVisible(true, false) === true && mutePillVisible(false, false) === false && mutePillVisible(true, true) === false,
+  "the mute pill shows while playing or device-muted, and hides for a sheet, Room sound, a cold start, or blocked autoplay",
+  mutePillVisible(pillBase) === true &&
+    mutePillVisible({ ...pillBase, hearing: false, held: true }) === true &&
+    mutePillVisible({ ...pillBase, hearing: false, held: false }) === false &&
+    mutePillVisible({ ...pillBase, sheetOpen: true }) === false &&
+    mutePillVisible({ ...pillBase, roomSoundOff: true }) === false &&
+    mutePillVisible({ ...pillBase, started: false }) === false &&
+    mutePillVisible({ ...pillBase, blocked: true, hearing: false }) === false,
+);
+check(
+  "Unmute is only after this device muted, and Play wins when autoplay is blocked",
+  deviceMuted(false, false) === false &&
+    deviceMuted(true, false) === true &&
+    deviceMuted(false, true) === true &&
+    radioControlLabel(false, false) === "Mute" &&
+    radioControlLabel(false, true) === "Unmute" &&
+    radioControlLabel(true, false) === "Play" &&
+    radioControlLabel(true, true) === "Play" &&
+    playingLineVisible(true, false) === true &&
+    playingLineVisible(false, false) === false &&
+    playingLineVisible(true, true) === false,
 );
 check("room sound off blocks the mute pill", mutePillMayUnmute(false) === true && mutePillMayUnmute(true) === false);
 check(
@@ -357,6 +379,135 @@ check(
     readFileSync(path.join(root, "app/hud.css"), "utf8").includes("rgba(43, 45, 49, 0.06)") &&
     hudFrame.includes('querySelector<HTMLElement>("[data-activity-pin]")') &&
     hudFrame.includes("pin.focus()"),
+);
+
+function radioSink() {
+  let attr: string | null = null;
+  const calls = { play: 0, load: 0, src: [] as string[] };
+  let fail = false;
+  const audio = {
+    calls,
+    get src() {
+      return attr ?? "";
+    },
+    set src(value: string) {
+      attr = value;
+      calls.src.push(value);
+    },
+    getAttribute(name: string) {
+      return name === "src" ? attr : null;
+    },
+    removeAttribute(name: string) {
+      if (name === "src") attr = null;
+    },
+    load() {
+      calls.load += 1;
+    },
+    pause() {},
+    play() {
+      calls.play += 1;
+      if (fail) {
+        return {
+          catch(fn: (err: Error) => void) {
+            fn(new Error("blocked"));
+            return Promise.resolve();
+          },
+        } as unknown as Promise<void>;
+      }
+      return Promise.resolve();
+    },
+    failNext() {
+      fail = true;
+    },
+  };
+  return audio;
+}
+
+{
+  let muted = true;
+  const audio = radioSink();
+  const player = createRadioPlayback(audio as unknown as RadioSink, {
+    deviceMuted: () => muted,
+    onChange() {},
+  });
+  player.follow(1, "https://evil.example/injected.mp3");
+  player.follow(4, "https://evil.example/other.mp3");
+  check(
+    "no audio requests while muted, including after a station change",
+    audio.calls.play === 0 && audio.calls.src.length === 0 && audio.getAttribute("src") === null && audio.calls.load >= 2,
+  );
+  muted = false;
+  player.unmute();
+  check("the src on unmute equals STATIONS[index].url", audio.getAttribute("src") === stationUrl(4) && audio.getAttribute("src") === STATIONS[STATIONS.length - 1]!.url);
+  player.onPlaying();
+  check("the playing event clears blocked and marks this device as started", player.state().hearing === true && player.state().blocked === false && player.state().started === true);
+  player.follow(0, "https://injected.example/stream.mp3");
+  check(
+    "a URL injected into room state is ignored",
+    audio.getAttribute("src") === STATIONS[0]!.url && !audio.calls.src.includes("https://injected.example/stream.mp3") && !audio.calls.src.includes("https://evil.example/injected.mp3"),
+  );
+  const playsAfterJoin = audio.calls.play;
+  player.follow(0, "https://injected.example/again.mp3");
+  check("a repeat of the current station does not call play again", audio.calls.play === playsAfterJoin);
+  player.follow(1, "https://nope.example/live.mp3");
+  check("a station change while playing reloads the fixed URL", audio.getAttribute("src") === STATIONS[1]!.url && audio.calls.src.includes(STATIONS[1]!.url));
+  const playsWhileLive = audio.calls.play;
+  muted = true;
+  player.mute();
+  player.follow(0, "https://evil.example/after-mute.mp3");
+  check("muting drops src and a later station change still does not fetch", audio.getAttribute("src") === null && audio.calls.play === playsWhileLive && !audio.calls.src.includes("https://evil.example/after-mute.mp3"));
+}
+
+{
+  const audio = radioSink();
+  audio.failNext();
+  let snap = { blocked: false, hearing: false, started: false, index: 0 };
+  const player = createRadioPlayback(audio as unknown as RadioSink, {
+    deviceMuted: () => false,
+    onChange(state) {
+      snap = state;
+    },
+  });
+  player.follow(0);
+  player.follow(1);
+  check("autoplay is tried once and a rejection sets blocked", audio.calls.play === 1 && snap.blocked === true && snap.hearing === false && audio.getAttribute("src") === STATIONS[0]!.url);
+  player.onPlaying();
+  check("playing clears the blocked state", player.state().blocked === false && player.state().started === true);
+}
+
+const hudCssFile = readFileSync(path.join(root, "app/hud.css"), "utf8");
+check(
+  "the pinned Activity focus ring is inset 4px",
+  hudCssFile.includes(".hud-people > li.is-pin .hud-person-btn:focus-visible") && hudCssFile.includes("outline-offset: -4px"),
+);
+check(
+  "selection-ring warm-up stops after one pass when no ring is in the room",
+  canvasSource.includes("passes.current") &&
+    canvasSource.includes("passes.current > 0") &&
+    canvasSource.includes("done.current = true") &&
+    canvasSource.includes("gl.compile(mesh, camera, scene)") &&
+    canvasSource.includes("gl.compileAsync(mesh, camera, scene)") &&
+    !canvasSource.includes("outputColorSpace: THREE.SRGBColorSpace"),
+);
+check(
+  "Room sound Off, including a fresh device, keeps the mute pill hidden",
+  hudFrame.includes("roomSoundOff: muted") && mutePillVisible({ ...pillBase, roomSoundOff: true }) === false,
+);
+check(
+  "at 1440 the mute pill sits 16px from the right and is not a child of the center bar",
+  hudCss.includes("@media (min-width: 1440px)") &&
+    hudCss.includes(".hudf button.hudf-mute-pill { right: 16px; bottom: 18px; }") &&
+    hudCss.includes(".hudf.is-tucked button.hudf-mute-pill { right: 16px; bottom: 16px; }") &&
+    !hudFrame.includes('data-ctl="pill-mute"'),
+);
+check(
+  "blocked autoplay shows a Play control and the Playing line is gated on hearing",
+  hudFrame.includes('data-ctl="radio-resume"') &&
+    hudFrame.includes("aria-label={PLAY}") &&
+    hudFrame.includes("data-playing=") &&
+    hudFrame.includes("playingLineVisible(hearing, blocked)") &&
+    hudCss.includes(".hudf button.hudf-play.is-resume") &&
+    hudCss.includes("width: 96px;"),
 );
 
 const failed = results.filter((ok) => !ok).length;

@@ -25,7 +25,7 @@ export function onRadioNotice(fn: (message: string) => void) {
 
 export function RadioBridge({ snapshot }: { snapshot: LiveSnapshot | null }) {
   const { lat, lon } = useAtmosphere();
-  const { hear, stopRadio } = useAmbience();
+  const { stopRadio } = useAmbience();
   const heard = useRef(false);
   const latRef = useRef(lat);
   const lonRef = useRef(lon);
@@ -59,14 +59,9 @@ export function RadioBridge({ snapshot }: { snapshot: LiveSnapshot | null }) {
           notice("fail");
           return;
         }
-        if (data.on && data.url && intent !== "off") {
-          if (!data.url.startsWith("https:")) {
-            notice("stream");
-            return;
-          }
+        if (data.on && intent !== "off") {
           releaseWatch();
           heard.current = true;
-          hear(data.url);
         }
         if (!data.on) stopRadio();
         notice("");
@@ -81,7 +76,7 @@ export function RadioBridge({ snapshot }: { snapshot: LiveSnapshot | null }) {
     return () => {
       sendRadio = () => {};
     };
-  }, [hear, stopRadio]);
+  }, [stopRadio]);
 
   return null;
 }

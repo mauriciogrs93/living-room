@@ -468,6 +468,12 @@ async function activityPin(page, size) {
   await page.waitForSelector("[data-activity-pin]", { timeout: 4000 });
   const fromEnter = await pinState(page);
   check(`${size}: Enter on a +N row pins that agent the same way`, pinOk(fromEnter), JSON.stringify(fromEnter));
+  await page.locator("[data-activity-pin]").focus();
+  const pinRing = await page.evaluate(() => {
+    const style = getComputedStyle(document.querySelector("[data-activity-pin]"));
+    return { offset: style.outlineOffset, width: style.outlineWidth };
+  });
+  check(`${size}: the pinned Activity focus ring is inset 4px`, pinRing.offset === "-4px" && pinRing.width === "2px", JSON.stringify(pinRing));
   await page.keyboard.press("Escape");
   await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
   await page.evaluate(() => document.querySelector("[data-tag-key='stack-pin']")?.remove());
@@ -549,24 +555,49 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
     return { width: style.outlineWidth, style: style.outlineStyle, color: style.outlineColor };
   });
   check(`${size}: the mute pill focus ring is 2px ink`, ring.width === "2px" && ring.style === "solid" && ring.color === "rgb(43, 45, 49)", JSON.stringify(ring));
+  const nest = await page.evaluate(() => {
+    const pill = document.querySelector("[data-ctl=mute-pill]");
+    const bars = pill?.querySelector("[data-pill-eq]");
+    const bar = bars?.querySelector("i");
+    return {
+      inCenter: Boolean(pill?.closest(".hudf-pill")),
+      moving: bar ? getComputedStyle(bar).animationPlayState : "missing",
+    };
+  });
+  check(`${size}: the playing pill is outside the center bar and its bars move`, nest.inCenter === false && nest.moving === "running", JSON.stringify(nest));
   let radioPosts = 0;
+  const audioReqs = [];
   const onReq = (req) => {
     if (req.method() === "POST" && req.url().includes("/api/radio")) radioPosts += 1;
+    if (/radioparadise|streamguys1|radiofrance/i.test(req.url())) audioReqs.push(req.url().slice(0, 80));
   };
   page.on("request", onReq);
   await page.click("[data-ctl=mute-pill]");
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(250);
   page.off("request", onReq);
   const mutedLook = await page.evaluate(() => {
     const pill = document.querySelector("[data-ctl=mute-pill]");
+    const audio = document.querySelector("audio");
+    const bar = pill?.querySelector("[data-pill-eq] i");
+    const box = pill?.getBoundingClientRect();
     return {
       text: pill?.textContent?.trim() || "",
       crossed: (pill?.querySelector("svg")?.innerHTML || "").includes("M16 9.5"),
       name: pill?.getAttribute("aria-label"),
       stored: localStorage.getItem("living-room-mute"),
+      src: audio ? audio.getAttribute("src") : "missing",
+      still: bar ? getComputedStyle(bar).animationPlayState : "missing",
+      w: box ? Math.round(box.width) : 0,
+      h: box ? Math.round(box.height) : 0,
+      inCenter: Boolean(pill?.closest(".hudf-pill")),
     };
   });
-  check(`${size}: Mute becomes Unmute on this device only`, mutedLook.text === "Unmute" && mutedLook.crossed && mutedLook.name === null && radioPosts === 0 && mutedLook.stored !== "1", JSON.stringify({ ...mutedLook, radioPosts }));
+  check(
+    `${size}: Mute becomes Unmute in the same plaster with the bars still`,
+    mutedLook.text === "Unmute" && mutedLook.crossed && mutedLook.name === null && radioPosts === 0 && mutedLook.stored !== "1" && mutedLook.src === null && mutedLook.still === "paused" && mutedLook.w === 96 && mutedLook.h === 44 && mutedLook.inCenter === false,
+    JSON.stringify({ ...mutedLook, radioPosts, audioReqs }),
+  );
+  check(`${size}: no audio requests while muted`, audioReqs.length === 0, audioReqs.join(" "));
   await page.click("[data-ctl=mute-pill]");
   await page.waitForTimeout(150);
   check(`${size}: Unmute restores Mute`, (await page.locator("[data-ctl=mute-pill]").innerText()).trim() === "Mute");
@@ -576,15 +607,12 @@ async function mutePillChecks(page, size, expectHiddenFirst) {
   }
   await page.keyboard.press("Escape");
   await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
-  await page.waitForTimeout(200);
-  const blocked = await page.locator("[data-ctl=mute-pill]").innerText();
-  await page.click("[data-ctl=mute-pill]");
-  await page.waitForTimeout(150);
-  const still = await page.evaluate(() => ({
-    text: document.querySelector("[data-ctl=mute-pill]")?.textContent?.trim() || "",
-    stored: localStorage.getItem("living-room-mute"),
-  }));
-  check(`${size}: Room sound off blocks the mute pill`, blocked.trim() === "Unmute" && still.text === "Unmute" && still.stored === "1", JSON.stringify(still));
+  await page.waitForTimeout(400);
+  const soundOff = await page.evaluate(() => {
+    const pill = document.querySelector("[data-ctl=mute-pill]");
+    return { count: pill ? 1 : 0, text: pill ? (pill.textContent || "").trim() : "", stored: localStorage.getItem("living-room-mute") };
+  });
+  check(`${size}: Room sound Off removes the mute pill`, soundOff.count === 0 && soundOff.text !== "Unmute" && soundOff.stored === "1", JSON.stringify(soundOff));
   await clickCtl(page, "nav-activity", "owner", size);
   await page.waitForTimeout(250);
   const hidden = await page.evaluate(() => {
@@ -624,6 +652,25 @@ try {
     const email = `hud-${name}-${tag}@example.com`;
     await signup(page, email);
     check(`${name}: frame is up`, (await page.locator(".hudf").count()) === 1);
+    if (name === "phone" || name === "desk") {
+      await clickCtl(page, "nav-you", "owner", name);
+      const freshOff = await page.evaluate(() => {
+        const sound = document.querySelector("[data-ctl=room-sound]")?.innerText || "";
+        const pill = document.querySelector("[data-ctl=mute-pill]");
+        return {
+          sound,
+          pill: pill ? (pill.textContent || "").trim() : "",
+          stored: localStorage.getItem("living-room-mute"),
+        };
+      });
+      check(
+        `${name}: a fresh device with Room sound Off has no mute pill`,
+        /\bOff\b/.test(freshOff.sound) && freshOff.pill === "" && freshOff.stored !== "0",
+        JSON.stringify(freshOff),
+      );
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
+    }
     if (name === "phone" || name === "desk") {
       const zoomLoad = await page.evaluate(() => document.documentElement.dataset.roomZoom || "");
       await page.waitForTimeout(700);
@@ -869,15 +916,33 @@ try {
       await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
       await clickCtl(page, "rail-radio", "owner", name);
       await clickCtl(page, "radio-play", "owner", name);
-      await page.waitForSelector(".hudf-card .hudf-eq i", { timeout: 8000 });
+      await page.waitForSelector("[data-playing], [data-ctl=radio-resume]", { timeout: 8000 });
       check("phone: Play calls the radio route", bag.api.some((line) => line.includes("/api/radio")));
       const eq = await page.evaluate(() => {
+        const playing = Boolean(document.querySelector("[data-playing]"));
+        const resume = document.querySelector("[data-ctl=radio-resume]");
         const bar = document.querySelector(".hudf-card .hudf-eq i");
-        if (!bar) return "missing";
-        const style = getComputedStyle(bar);
-        return `${style.animationName} ${style.animationPlayState}`;
+        const style = bar ? getComputedStyle(bar) : null;
+        const box = resume?.getBoundingClientRect();
+        return {
+          playing,
+          label: resume?.getAttribute("aria-label") || "",
+          glyph: resume?.textContent?.trim() || "",
+          w: box ? Math.round(box.width) : 0,
+          h: box ? Math.round(box.height) : 0,
+          eq: style ? `${style.animationName} ${style.animationPlayState}` : "missing",
+          pill: Boolean(document.querySelector("[data-ctl=mute-pill]")),
+        };
       });
-      check("phone: the radio card EQ animates while the station plays", eq.startsWith("hudf-eq") && eq.includes("running"), eq);
+      if (eq.playing) {
+        check("phone: the radio card EQ animates while the station plays", eq.eq.startsWith("hudf-eq") && eq.eq.includes("running"), JSON.stringify(eq));
+      } else {
+        check(
+          "phone: blocked autoplay shows Play and hides the pill",
+          eq.label === "Play" && eq.glyph === "▶" && eq.w === 96 && eq.h === 44 && eq.eq === "missing" && eq.pill === false,
+          JSON.stringify(eq),
+        );
+      }
       await clickCtl(page, "radio-stop", "owner", name);
       await page.waitForSelector("[data-ctl=radio-play]", { timeout: 4000 });
       check("phone: stopping the radio removes the EQ", (await page.locator(".hudf-card .hudf-eq").count()) === 0);
@@ -974,16 +1039,21 @@ try {
       }
       await page.keyboard.press("Escape");
       await clickCtl(page, "rail-radio", "owner", name);
-      if ((await page.locator(".hudf-card .hudf-eq").count()) === 0) {
+      if ((await page.locator(".hudf-card .hudf-eq").count()) === 0 && (await page.locator("[data-ctl=radio-play]").count()) === 1) {
         await clickCtl(page, "radio-play", "owner", name);
-        await page.waitForSelector(".hudf-card .hudf-eq", { timeout: 8000 });
+        await page.waitForSelector("[data-playing], [data-ctl=radio-resume]", { timeout: 8000 });
       }
       await page.keyboard.press("Escape");
       const moving = await page.evaluate(() => {
         const bar = document.querySelector("[data-rail-eq] i");
-        return bar ? getComputedStyle(bar).animationPlayState : "missing";
+        const playing = (document.querySelector("[data-ctl=mute-pill]")?.textContent || "").trim() === "Mute";
+        return { state: bar ? getComputedStyle(bar).animationPlayState : "missing", playing: Boolean(playing) };
       });
-      check("phone: rail bars keep moving with the card closed", moving === "running", moving);
+      check(
+        "phone: rail bars keep moving with the card closed once audio is playing",
+        moving.playing ? moving.state === "running" : moving.state === "paused",
+        JSON.stringify(moving),
+      );
       await mutePillChecks(page, "phone", false);
       await clickCtl(page, "nav-you", "owner", name);
       if ((await page.locator("[data-ctl=room-sound]").getAttribute("aria-checked")) === "true") {
@@ -1077,14 +1147,43 @@ try {
   check("watcher: title is The apartment", (await watcher.locator(".hudf-title b").innerText()) === "The apartment");
   check("watcher: the header pill says Watching", (await watcher.locator(".hudf-badge[data-watch-badge]").innerText()).trim() === "Watching");
   await clickCtl(watcher, "rail-radio", "watch", "phone");
-  await watcher.waitForSelector("[data-ctl=radio-mute]", { timeout: 8000 });
-  const muteBox = await watcher.locator("[data-ctl=radio-mute]").boundingBox();
-  check("phone: radio mute is at least 44px", Boolean(muteBox && muteBox.height >= 44 && muteBox.height <= 48), muteBox ? `${Math.round(muteBox.width)}x${Math.round(muteBox.height)}` : "missing");
-  const eqBox = await watcher.locator(".hudf-now .hudf-eq").boundingBox();
-  check("phone: the playing meter is about 14px tall", Boolean(eqBox && eqBox.height >= 12 && eqBox.height <= 16), eqBox ? String(Math.round(eqBox.height)) : "missing");
+  await watcher.waitForSelector("[data-ctl=radio-mute], [data-ctl=radio-resume], .hudf-quiet", { timeout: 8000 });
+  const watchRadio = await watcher.evaluate(() => {
+    const mute = document.querySelector("[data-ctl=radio-mute]");
+    const resume = document.querySelector("[data-ctl=radio-resume]");
+    const playing = document.querySelector("[data-playing]");
+    const meter = document.querySelector(".hudf-now .hudf-eq");
+    const muteBox = mute?.getBoundingClientRect();
+    const resumeBox = resume?.getBoundingClientRect();
+    const meterBox = meter?.getBoundingClientRect();
+    return {
+      mute: mute?.textContent?.trim() || "",
+      muteH: muteBox ? Math.round(muteBox.height) : 0,
+      resume: resume?.getAttribute("aria-label") || "",
+      glyph: resume?.textContent?.trim() || "",
+      resumeW: resumeBox ? Math.round(resumeBox.width) : 0,
+      resumeH: resumeBox ? Math.round(resumeBox.height) : 0,
+      playing: Boolean(playing),
+      meterH: meterBox ? Math.round(meterBox.height) : 0,
+      pill: Boolean(document.querySelector("[data-ctl=mute-pill]")),
+    };
+  });
+  check("phone: a fresh watcher does not read Unmute", watchRadio.mute !== "Unmute" && watchRadio.resume !== "Unmute", JSON.stringify(watchRadio));
+  if (watchRadio.playing) {
+    check("phone: radio mute is at least 44px", watchRadio.muteH >= 44 && watchRadio.muteH <= 48, JSON.stringify(watchRadio));
+    check("phone: the playing meter is about 14px tall", watchRadio.meterH >= 12 && watchRadio.meterH <= 16, JSON.stringify(watchRadio));
+  } else if (watchRadio.resume === "Play") {
+    check("phone: blocked autoplay is a 96 by 44 Play control", watchRadio.glyph === "▶" && watchRadio.resumeW === 96 && watchRadio.resumeH === 44 && watchRadio.meterH === 0 && watchRadio.pill === false, JSON.stringify(watchRadio));
+  } else if (watchRadio.mute === "Mute") {
+    check("phone: radio mute is at least 44px", watchRadio.muteH >= 44 && watchRadio.muteH <= 48, JSON.stringify(watchRadio));
+    check("phone: the Playing line stays hidden until audio plays", watchRadio.meterH === 0, JSON.stringify(watchRadio));
+  } else {
+    check("phone: the radio card is quiet while the radio is off", watchRadio.mute === "" && watchRadio.resume === "", JSON.stringify(watchRadio));
+  }
   await watcher.keyboard.press("Escape");
   check("watcher: Invite is not in the nav", (await watcher.locator("[data-ctl=nav-invite]").count()) === 0);
-  check("watcher: no outside request on load", watchBag.outside.length === 0, watchBag.outside.join(" "));
+  const strayWatch = watchBag.outside.filter((url) => !/radioparadise|streamguys1|radiofrance/i.test(url));
+  check("watcher: no outside request on load except a fixed station", strayWatch.length === 0, strayWatch.join(" "));
   await watcher.waitForFunction(() => window.__anchors && window.__anchors["object:lamp"], null, { timeout: 20000 });
   const beforeLamp = apiBefore();
   const lamp = await watcher.evaluate(() => {

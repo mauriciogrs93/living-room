@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { STATIONS } from "./fixed-stations";
 import { DOG_SPOTS, dogBedSpot } from "./layout";
 import { dogWander, route, samplePath } from "./paths";
 import type { AgentRecord, Book, DiaryLine, DogMode, Drawing, OwnerNote, PublicDog, RadioStation, Vec2 } from "./types";
@@ -15,11 +16,7 @@ export const DRAWING_MAX = 6;
 export const NOTE_MAX = 180;
 export const FOOD = ["eggs", "an orange", "milk", "bread", "a cookie"];
 
-export const FALLBACK_STATIONS: RadioStation[] = [
-  { name: "Radio Paradise", url: "https://stream.radioparadise.com/aac-320" },
-  { name: "KEXP", url: "https://kexp-mp3-128.streamguys1.com/kexp128.mp3" },
-  { name: "FIP", url: "https://icecast.radiofrance.fr/fip-midfi.mp3" },
-];
+export const FALLBACK_STATIONS: RadioStation[] = STATIONS.map((station) => ({ name: station.name, url: station.url }));
 
 export type DogMemory = {
   mode: "wander" | "follow" | "fetch" | "nap";

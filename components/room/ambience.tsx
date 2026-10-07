@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { LiveSnapshot } from "@/components/use-room";
+import { createRadioPlayback, type PlaybackSnapshot } from "@/lib/room/radio-playback";
 import { mutePillMayUnmute, stationRowMayUnmute } from "@/lib/room/room-sound";
 import { useAtmosphere } from "./atmosphere";
 
@@ -9,9 +10,12 @@ type AmbienceValue = {
   muted: boolean;
   held: boolean;
   hearing: boolean;
+  blocked: boolean;
+  started: boolean;
+  soundOff: boolean;
   toggleMute: () => void;
   pressMutePill: () => void;
-  hear: (url: string) => void;
+  playBlocked: () => void;
   stopRadio: () => void;
 };
 
@@ -51,8 +55,38 @@ export function roomSoundOff(): boolean {
 }
 
 let radioAudio: HTMLAudioElement | null = null;
+let playback: ReturnType<typeof createRadioPlayback> | null = null;
+let playSnap: PlaybackSnapshot = { blocked: false, hearing: false, started: false, index: 0 };
+const playListeners = new Set<() => void>();
 let pillHeld = false;
 const heldListeners = new Set<() => void>();
+
+function publishPlay(state: PlaybackSnapshot) {
+  playSnap = state;
+  for (const listener of playListeners) listener();
+}
+
+function subscribePlay(listener: () => void) {
+  playListeners.add(listener);
+  return () => {
+    playListeners.delete(listener);
+  };
+}
+
+function readPlay() {
+  return playSnap;
+}
+
+function ensurePlayback(audio: HTMLAudioElement) {
+  if (playback && radioAudio === audio) return playback;
+  radioAudio = audio;
+  playback = createRadioPlayback(audio, {
+    deviceMuted: () => roomSoundOff() || readHeld(),
+    onChange: publishPlay,
+  });
+  audio.addEventListener("playing", () => playback?.onPlaying());
+  return playback;
+}
 
 function readHeld() {
   return pillHeld;
@@ -71,40 +105,43 @@ function subscribeHeld(listener: () => void) {
   };
 }
 
-function playRadio() {
-  const audio = radioAudio;
-  if (!audio?.getAttribute("src")) return;
-  void audio.play().catch(() => undefined);
-}
-
-/** Local station-row tap only. Does not assign a src and does not touch the YouTube player. */
-export function unmuteFromStationTap() {
+/** Local station-row tap only. Joins the fixed station for this index. Does not touch the YouTube player. */
+export function unmuteFromStationTap(index: number) {
   if (!stationRowMayUnmute(roomSoundOff(), "station-row")) return;
   writeHeld(false);
   writeMuted(false);
-  playRadio();
+  playback?.tuneGesture(index);
 }
 
-/** Mute pill: this device only. Room sound off always wins, and the src is never assigned. */
+/** The blocked-autoplay Play button. One gesture, then the playing event clears blocked. */
+export function playBlocked() {
+  if (roomSoundOff() || readHeld()) return;
+  playback?.gesture();
+}
+
+/** Mute pill: this device only. Room sound off always wins. Mute drops the stream. */
 export function pressMutePill() {
-  if (readHeld() || readMuted()) {
+  if (readHeld()) {
     if (!mutePillMayUnmute(roomSoundOff())) return;
     writeHeld(false);
-    if (readMuted()) writeMuted(false);
-    playRadio();
+    playback?.unmute();
     return;
   }
+  if (roomSoundOff()) return;
   writeHeld(true);
-  radioAudio?.pause();
+  playback?.mute();
 }
 
 const AmbienceContext = createContext<AmbienceValue>({
   muted: true,
   held: false,
   hearing: false,
+  blocked: false,
+  started: false,
+  soundOff: false,
   toggleMute: () => {},
   pressMutePill: () => {},
-  hear: () => {},
+  playBlocked: () => {},
   stopRadio: () => {},
 });
 
@@ -116,35 +153,28 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
   const { sky } = useAtmosphere();
   const muted = useSyncExternalStore(subscribeMute, readMuted, () => true);
   const held = useSyncExternalStore(subscribeHeld, readHeld, () => false);
-  const [hearing, setHearing] = useState(false);
+  const soundOff = useSyncExternalStore(subscribeMute, roomSoundOff, () => false);
+  const play = useSyncExternalStore(subscribePlay, readPlay, readPlay);
+  const hearing = play.hearing;
+  const blocked = play.blocked;
+  const started = play.started;
   const radioOn = Boolean(snapshot?.radio.on);
   const [seenRadio, setSeenRadio] = useState(radioOn);
   if (radioOn !== seenRadio) {
     setSeenRadio(radioOn);
-    if (!radioOn) {
-      setHearing(false);
-      writeHeld(false);
-    }
+    if (!radioOn) writeHeld(false);
   }
-  const mutedRef = useRef(true);
-  const hearingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const rainRef = useRef<GainNode | null>(null);
   const kettleRef = useRef<GainNode | null>(null);
-  const heardUrl = useRef("");
 
   useEffect(() => {
-    mutedRef.current = muted;
-  }, [muted]);
-  useEffect(() => {
-    hearingRef.current = hearing;
-  }, [hearing]);
-
-  useEffect(() => {
-    radioAudio = audioRef.current;
+    const audio = audioRef.current;
+    if (!audio) return;
+    ensurePlayback(audio);
     return () => {
-      if (radioAudio === audioRef.current) radioAudio = null;
+      if (radioAudio === audio) radioAudio = null;
     };
   }, []);
 
@@ -198,7 +228,6 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
     if (muted) {
       if (rainRef.current) rainRef.current.gain.value = 0;
       if (kettleRef.current) kettleRef.current.gain.value = 0;
-      audioRef.current?.pause();
       return;
     }
     const ctx = context();
@@ -228,18 +257,15 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
   }, [muted, snapshot]);
 
   useEffect(() => {
+    if (!audioRef.current) return;
+    ensurePlayback(audioRef.current);
     if (!snapshot?.radio.on) {
-      audioRef.current?.pause();
+      playback?.stop();
       return;
     }
-    if (!hearingRef.current || mutedRef.current || readHeld()) return;
-    const url = snapshot.radio.url;
-    const audio = audioRef.current;
-    if (!audio || !url || heardUrl.current === url) return;
-    heardUrl.current = url;
-    audio.src = url;
-    void audio.play().catch(() => setHearing(false));
-  }, [snapshot?.radio.on, snapshot?.radio.url]);
+    // Index only. A URL on the snapshot is ignored, including one injected by an agent.
+    playback?.follow(snapshot.radio.index, snapshot.radio.url);
+  }, [snapshot?.radio.on, snapshot?.radio.index, snapshot?.radio.url]);
 
   const barked = useRef(false);
   useEffect(() => {
@@ -268,50 +294,28 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
     muted,
     held,
     hearing,
+    blocked,
+    started,
+    soundOff,
     toggleMute: () => {
       const next = !readMuted();
       writeMuted(next);
-      const audio = audioRef.current;
-      if (!audio) return;
+      if (!audioRef.current) return;
+      ensurePlayback(audioRef.current);
       if (next) {
         writeHeld(false);
-        audio.pause();
+        playback?.mute();
         return;
       }
       writeHeld(false);
-      if (audio.getAttribute("src")) {
-        void audio.play().catch(() => undefined);
-        return;
-      }
-      const url = snapshot?.radio.on && snapshot.radio.url.startsWith("https://") ? snapshot.radio.url : "";
-      if (!url) return;
-      heardUrl.current = url;
-      audio.src = url;
-      setHearing(true);
-      void audio.play().catch(() => setHearing(false));
-    },
-    hear: (url: string) => {
-      const audio = audioRef.current;
-      if (!url || !audio) return;
-      if (audio.getAttribute("src") !== url) {
-        heardUrl.current = url;
-        audio.src = url;
-      }
-      if (readMuted() || readHeld()) return;
-      setHearing(true);
-      void audio.play().catch(() => setHearing(false));
+      if (snapshot?.radio.on) playback?.unmute();
     },
     pressMutePill,
+    playBlocked,
     stopRadio: () => {
       writeHeld(false);
-      const audio = audioRef.current;
-      if (audio) {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
-      }
-      setHearing(false);
-      heardUrl.current = "";
+      if (audioRef.current) ensurePlayback(audioRef.current);
+      playback?.stop();
     },
   };
 

@@ -31,6 +31,7 @@ export const HUD_CONTROLS: Record<string, HudControl> = {
   "radio-play": { roles: owner, effect: "request:/api/radio {intent:on}" },
   "radio-stop": { roles: owner, effect: "request:/api/radio {intent:off}" },
   "radio-mute": { roles: watch, effect: "device:living-room-mute" },
+  "radio-resume": { roles: both, effect: "device:radio-play" },
   "radio-prev": { roles: owner, effect: "request:/api/radio {intent:prev}" },
   "radio-next": { roles: owner, effect: "request:/api/radio {intent:next}" },
   "tv-power": { roles: owner, effect: "request:/api/tap {id:tv}" },

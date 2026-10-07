@@ -410,6 +410,7 @@ function WarmTapPrograms() {
   const drawing = useRef<THREE.Mesh | null>(null);
   const parallel = useRef<boolean | null>(null);
   const done = useRef(false);
+  const passes = useRef(0);
   useFrame(() => {
     const finishing = drawing.current;
     if (finishing) {
@@ -421,7 +422,13 @@ function WarmTapPrograms() {
     }
     if (done.current) return;
     if (parallel.current === null) parallel.current = Boolean(gl.getContext().getExtension("KHR_parallel_shader_compile"));
-    if (queue.current.length === 0) {
+    if (queue.current.length === 0 && !drawing.current) {
+      // One walk. An empty room has no ring, and searching again every frame never ends.
+      if (passes.current > 0) {
+        done.current = true;
+        return;
+      }
+      passes.current += 1;
       scene.traverse((object) => {
         const mesh = object as THREE.Mesh;
         if (!mesh.isMesh || mesh.name !== "selection-ring") return;
@@ -430,6 +437,10 @@ function WarmTapPrograms() {
         seen.current.add(material.uuid);
         queue.current.push(mesh);
       });
+      if (queue.current.length === 0) {
+        done.current = true;
+        return;
+      }
     }
     if (seen.current.size > 0 && queue.current.length === 0 && !drawing.current) done.current = true;
     const mesh = queue.current[0];
