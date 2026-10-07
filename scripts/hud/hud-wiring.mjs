@@ -244,6 +244,7 @@ try {
       });
       check("phone: the radio card EQ animates while the station plays", eq.startsWith("hudf-eq") && eq.includes("running"), eq);
       await clickCtl(page, "radio-stop", "owner", name);
+      await page.waitForSelector("[data-ctl=radio-play]", { timeout: 4000 });
       check("phone: stopping the radio removes the EQ", (await page.locator(".hudf-card .hudf-eq").count()) === 0);
       await page.keyboard.press("Escape");
       await clickCtl(page, "rail-tv", "owner", name);
