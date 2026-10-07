@@ -1189,10 +1189,12 @@ html[data-floor-frame]:not([data-floor-frame="all"]) .sheet-caption {
 .signin-card { width: min(440px, 100%); display: flex; flex-direction: column; gap: 14px; }
 .signin-title { font-size: clamp(30px, 6vw, 44px); }
 .signin-form { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 6px; }
-.signin-form label { font-size: 11px; letter-spacing: 0.12em; text-transform: none; color: #655E52; }
+.signin-form label,
+.signin-page .landing-note { color: #655e52; }
+.signin-form label { font-size: 11px; letter-spacing: 0.12em; text-transform: none; }
 .signin-password { display: flex; align-items: center; gap: 10px; }
 .signin-password input { flex: 1; min-width: 0; }
-.signin-password .signin-resend { min-height: 44px; padding: 0 4px; }
+.signin-password .signin-resend { min-height: 44px; min-width: 44px; padding: 0 4px; }
 .signin-form input {
   height: 44px;
   padding: 0 12px;
@@ -1204,7 +1206,7 @@ html[data-floor-frame]:not([data-floor-frame="all"]) .sheet-caption {
 .signin-form input:focus-visible { outline: 2px solid #e07a3d; outline-offset: 1px; }
 .signin-form .invite-copy { justify-content: center; }
 /* r1: the main action uses the dark filled button (as Copy and Play) */
-.signin-form .signin-submit { width: 100%; min-height: 44px; border-color: #2d3136; background: #2d3136; color: #f7f5f0; }
+.signin-form .signin-submit { width: 100%; min-height: 44px; border-color: #2B2D31; background: #2B2D31; color: #f7f5f0; }
 .signin-secondary {
   width: 100%; min-height: 44px; padding: 0 18px;
   border: 1px solid #2d3136; border-radius: 4px; background: transparent; color: #2d3136;
@@ -1279,3 +1281,24 @@ html[data-floor-frame]:not([data-floor-frame="all"]) .sheet-caption {
 .signin-resend:focus-visible { outline: 2px solid #e07a3d; outline-offset: 2px; }
 .signin-note { font-size: 14px; line-height: 1.45; }
 .signin-note.is-error { color: #a33a1c; }
+
+/* The title block stays two lines tall so Create an account does not shift the fields. */
+.signin-page .landing-title { min-height: 2.08em; }
+@media (max-width: 799px) {
+  .signin-main { align-items: flex-start; padding: 12px 20px 24px; }
+  .signin-card { gap: 8px; }
+  .signin-page .landing-title { margin: 4px 0; }
+  .signin-page .landing-lede { margin-bottom: 4px; }
+}
+@media (min-width: 800px) {
+  .signin-main { padding-bottom: calc(12dvh + env(safe-area-inset-bottom)); }
+  .signin-card {
+    width: min(920px, 100%);
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    column-gap: 72px;
+    align-items: center;
+  }
+  .signin-card > * { grid-column: 1; }
+  .signin-card > .signin-form { grid-column: 2; grid-row: 1 / span 4; align-self: start; min-height: 21.5rem; }
+}

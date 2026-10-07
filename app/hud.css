@@ -567,7 +567,8 @@
 .door-paused { gap: 12px; align-items: center; }
 .door-paused .door-invite { flex: 1; }
 .door-link {
-  align-self: flex-start; background: none; border: 0; padding: 4px 0; color: var(--hud-ink);
+  align-self: flex-start; display: inline-flex; align-items: center; background: none; border: 0;
+  min-height: 44px; padding: 0; color: var(--hud-ink);
   font: 500 12.5px/1.2 var(--sans, inherit); text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
 }
 [data-auth-control="you-set-password"] { min-height: 44px; display: inline-flex; align-items: center; }

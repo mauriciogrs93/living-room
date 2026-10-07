@@ -43,6 +43,7 @@
 .hudf .hud-fab,
 .hudf .hud-invite-btn,
 .hudf .watch-badge { display: none !important; }
+.hudf .global-tape { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .hudf button,
 .hudf a { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 .hudf .is-info,
@@ -54,7 +55,7 @@
 .hudf-title { min-width: 0; flex: 1; }
 .hudf-title b { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hudf-title span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hudf-badge { flex: none; height: 28px; padding: 0 10px; border-radius: 14px; display: inline-flex; align-items: center; background: linear-gradient(180deg, #d3ba84, #b89758); font-size: 10px; font-weight: 600; }
+.hudf-badge { flex: none; height: 28px; padding: 0 10px; border-radius: 14px; display: inline-flex; align-items: center; background: #B89758; font-size: 10px; font-weight: 600; }
 .hudf-badge.is-watch { background: rgba(43, 45, 49, 0.07); border: 1px solid var(--line); }
 .hudf-count, .hudf-leave, .hudf-signout button {
   min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 22px; border: 1px solid var(--line); background: #faf8f3; font-size: 13px; font-weight: 600;

@@ -178,7 +178,7 @@ export function SignIn({ signupEnabled = false }: { signupEnabled?: boolean }) {
         <section className="signin-card">
           <p className="landing-kicker mono">Your apartment</p>
           <h1 className="landing-title signin-title">{mode === "signup" ? CREATE_TITLE : <>Sign in to open <span>your apartment.</span></>}</h1>
-          {mode === "signin" ? <p className="landing-lede">{INTRO}</p> : null}
+          <p className="landing-lede">{INTRO}</p>
           {watchNote ? (
             <p className="signin-note" role="status" data-watch-note="">
               {watchNote}
