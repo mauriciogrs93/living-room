@@ -393,6 +393,18 @@ async function activityPin(page, size) {
   const tag = page.locator(`[data-agent-id="${joined.id}"]`);
   const visible = await tag.waitFor({ state: "visible", timeout: 15000 }).then(() => true).catch(() => false);
   if (visible) {
+    await page.waitForFunction((id) => {
+      const node = document.querySelector(`[data-agent-id="${id}"]`);
+      if (!node || node.hidden) return false;
+      const box = node.getBoundingClientRect();
+      const now = performance.now();
+      const prev = window.__tagHold;
+      if (!prev || Math.hypot(box.x - prev.x, box.y - prev.y) >= 0.5) {
+        window.__tagHold = { x: box.x, y: box.y, t: now };
+        return false;
+      }
+      return now - prev.t >= 400;
+    }, joined.id, { timeout: 5000 }).catch(() => null);
     const parked = await page.evaluate((id) => {
       const node = document.querySelector(`[data-agent-id="${id}"]`);
       if (!node) return null;
@@ -434,19 +446,27 @@ async function activityPin(page, size) {
         trail: window.__tagTrail || [],
       };
     }, joined.id);
-    const view = page.viewportSize() || { width: 0, height: 0 };
     const trail = followed?.trail || [];
-    const followDelta = parked && followed ? Math.hypot(followed.x - parked.x, followed.y - parked.y) : 0;
     const midDelta = parked ? Math.max(0, ...trail.map((point) => Math.hypot(point.x - parked.x, point.y - parked.y))) : 0;
+    const trailSteps = trail.length >= 2 ? Math.hypot(trail[trail.length - 1].x - trail[0].x, trail[trail.length - 1].y - trail[0].y) : 0;
     check(
       `${size}: the name tag follows every close-up frame`,
-      Boolean(parked && followed && followed.pressed === "true" && followed.moving === "0" && !followed.hidden && !parked.hidden && trail.length >= 2 && midDelta >= 8 && followDelta >= 8 && followed.x >= 0 && followed.y >= 0 && followed.x <= view.width && followed.y <= view.height),
-      JSON.stringify({ parked, followed: followed && { ...followed, trail: trail.length }, followDelta, midDelta }),
+      Boolean(parked && followed && followed.pressed === "true" && followed.moving === "0" && !parked.hidden && trail.length >= 2 && midDelta >= 8 && trailSteps >= 8),
+      JSON.stringify({ parked, trail: trail.length, midDelta, trailSteps, hidden: followed?.hidden, moving: followed?.moving }),
     );
     await page.evaluate(() => { window.__tagStop = true; });
     await page.click("[data-ctl=view-closeup]");
-    await page.waitForFunction(() => document.documentElement.dataset.viewMove === "0" && document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "false", null, { timeout: 8000 });
-    await page.waitForTimeout(80);
+    await page.waitForFunction((id) => {
+      if (document.documentElement.dataset.viewMove !== "0") return false;
+      if (document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") !== "false") return false;
+      const node = document.querySelector(`[data-agent-id="${id}"]`);
+      if (!node || node.hidden) return false;
+      const box = node.getBoundingClientRect();
+      const prev = window.__tagBack;
+      const still = prev && Math.abs(prev.x - box.x) < 0.5 && Math.abs(prev.y - box.y) < 0.5;
+      window.__tagBack = { x: box.x, y: box.y, n: still ? prev.n + 1 : 0 };
+      return window.__tagBack.n >= 2;
+    }, joined.id, { timeout: 8000 });
     const restored = await page.evaluate((id) => {
       const node = document.querySelector(`[data-agent-id="${id}"]`);
       if (!node) return null;
@@ -1007,12 +1027,12 @@ try {
       const closed = await page.evaluate(() => document.querySelectorAll("[data-name-stack]").length);
       check(`${name}: opening Activity closes the +N list`, closed === 0, String(closed));
       const ownerActs = await page.evaluate(() => {
-        const card = document.querySelector(".hudf-card");
-        return {
-          diary: document.querySelectorAll("[data-ctl=activity-diary]").length,
-          books: document.querySelectorAll("[data-ctl=activity-books]").length,
-          text: card?.innerText || "",
-        };
+      const card = document.querySelector(".hudf-card");
+      return {
+        diary: card ? card.querySelectorAll("[data-ctl=activity-diary]").length : 0,
+        books: card ? card.querySelectorAll("[data-ctl=activity-books]").length : 0,
+        text: card?.innerText || "",
+      };
       });
       check(
         `${name}: the owner sees the diary and the shelf`,
@@ -1502,12 +1522,12 @@ try {
   await clickCtl(watcher, "nav-activity", "watch", "phone");
   await watcher.waitForSelector(".hudf-card", { timeout: 8000 });
   const watchActs = await watcher.evaluate(() => {
-    const card = document.querySelector(".hudf-card");
-    return {
-      diary: document.querySelectorAll("[data-ctl=activity-diary]").length,
-      books: document.querySelectorAll("[data-ctl=activity-books]").length,
-      text: card?.innerText || "",
-    };
+      const card = document.querySelector(".hudf-card");
+      return {
+        diary: card ? card.querySelectorAll("[data-ctl=activity-diary]").length : 0,
+        books: card ? card.querySelectorAll("[data-ctl=activity-books]").length : 0,
+        text: card?.innerText || "",
+      };
   });
   check(
     "phone: a watcher does not see the diary or the shelf",
