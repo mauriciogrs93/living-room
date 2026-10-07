@@ -868,7 +868,8 @@ check(
 check(
   "close-up is a real pressed button and the scene follows the house sky",
   hudFrame.includes('data-ctl="view-closeup"') &&
-    hudFrame.includes("aria-pressed={closeUp}") &&
+    hudFrame.includes("pressed={closeUp}") &&
+    hudFrame.includes('"aria-pressed": pressed') &&
     hudFrame.includes("setCloseUp(!closeUp)") &&
     hudFrame.includes('raw !== ""') &&
     hudFrame.includes("Number.isFinite(Number(raw))") &&
@@ -969,15 +970,21 @@ check(
     !/lat|lon|40\.7|-74/.test(liveBody),
   JSON.stringify({ called, liveBody, foreign }),
 );
-const closeRule = hudCss.slice(hudCss.indexOf(".hudf-closeup {"), hudCss.indexOf(".hudf-closeup[aria-pressed"));
+const closeAt = hudCss.indexOf(".hudf .hudf-rail button.hudf-closeup {");
+const closeRule = closeAt >= 0 ? hudCss.slice(closeAt, closeAt + 900) : "";
 check(
-  "the close-up control sits below the title with a 44px target",
-  closeRule.includes("position: fixed;") &&
-    closeRule.includes("top: 108px;") &&
-    closeRule.includes("left: 68px;") &&
-    closeRule.includes("min-width: 44px;") &&
-    closeRule.includes("min-height: 44px;") &&
-    !closeRule.includes("right: 8px;"),
+  "the close-up control is the first rail medal",
+  closeRule.includes("min-width: 44px;") &&
+    closeRule.includes("width: 44px;") &&
+    closeRule.includes("height: 44px;") &&
+    closeRule.includes('aria-pressed="true"') &&
+    closeRule.includes("background: #2b2d31;") &&
+    closeRule.includes("color: #f7f4ee;") &&
+    !closeRule.includes("position: fixed;") &&
+    !closeRule.includes("left: 68px;") &&
+    hudFrame.includes('label="Close-up"') &&
+    hudFrame.indexOf('id="closeup"') >= 0 &&
+    hudFrame.indexOf('id="closeup"') < hudFrame.indexOf('id="today"'),
 );
 check(
   "a phone sheet card shrinks to its content",
@@ -987,7 +994,32 @@ check(
   "close-up and the tree no longer read debug offsets",
   !/cux|cuy|ptx|ptz/.test(zoomSource) && !/cux|cuy|ptx|ptz/.test(weatherSource) && !/cux|cuy|ptx|ptz/.test(hudFrame) && weatherSource.includes("[-4.9, -1.0]"),
 );
-check("name tags repaint when the lens or the view offset changes", tagSource.includes("lens.zoom") && tagSource.includes("offsetX") && tagSource.includes("offsetY") && tagSource.includes("viewMoved"));
+const canvasSource = readFileSync(path.join(root, "components/room/room-canvas.tsx"), "utf8");
+const activitySource = readFileSync(path.join(root, "components/hud/sections/activity.tsx"), "utf8");
+const controlsSource = readFileSync(path.join(root, "components/hud/frame/controls.ts"), "utf8");
+const rainFn = weatherSource.slice(weatherSource.indexOf("function Rain"), weatherSource.indexOf("const PHONE_TREE"));
+const rainFrame = rainFn.slice(rainFn.indexOf("useFrame"), rainFn.indexOf("return ("));
+check("name tags repaint when the lens or the view offset changes", tagSource.includes("lens.zoom") && tagSource.includes("offsetX") && tagSource.includes("offsetY") && tagSource.includes("viewMoved") && tagSource.includes('dataset.viewMove === "1"') && tagSource.includes("seenMoving"));
+check(
+  "close-up eases across frames and snaps back to the exact end pose",
+  canvasSource.includes('dataset.viewMove = "1"') && canvasSource.includes("stepCount / 8") && canvasSource.includes("camera.zoom = z1"),
+);
+check(
+  "rain scrolls in the shader and across the overlay without allocating each frame",
+  rainFrame.includes("uT.value") && rainFrame.includes("invalidate()") && !rainFrame.includes("new ") && hudCss.includes("@keyframes hudf-rain") && hudCss.includes("animation: hudf-rain 1.1s linear infinite"),
+);
+check(
+  "watchers do not get the diary or the shelf",
+  activitySource.includes("watcher ? null") &&
+    activitySource.includes('data-ctl="activity-diary"') &&
+    activitySource.includes('data-ctl="activity-books"') &&
+    controlsSource.includes('"activity-diary": { roles: owner') &&
+    controlsSource.includes('"activity-books": { roles: owner'),
+);
+check(
+  "an empty radio live region stays out of the card flow",
+  hudCss.includes(".hudf-station-fail:empty") && hudCss.includes("clip: rect(0, 0, 0, 0);") && !hudCss.includes(".hudf-station-fail {\n  position:"),
+);
 
 const prevDocument = globalThis.document;
 const prevWindow = globalThis.window;

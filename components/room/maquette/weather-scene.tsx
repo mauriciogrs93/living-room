@@ -241,8 +241,9 @@ function Rain({ phone }: { phone: boolean }) {
     mesh.geometry.setAttribute("aPh", new THREE.InstancedBufferAttribute(ph, 1));
     mesh.instanceMatrix.needsUpdate = true;
   }, [n, phone]);
-  useFrame(({ clock }) => {
+  useFrame(({ clock, invalidate }) => {
     mat.uniforms.uT.value = clock.elapsedTime;
+    invalidate();
   });
   return (
     <instancedMesh ref={ref} args={[undefined, mat, n]} frustumCulled={false} renderOrder={4} raycast={noRay} userData={skip}>

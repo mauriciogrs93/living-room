@@ -709,12 +709,59 @@ function FixedCamera({ floor }: { floor: FloorName | null }) {
     (camera as THREE.PerspectiveCamera & { manual?: boolean }).manual = true;
     const frameOn = document.documentElement.dataset.hudFrame === "1";
     let timers: number[] = [];
+    let closeWas = document.documentElement.dataset.viewClose === "1";
+    let moveFrame = 0;
     const fit = (width: number, height: number) => {
       if (width < 2 || height < 2) return;
+      window.cancelAnimationFrame(moveFrame);
+      const z0 = camera.zoom;
+      const x0 = camera.view?.offsetX ?? 0;
+      const y0 = camera.view?.offsetY ?? 0;
       const dist = fitCamera(camera, width, height, floor);
       document.documentElement.dataset.floorFrame = floor ?? "all";
       document.documentElement.dataset.roomZoom = dist.toFixed(1);
+      const z1 = camera.zoom;
+      const x1 = camera.view?.offsetX ?? 0;
+      const y1 = camera.view?.offsetY ?? 0;
+      const closeNow = document.documentElement.dataset.viewClose === "1";
+      const toggled = closeNow !== closeWas;
+      closeWas = closeNow;
+      const same = z0 === z1 && x0 === x1 && y0 === y1;
+      if (!frameOn || !toggled || !camera.view || same) {
+        document.documentElement.dataset.viewMove = "0";
+        invalidate();
+        return;
+      }
+      document.documentElement.dataset.viewMove = "1";
+      camera.zoom = z0;
+      camera.view.offsetX = x0;
+      camera.view.offsetY = y0;
+      camera.updateProjectionMatrix();
+      let stepCount = 0;
+      const step = () => {
+        const view = camera.view;
+        if (!view) return;
+        stepCount += 1;
+        const u = Math.min(1, stepCount / 8);
+        if (u >= 1) {
+          camera.zoom = z1;
+          view.offsetX = x1;
+          view.offsetY = y1;
+          camera.updateProjectionMatrix();
+          document.documentElement.dataset.viewMove = "0";
+          invalidate();
+          return;
+        }
+        const eased = 1 - (1 - u) * (1 - u);
+        camera.zoom = z0 + (z1 - z0) * eased;
+        view.offsetX = x0 + (x1 - x0) * eased;
+        view.offsetY = y0 + (y1 - y0) * eased;
+        camera.updateProjectionMatrix();
+        invalidate();
+        moveFrame = window.requestAnimationFrame(step);
+      };
       invalidate();
+      moveFrame = window.requestAnimationFrame(step);
     };
     if (frameOn) {
       // The frame's tuck and cards change the canvas box. Zoom stays on the window.
@@ -728,6 +775,7 @@ function FixedCamera({ floor }: { floor: FloorName | null }) {
       window.addEventListener("resize", onResize);
       window.addEventListener("hud-closeup", apply);
       return () => {
+        window.cancelAnimationFrame(moveFrame);
         window.clearTimeout(timer);
         window.removeEventListener("resize", onResize);
         window.removeEventListener("hud-closeup", apply);

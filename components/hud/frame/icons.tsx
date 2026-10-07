@@ -1,7 +1,7 @@
 /** Static kit glyphs. Bundled SVG elements, no icon font. */
 import type { ReactNode } from "react";
 
-export type HudIconName = "today" | "radio" | "tv" | "sky" | "box" | "music" | "city" | "people" | "eye" | "clock" | "rain" | "house" | "activity" | "invite" | "me" | "chev" | "chevup" | "chevdown" | "lock" | "task" | "chat" | "crown" | "power" | "mute" | "stop" | "play" | "close" | "prev" | "next" | "vol" | "computer" | "eq";
+export type HudIconName = "today" | "radio" | "tv" | "sky" | "box" | "music" | "city" | "people" | "eye" | "clock" | "rain" | "house" | "activity" | "invite" | "me" | "chev" | "chevup" | "chevdown" | "lock" | "task" | "chat" | "crown" | "power" | "mute" | "stop" | "play" | "close" | "prev" | "next" | "vol" | "computer" | "eq" | "closeup";
 
 const GLYPH: Record<HudIconName, ReactNode> = {
   today: (
@@ -192,6 +192,12 @@ const GLYPH: Record<HudIconName, ReactNode> = {
   eq: (
     <>
       <path d="M6 18v-6M10 18V8M14 18v-8M18 18V6" />
+    </>
+  ),
+  closeup: (
+    <>
+      <circle cx="11" cy="11" r="5.2" />
+      <path d="M15 15l4.2 4.2" />
     </>
   ),
 };

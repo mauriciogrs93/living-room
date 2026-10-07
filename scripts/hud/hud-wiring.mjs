@@ -399,17 +399,28 @@ async function activityPin(page, size) {
       const box = node.getBoundingClientRect();
       return { x: box.x, y: box.y, hidden: node.hidden };
     }, joined.id);
+    await page.evaluate((id) => {
+      const trail = [];
+      let calm = 0;
+      const sample = () => {
+        if (window.__tagStop) return;
+        const moving = document.documentElement.dataset.viewMove === "1";
+        const node = document.querySelector(`[data-agent-id="${id}"]`);
+        if (moving && node && !node.hidden) {
+          const box = node.getBoundingClientRect();
+          const last = trail[trail.length - 1];
+          if (!last || Math.abs(last.x - box.x) > 0.5 || Math.abs(last.y - box.y) > 0.5) trail.push({ x: box.x, y: box.y });
+        }
+        calm = !moving && trail.length ? calm + 1 : 0;
+        if (calm < 3) requestAnimationFrame(sample);
+        else window.__tagTrail = trail;
+      };
+      window.__tagTrail = null;
+      window.__tagStop = false;
+      requestAnimationFrame(sample);
+    }, joined.id);
     await page.click("[data-ctl=view-closeup]");
-    await page.waitForFunction(
-      (arg) => {
-        const node = document.querySelector(`[data-agent-id="${arg.id}"]`);
-        if (!node || node.hidden) return false;
-        const box = node.getBoundingClientRect();
-        return Math.hypot(box.x - arg.x, box.y - arg.y) >= 8;
-      },
-      { id: joined.id, x: parked.x, y: parked.y },
-      { timeout: 8000 },
-    );
+    await page.waitForFunction(() => Array.isArray(window.__tagTrail), null, { timeout: 8000 });
     const followed = await page.evaluate((id) => {
       const node = document.querySelector(`[data-agent-id="${id}"]`);
       if (!node) return null;
@@ -419,34 +430,31 @@ async function activityPin(page, size) {
         y: box.y,
         hidden: node.hidden,
         pressed: document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") || "",
+        moving: document.documentElement.dataset.viewMove || "",
+        trail: window.__tagTrail || [],
       };
     }, joined.id);
     const view = page.viewportSize() || { width: 0, height: 0 };
+    const trail = followed?.trail || [];
     const followDelta = parked && followed ? Math.hypot(followed.x - parked.x, followed.y - parked.y) : 0;
+    const midDelta = parked ? Math.max(0, ...trail.map((point) => Math.hypot(point.x - parked.x, point.y - parked.y))) : 0;
     check(
-      `${size}: the name tag follows the close-up`,
-      Boolean(parked && followed && followed.pressed === "true" && !followed.hidden && !parked.hidden && followDelta >= 8 && followed.x >= 0 && followed.y >= 0 && followed.x <= view.width && followed.y <= view.height),
-      JSON.stringify({ parked, followed, followDelta }),
+      `${size}: the name tag follows every close-up frame`,
+      Boolean(parked && followed && followed.pressed === "true" && followed.moving === "0" && !followed.hidden && !parked.hidden && trail.length >= 2 && midDelta >= 8 && followDelta >= 8 && followed.x >= 0 && followed.y >= 0 && followed.x <= view.width && followed.y <= view.height),
+      JSON.stringify({ parked, followed: followed && { ...followed, trail: trail.length }, followDelta, midDelta }),
     );
+    await page.evaluate(() => { window.__tagStop = true; });
     await page.click("[data-ctl=view-closeup]");
-    await page.waitForFunction(
-      (arg) => {
-        const node = document.querySelector(`[data-agent-id="${arg.id}"]`);
-        if (!node) return false;
-        const box = node.getBoundingClientRect();
-        return Math.hypot(box.x - arg.x, box.y - arg.y) <= 12;
-      },
-      { id: joined.id, x: parked.x, y: parked.y },
-      { timeout: 8000 },
-    );
+    await page.waitForFunction(() => document.documentElement.dataset.viewMove === "0" && document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") === "false", null, { timeout: 8000 });
+    await page.waitForTimeout(80);
     const restored = await page.evaluate((id) => {
       const node = document.querySelector(`[data-agent-id="${id}"]`);
       if (!node) return null;
       const box = node.getBoundingClientRect();
-      return { x: box.x, y: box.y };
+      return { x: Math.round(box.x), y: Math.round(box.y), moving: document.documentElement.dataset.viewMove || "" };
     }, joined.id);
-    const restoreDelta = parked && restored ? Math.hypot(restored.x - parked.x, restored.y - parked.y) : 99;
-    check(`${size}: the name tag returns with the default view`, restoreDelta <= 12, JSON.stringify({ parked, restored, restoreDelta }));
+    const restoreExact = Boolean(parked && restored && restored.moving === "0" && restored.x === Math.round(parked.x) && restored.y === Math.round(parked.y));
+    check(`${size}: the name tag returns to its original screen position`, restoreExact, JSON.stringify({ parked, restored }));
   }
   if (!visible) {
     const dump = await page.evaluate(async (id) => {
@@ -801,6 +809,26 @@ try {
         /\bOff\b/.test(freshOff.sound) && freshOff.stored !== "0" && freshCard.acc === "Play" && freshCard.aria == null && freshCard.visible.includes("▶") && freshCard.visible.includes("Play") && freshCard.pill === 0 && freshCard.src == null && stationHits.length === 0,
         JSON.stringify({ freshOff, freshCard, stationHits }),
       );
+      if (name === "phone") {
+        const radioGap = await page.evaluate(() => {
+          const fail = document.querySelector("[data-station-fail]");
+          const play = document.querySelector("[data-ctl=radio-play]") || document.querySelector("[data-ctl=radio-resume]");
+          const list = document.querySelector(".hudf-card .hudf-list");
+          const failBox = fail?.getBoundingClientRect();
+          const playBox = play?.getBoundingClientRect();
+          const listBox = list?.getBoundingClientRect();
+          return {
+            failH: failBox ? failBox.height : -1,
+            failText: (fail?.textContent || "").trim(),
+            gap: playBox && listBox ? listBox.top - playBox.bottom : -1,
+          };
+        });
+        check(
+          "phone: the empty radio live region leaves a gap under Play",
+          radioGap.failText === "" && radioGap.failH <= 1 && radioGap.gap >= 8,
+          JSON.stringify(radioGap),
+        );
+      }
       await page.keyboard.press("Escape");
       await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
     }
@@ -824,24 +852,47 @@ try {
         const btn = document.querySelector("[data-ctl=view-closeup]");
         if (!btn) return { missing: true };
         const box = btn.getBoundingClientRect();
-        const sels = [".hudf-tape", ".hudf-top", ".hudf-here", ".hudf-rail", ".hudf-strip", ".hudf-nav"];
+        const medal = btn.querySelector(".hudf-medal")?.getBoundingClientRect();
+        const railButtons = [...document.querySelectorAll(".hudf-rail button")].map((node) => node.getAttribute("data-ctl"));
+        const label = btn.querySelector("small")?.textContent || "";
         const hits = [];
-        for (const sel of sels) {
-          const el = document.querySelector(sel);
-          if (!el) continue;
+        const consider = [
+          ...document.querySelectorAll(".hudf-tape, .hudf-top, .hudf-here, .hudf-bot, .hudf-strip, .hudf-nav, .hudf-rail > p, .hudf-rail button"),
+        ];
+        for (const el of consider) {
+          if (el === btn || btn.contains(el)) continue;
           const style = getComputedStyle(el);
           if (style.visibility === "hidden" || style.display === "none") continue;
           const rect = el.getBoundingClientRect();
           if (rect.width < 1 || rect.height < 1) continue;
           const ix = Math.min(box.right, rect.right) - Math.max(box.left, rect.left);
           const iy = Math.min(box.bottom, rect.bottom) - Math.max(box.top, rect.top);
-          if (ix > 0.5 && iy > 0.5) hits.push(sel);
+          if (ix > 0 && iy > 0) hits.push(el.getAttribute("data-ctl") || el.className);
         }
-        return { w: box.width, h: box.height, hits };
+        return {
+          w: box.width,
+          h: box.height,
+          medal: medal ? { w: medal.width, h: medal.height } : null,
+          label,
+          pressed: btn.getAttribute("aria-pressed"),
+          order: railButtons.slice(0, 2),
+          count: document.querySelectorAll("[data-ctl=view-closeup]").length,
+          hits,
+        };
       });
       check(
-        `${name}: the close-up button is a 44px target clear of the chrome`,
-        closeBtn.w >= 44 && closeBtn.h >= 44 && Array.isArray(closeBtn.hits) && closeBtn.hits.length === 0,
+        `${name}: Close-up is the first rail button, a 44px medal, clear of the chrome`,
+        closeBtn.count === 1 &&
+          closeBtn.order?.[0] === "view-closeup" &&
+          closeBtn.order?.[1] === "rail-today" &&
+          closeBtn.label === "Close-up" &&
+          closeBtn.pressed === "false" &&
+          closeBtn.w >= 44 &&
+          closeBtn.h >= 44 &&
+          closeBtn.medal?.w >= 44 &&
+          closeBtn.medal?.h >= 44 &&
+          Array.isArray(closeBtn.hits) &&
+          closeBtn.hits.length === 0,
         JSON.stringify(closeBtn),
       );
       await page.click("[data-ctl=view-closeup]");
@@ -852,14 +903,28 @@ try {
         pressed: document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") || "",
       }));
       const closeEffective = (Number(expectedZoom) / Number(closeOn.zoom)) * Number(closeOn.lens);
+      const closePressed = await page.evaluate(() => {
+        const btn = document.querySelector("[data-ctl=view-closeup]");
+        const medal = btn?.querySelector(".hudf-medal");
+        return {
+          label: btn?.querySelector("small")?.textContent || "",
+          pressed: btn?.getAttribute("aria-pressed") || "",
+          fill: medal ? getComputedStyle(medal).backgroundColor : "",
+          icon: medal ? getComputedStyle(medal).color : "",
+        };
+      });
       check(
         `${name}: close-up effective zoom is at least 1.4`,
         closeOn.pressed === "true" &&
           Number.isFinite(closeEffective) &&
           closeEffective >= 1.4 &&
           Number(closeOn.lens) >= 1 &&
-          Number(closeOn.lens) <= 2,
-        JSON.stringify({ ...closeOn, closeEffective }),
+          Number(closeOn.lens) <= 2 &&
+          closePressed.label === "Close-up" &&
+          closePressed.pressed === "true" &&
+          closePressed.fill === "rgb(43, 45, 49)" &&
+          closePressed.icon === "rgb(247, 244, 238)",
+        JSON.stringify({ ...closeOn, closeEffective, closePressed }),
       );
       await page.focus("[data-ctl=view-closeup]");
       await page.keyboard.press("Enter");
@@ -941,6 +1006,19 @@ try {
       await page.click("[data-ctl=nav-activity]");
       const closed = await page.evaluate(() => document.querySelectorAll("[data-name-stack]").length);
       check(`${name}: opening Activity closes the +N list`, closed === 0, String(closed));
+      const ownerActs = await page.evaluate(() => {
+        const card = document.querySelector(".hudf-card");
+        return {
+          diary: document.querySelectorAll("[data-ctl=activity-diary]").length,
+          books: document.querySelectorAll("[data-ctl=activity-books]").length,
+          text: card?.innerText || "",
+        };
+      });
+      check(
+        `${name}: the owner sees the diary and the shelf`,
+        ownerActs.diary === 1 && ownerActs.books === 1 && ownerActs.text.includes("Open the diary") && ownerActs.text.includes("Read the shelf"),
+        JSON.stringify(ownerActs),
+      );
       await page.keyboard.press("Escape");
       await page.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
       await page.evaluate(() => document.querySelector("[data-tag-key='stack-away']")?.remove());
@@ -1421,6 +1499,23 @@ try {
     );
   }
   await watcher.keyboard.press("Escape");
+  await clickCtl(watcher, "nav-activity", "watch", "phone");
+  await watcher.waitForSelector(".hudf-card", { timeout: 8000 });
+  const watchActs = await watcher.evaluate(() => {
+    const card = document.querySelector(".hudf-card");
+    return {
+      diary: document.querySelectorAll("[data-ctl=activity-diary]").length,
+      books: document.querySelectorAll("[data-ctl=activity-books]").length,
+      text: card?.innerText || "",
+    };
+  });
+  check(
+    "phone: a watcher does not see the diary or the shelf",
+    watchActs.diary === 0 && watchActs.books === 0 && !watchActs.text.includes("Open the diary") && !watchActs.text.includes("Read the shelf"),
+    JSON.stringify(watchActs),
+  );
+  await watcher.keyboard.press("Escape");
+  await watcher.waitForSelector(".hudf-card", { state: "detached", timeout: 4000 }).catch(() => null);
   check("watcher: Invite is not in the nav", (await watcher.locator("[data-ctl=nav-invite]").count()) === 0);
   const strayWatch = watchBag.outside.filter((url) => !/radioparadise|streamguys1|radiofrance/i.test(url));
   check("watcher: no outside request on load except a fixed station", strayWatch.length === 0, strayWatch.join(" "));

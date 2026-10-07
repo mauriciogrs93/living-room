@@ -722,14 +722,12 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
         }}
       >
         {children}
-        <button type="button" className="hudf-closeup" data-ctl="view-closeup" aria-pressed={closeUp} onClick={() => setCloseUp(!closeUp)}>
-          Close-up
-        </button>
         {skyReport?.rain ? <div className="hudf-rain" aria-hidden /> : null}
         {!sheet ? card : null}
       </div>
       <div className="hudf-rail" data-chrome="" onPointerDown={() => setPulse((value) => value + 1)}>
         <p className="is-info mono">{HOUSE}</p>
+        <Rail id="closeup" label="Close-up" pressed={closeUp} ctl="view-closeup" onClick={() => setCloseUp(!closeUp)} />
         <Rail id="today" label="Today" on={shown === "today"} dot={dot && !shown} onClick={(event) => toggle("today", event)} />
         <Rail id="radio" label="Radio" on={shown === "radio"} bars={Boolean(radio?.on)} paused={!hearing} onClick={(event) => toggle("radio", event)} />
         <Rail id="tv" label="TV" on={shown === "tv"} onClick={(event) => toggle("tv", event)} />
@@ -839,25 +837,34 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
 function Rail({
   id,
   label,
-  on,
+  on = false,
   dot,
   bars,
   paused,
   ctl,
+  pressed,
   onClick,
 }: {
   id: string;
   label: string;
-  on: boolean;
+  on?: boolean;
   dot?: boolean;
   bars?: boolean;
   paused?: boolean;
   ctl?: string;
+  pressed?: boolean;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
   const icon = railIcon(id);
   return (
-    <button type="button" data-ctl={ctl ?? `rail-${id}`} className={on ? "is-on" : ""} aria-label={label} onClick={onClick}>
+    <button
+      type="button"
+      data-ctl={ctl ?? `rail-${id}`}
+      className={`${on ? "is-on" : ""}${pressed === undefined ? "" : " hudf-closeup"}`}
+      aria-label={label}
+      {...(pressed === undefined ? {} : { "aria-pressed": pressed })}
+      onClick={onClick}
+    >
       <span className="hudf-medal">
         {bars ? (
           <span className={`hudf-eq${paused ? " is-paused" : ""}`} data-rail-eq="" aria-hidden>
@@ -876,6 +883,7 @@ function Rail({
 }
 
 function railIcon(id: string): HudIconName {
+  if (id === "closeup") return "closeup";
   if (id === "today" || id === "radio" || id === "tv" || id === "sky" || id === "computer") return id;
   if (id === "yours-packages") return "box";
   if (id === "yours-music") return "music";

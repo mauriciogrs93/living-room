@@ -25,6 +25,7 @@ for (let i = 0; i < 8; i += 1) STAIRS.push({ l: 0, t: 0, r: 0, b: 0 });
 for (let i = 0; i < 32; i += 1) FIT.push({ l: 0, t: 0, r: 0, b: 0 });
 
 let seenZoom = 0;
+let seenMoving = false;
 let seenOffsetX = 0;
 let seenOffsetY = 0;
 
@@ -333,7 +334,8 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
     const offsetXNow = Math.round(lens.view?.enabled ? lens.view.offsetX : 0);
     const offsetYNow = Math.round(lens.view?.enabled ? lens.view.offsetY : 0);
     if (cx !== SIG[2] || cy !== SIG[3] || cz !== SIG[4] || n !== SIG[5]) dirty = true;
-    if (zoomNow !== seenZoom || offsetXNow !== seenOffsetX || offsetYNow !== seenOffsetY) dirty = true;
+    const moving = document.documentElement.dataset.viewMove === "1";
+    if (zoomNow !== seenZoom || offsetXNow !== seenOffsetX || offsetYNow !== seenOffsetY || moving || moving !== seenMoving) dirty = true;
     for (let i = 0; i < n; i += 1) {
       const agent = agents[i]!;
       const x = bucket(agent.position.x);
@@ -357,10 +359,11 @@ export function NameTagLayer({ agents, onSelect }: { agents: PublicAgent[]; onSe
     SIG[7] = awayHi;
     if (!dirty) return;
     const cameraMoved = cx !== SIG[2] || cy !== SIG[3] || cz !== SIG[4];
-    const viewMoved = zoomNow !== seenZoom || offsetXNow !== seenOffsetX || offsetYNow !== seenOffsetY;
+    const viewMoved = zoomNow !== seenZoom || offsetXNow !== seenOffsetX || offsetYNow !== seenOffsetY || moving || moving !== seenMoving;
     seenZoom = zoomNow;
     seenOffsetX = offsetXNow;
     seenOffsetY = offsetYNow;
+    seenMoving = moving;
     SIG[0] = size.width;
     SIG[1] = size.height;
     SIG[2] = cx;

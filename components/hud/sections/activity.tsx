@@ -35,13 +35,17 @@ export function ActivitySection({ model, watcher = false }: { model: HudModel; w
       <StatusLine snapshot={model.snapshot} />
       <p className="hud-kicker">Latest</p>
       <OwnerActivity events={events} now={model.now} />
-      <button type="button" className="hud-chip" data-ctl="activity-diary" onClick={() => model.setDiaryOpen(!model.diaryOpen)}>
-        {model.diaryOpen ? "Hide the diary" : "Open the diary"}
-      </button>
-      {model.diaryOpen && <DiaryList lines={model.snapshot?.diary ?? []} now={model.now} />}
-      <button type="button" className="hud-chip" data-ctl="activity-books" onClick={model.openBooks}>
-        Read the shelf
-      </button>
+      {watcher ? null : (
+        <>
+          <button type="button" className="hud-chip" data-ctl="activity-diary" onClick={() => model.setDiaryOpen(!model.diaryOpen)}>
+            {model.diaryOpen ? "Hide the diary" : "Open the diary"}
+          </button>
+          {model.diaryOpen && <DiaryList lines={model.snapshot?.diary ?? []} now={model.now} />}
+          <button type="button" className="hud-chip" data-ctl="activity-books" onClick={model.openBooks}>
+            Read the shelf
+          </button>
+        </>
+      )}
       {watcher ? null : (
         <>
           <p className="hud-kicker">Bring your agent</p>
