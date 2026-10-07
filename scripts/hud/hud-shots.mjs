@@ -19,7 +19,13 @@ const browser = await chromium.launch({
 });
 
 async function shot(page, width, height, role, state) {
-  await page.screenshot({ path: `${DIR}/${width}x${height}-${role}-${state}.png` });
+  const path = `${DIR}/${width}x${height}-${role}-${state}.png`;
+  // One WebGL page is enough. A second live canvas makes capture stall, so animations are frozen for the grab.
+  try {
+    await page.screenshot({ path, timeout: 45000, animations: "disabled" });
+  } catch {
+    await page.screenshot({ path, timeout: 45000, animations: "disabled" });
+  }
   console.log(`shot ${width}x${height} ${role} ${state}`);
 }
 
@@ -121,6 +127,8 @@ try {
     return res.ok ? body.watchLink : "";
   });
   if (!minted) throw new Error("no watch link");
+  // Two live canvases stall the screenshot. Park the owner while the watcher is on screen.
+  await owner.goto("about:blank");
   const watchCtx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -139,9 +147,15 @@ try {
     await shot(watcher, width, height, "watch", "radio-idle");
     await watcher.keyboard.press("Escape");
   }
+  await watcher.goto("about:blank");
+  await owner.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
+  await owner.waitForSelector("[data-hud-frame]", { timeout: 25000 });
   await owner.click("[data-ctl=rail-radio]");
   await owner.click("[data-ctl=radio-play]");
   await owner.keyboard.press("Escape");
+  await owner.goto("about:blank");
+  await watcher.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
+  await watcher.waitForSelector("[data-watch-badge]", { timeout: 25000 });
   await watcher.waitForTimeout(600);
   for (const [width, height] of sizes) {
     await watcher.setViewportSize({ width, height });
@@ -157,6 +171,8 @@ try {
     await watcher.keyboard.press("Escape");
   }
 
+  await watcher.goto("about:blank");
+  await owner.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await owner.evaluate(() => localStorage.setItem("lr-hud-seen", "1"));
   await owner.clock.install();
   await owner.reload({ waitUntil: "domcontentloaded" });
@@ -167,6 +183,8 @@ try {
     await owner.setViewportSize({ width, height });
     await shot(owner, width, height, "owner", "tucked");
   }
+  await owner.goto("about:blank");
+  await watcher.goto(`${BASE}/room`, { waitUntil: "domcontentloaded" });
   await watcher.evaluate(() => localStorage.setItem("lr-hud-seen", "1"));
   await watcher.clock.install();
   await watcher.reload({ waitUntil: "domcontentloaded" });
