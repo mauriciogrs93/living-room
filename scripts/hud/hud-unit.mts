@@ -1025,16 +1025,41 @@ for (const [width, height, expected] of zoomCases) {
   const closeSpan = houseSpan(near);
   const floorCam = new THREE.PerspectiveCamera();
   fitCamera(floorCam, width, height, "kitchen");
+  setCloseUp(false);
+  const back = new THREE.PerspectiveCamera();
+  const backDist = fitCamera(back, width, height, null);
   const label = dist.toFixed(1);
   const safe = hudSafeRect(width, height);
-  const wideBox = projectedHull(wide, width, height);
   const nearBox = projectedHull(near, width, height);
-  const fits = safe.h + 2 >= wideBox.h && safe.w + 2 >= wideBox.w;
-  const inside = !fits || (nearBox.l >= safe.x - 1.5 && nearBox.t >= safe.y - 1.5 && nearBox.r <= safe.x + safe.w + 1.5 && nearBox.b <= safe.y + safe.h + 1.5);
+  const effective = (dist / closeDist) * near.zoom;
   const lensOk = near.zoom >= 1 && near.zoom <= 2 && Number.isFinite(near.zoom);
-  const ok = wide.zoom >= 1 && lensOk && floorCam.zoom >= 1 && closeDist === dist && closeSpan + 1e-6 >= span && inside && (expected == null || label === expected);
+  const restored =
+    back.zoom === wide.zoom &&
+    backDist === dist &&
+    Math.abs((back.view?.offsetX ?? 0) - (wide.view?.offsetX ?? 0)) < 1e-6 &&
+    Math.abs((back.view?.offsetY ?? 0) - (wide.view?.offsetY ?? 0)) < 1e-6;
+  let framed = true;
+  if (width === 390 && height === 844) {
+    framed = nearBox.l <= 2 && nearBox.r >= width - 2 && Math.abs(nearBox.t - (safe.y + 4)) < 3;
+  } else if (width === 1440 && height === 900) {
+    const cx = (nearBox.l + nearBox.r) / 2;
+    const cy = (nearBox.t + nearBox.b) / 2;
+    framed = Math.abs(cx - width / 2) < 8 && Math.abs(cy - (safe.y + safe.h / 2)) < 8;
+  }
+  const strong = expected == null || effective >= 1.4;
+  const ok =
+    wide.zoom >= 1 &&
+    lensOk &&
+    floorCam.zoom >= 1 &&
+    closeSpan + 1e-6 >= span &&
+    restored &&
+    framed &&
+    strong &&
+    (expected == null || label === expected);
   if (!ok) apartmentHolds = false;
-  zoomDetail.push(`${width}x${height} ${label} z${wide.zoom.toFixed(2)}->${near.zoom.toFixed(2)} span${span.toFixed(3)}->${closeSpan.toFixed(3)} in${inside ? 1 : 0}`);
+  zoomDetail.push(
+    `${width}x${height} ${label} z${wide.zoom.toFixed(2)}->${near.zoom.toFixed(2)} eff${effective.toFixed(2)} box${nearBox.l.toFixed(0)},${nearBox.t.toFixed(0)},${nearBox.r.toFixed(0)},${nearBox.b.toFixed(0)}`,
+  );
 }
 (globalThis.window as Window).location.search = "?closeup=Infinity&cux=40&cuy=80";
 setCloseUp(true);
@@ -1060,21 +1085,24 @@ check(
   "a close-up query is a finite lens in [1, 2] and debug offsets are ignored",
   closeUpZoomQuery() === null &&
     infinite.zoom === safeZoom &&
-    huge.zoom <= 2 &&
-    huge.zoom <= safeZoom + 1e-6 &&
+    huge.zoom === 2 &&
     asked.zoom <= 1.02 + 1e-6 &&
     asked.zoom >= 1 &&
     askedDist.toFixed(1) === "38.9" &&
     askedShift.zoom === asked.zoom &&
-    askedShift.view?.offsetX === asked.view?.offsetX &&
-    askedShift.view?.offsetY === asked.view?.offsetY,
+    Math.abs((askedShift.view?.offsetX ?? 0) - (asked.view?.offsetX ?? 0)) < 1e-6 &&
+    Math.abs((askedShift.view?.offsetY ?? 0) - (asked.view?.offsetY ?? 0)) < 1e-6,
   `inf ${infinite.zoom.toFixed(3)} huge ${huge.zoom.toFixed(3)} asked ${asked.zoom.toFixed(3)} safe ${safeZoom.toFixed(3)}`,
 );
 setCloseUp(false);
 globalThis.document = prevDocument;
 globalThis.window = prevWindow;
 globalThis.getComputedStyle = prevStyle;
-check("the apartment never shrinks and the default fit stays 38.9 / 28.8", apartmentHolds, zoomDetail.join(" | "));
+check(
+  "close-up is at least 1.4x and the default fit stays 38.9 / 28.8",
+  apartmentHolds,
+  zoomDetail.join(" | "),
+);
 
 const failed = results.filter((ok) => !ok).length;
 console.log(`${results.length - failed}/${results.length}`);

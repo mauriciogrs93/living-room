@@ -175,58 +175,34 @@ export function closeUpZoomQuery(): number | null {
   return Math.min(2, Math.max(1, value));
 }
 
-function hullOutside(box: ScreenBox, safe: ScreenRect) {
-  return box.l < safe.x - 1 || box.t < safe.y - 1 || box.r > safe.x + safe.w + 1 || box.b > safe.y + safe.h + 1;
-}
-
-/** Slide the fitted apartment into the safe rect. +offsetY moves the picture up. */
-function parkHull(camera: THREE.PerspectiveCamera, W: number, H: number, safe: ScreenRect) {
-  const view = camera.view;
-  if (!view) return;
-  for (let step = 0; step < 6; step += 1) {
-    const box = projectedHull(camera, W, H);
-    const slackX = safe.w - box.w;
-    const slackY = safe.h - box.h;
-    const targetL = safe.x + slackX / 2;
-    const targetT = slackY > 0 ? safe.y : safe.y + slackY / 2;
-    const dL = box.l - targetL;
-    const dT = box.t - targetT;
-    if (Math.abs(dL) < 0.75 && Math.abs(dT) < 0.75) break;
-    view.offsetX += dL;
-    view.offsetY += dT;
-    camera.updateProjectionMatrix();
-  }
-}
+/** Button close-up. ?closeup= still replaces it, and the lens never leaves [1, 2]. */
+const CLOSE_LENS = 1.5;
 
 /**
- * Close-up keeps the fit distance and raises the lens only as far as the safe rect allows.
- * The whole silhouette stays between the HUD cards. Zoom never leaves [1, 2].
+ * Close-up keeps yaw, pitch, and fov, and raises the lens well past the default fit.
+ * +offsetX moves the picture left and +offsetY moves it up, one css px per unit.
+ * Phone: the top floor sits just under the title card and the outer walls pass the screen edges.
+ * Desktop: the larger house stays centered between the top card and the bottom bars.
  */
 function applyCloseUp(camera: THREE.PerspectiveCamera, W: number, H: number) {
-  if (!camera.view) return;
-  const safe = hudSafeRect(W, H);
+  const view = camera.view;
+  if (!view) return;
+  const asked = closeUpZoomQuery();
+  let zoom = asked ?? CLOSE_LENS;
+  if (!Number.isFinite(zoom)) zoom = CLOSE_LENS;
+  zoom = Math.min(2, Math.max(1, zoom));
+  camera.zoom = zoom;
+  camera.updateProjectionMatrix();
   const box = projectedHull(camera, W, H);
   if (box.w < 8 || box.h < 8) return;
-  const asked = closeUpZoomQuery();
-  let zoom = Math.min(safe.w / box.w, safe.h / box.h, asked ?? 2, 2);
-  if (!Number.isFinite(zoom) || zoom < 1) zoom = 1;
-  const baseX = camera.view.offsetX;
-  const baseY = camera.view.offsetY;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    camera.zoom = zoom;
-    camera.view.offsetX = baseX;
-    camera.view.offsetY = baseY;
-    camera.updateProjectionMatrix();
-    parkHull(camera, W, H, safe);
-    if (!hullOutside(projectedHull(camera, W, H), safe)) return;
-    if (zoom <= 1.001) break;
-    zoom = Math.max(1, zoom * 0.97);
-  }
-  camera.zoom = 1;
-  camera.view.offsetX = baseX;
-  camera.view.offsetY = baseY;
+  const safe = hudSafeRect(W, H);
+  const phone = W < 720;
+  const cx = (box.l + box.r) / 2;
+  const dX = cx - W / 2;
+  const dY = phone ? box.t - (safe.y + 4) : (box.t + box.b) / 2 - (safe.y + safe.h / 2);
+  view.offsetX += dX;
+  view.offsetY += dY;
   camera.updateProjectionMatrix();
-  parkHull(camera, W, H, safe);
 }
 
 /**
@@ -383,8 +359,7 @@ export function fitCamera(camera: THREE.PerspectiveCamera, W: number, H: number,
       camera.updateProjectionMatrix();
     }
   }
-  // Close-up is a second view of the same fit. The distance (roomZoom) stays put.
-  // The lens only grows, and only while the apartment still sits between the HUD cards.
+  // Close-up is a second view of the same fit. The fit distance stays put; the lens moves in.
   if (!floor && camera.view && closeUpOn()) applyCloseUp(camera, W, H);
   if (typeof document !== "undefined" && document.documentElement.dataset.hudFrame === "1") {
     document.documentElement.dataset.roomLens = camera.zoom.toFixed(2);

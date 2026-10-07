@@ -851,10 +851,15 @@ try {
         lens: document.documentElement.dataset.roomLens || "",
         pressed: document.querySelector("[data-ctl=view-closeup]")?.getAttribute("aria-pressed") || "",
       }));
+      const closeEffective = (Number(expectedZoom) / Number(closeOn.zoom)) * Number(closeOn.lens);
       check(
-        `${name}: close-up keeps the fit distance and enlarges`,
-        closeOn.zoom === expectedZoom && closeOn.pressed === "true" && Number(closeOn.lens) >= 1 && Number(closeOn.lens) <= 2 && (name === "desk" || Number(closeOn.lens) >= 1.02),
-        JSON.stringify(closeOn),
+        `${name}: close-up effective zoom is at least 1.4`,
+        closeOn.pressed === "true" &&
+          Number.isFinite(closeEffective) &&
+          closeEffective >= 1.4 &&
+          Number(closeOn.lens) >= 1 &&
+          Number(closeOn.lens) <= 2,
+        JSON.stringify({ ...closeOn, closeEffective }),
       );
       await page.focus("[data-ctl=view-closeup]");
       await page.keyboard.press("Enter");
@@ -866,7 +871,7 @@ try {
       }));
       check(
         `${name}: close-up toggles from the keyboard and the fit returns`,
-        closeKeyed.pressed === "false" && closeKeyed.zoom === expectedZoom && Number(closeKeyed.lens) >= 1 && Number(closeKeyed.lens) < 1.05,
+        closeKeyed.pressed === "false" && closeKeyed.zoom === expectedZoom && closeKeyed.lens === "1.00",
         JSON.stringify(closeKeyed),
       );
       for (const ctl of ["rail-tv", "rail-radio", "nav-you"]) {
