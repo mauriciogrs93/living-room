@@ -870,6 +870,8 @@ check(
   hudFrame.includes('data-ctl="view-closeup"') &&
     hudFrame.includes("aria-pressed={closeUp}") &&
     hudFrame.includes("setCloseUp(!closeUp)") &&
+    hudFrame.includes('raw !== ""') &&
+    hudFrame.includes("Number.isFinite(Number(raw))") &&
     hudFrame.includes("fetch(`/api/sky${skyQuery}`)") &&
     hudFrame.includes('skyName === "rain"') &&
     hudFrame.includes("noteHouseSky(rain)") &&

@@ -208,8 +208,8 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
   }, []);
 
   useEffect(() => {
-    const raw = Number(new URLSearchParams(window.location.search).get("closeup"));
-    if (Number.isFinite(raw)) setCloseUp(true);
+    const raw = new URLSearchParams(window.location.search).get("closeup");
+    if (raw != null && raw !== "" && Number.isFinite(Number(raw))) setCloseUp(true);
   }, []);
 
   useEffect(() => {
