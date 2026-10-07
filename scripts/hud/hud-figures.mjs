@@ -137,7 +137,7 @@ try {
   });
   await signup(page, `hud-fig-${tag}@example.com`);
   await page.waitForFunction(() => window.__glStats && window.__glStats.frame > 24, null, { timeout: 20000 });
-  const closed = await distinctFrames(page, 5);
+  await distinctFrames(page, 5);
   const canvasClosed = await page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     return canvas ? { w: canvas.clientWidth, h: canvas.clientHeight, bw: canvas.width, bh: canvas.height } : null;
