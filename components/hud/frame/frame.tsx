@@ -482,7 +482,7 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
               <p className="is-info hudf-quiet">{RADIO_OFF}</p>
             )}
             {owner && !radio?.on && station ? <p className="is-info hudf-quiet">{PLAYS(station)}</p> : null}
-            {radio?.on && station ? (
+            {radio?.on ? (
               <p className="is-info hudf-quiet hudf-now">
                 <span className="hudf-eq" data-eq="" aria-hidden>
                   <i />

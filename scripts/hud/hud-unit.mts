@@ -179,7 +179,7 @@ const eqAt = hudCss.indexOf("@keyframes hudf-eq");
 const eqBlock = eqAt >= 0 ? hudCss.slice(eqAt, eqAt + 180) : "";
 check("radio EQ uses transform keyframes", eqBlock.includes("transform: scaleY(0.35)") && eqBlock.includes("transform: scaleY(1)") && !eqBlock.includes("filter"));
 check("radio EQ pauses while the HUD is tucked", hudCss.includes(".hudf.is-tucked .hudf-eq i { animation-play-state: paused; }"));
-check("the radio card draws EQ from the playing state", hudFrame.includes('className="hudf-eq"') && hudFrame.includes("radio?.on && station") && !hudFrame.includes("AudioContext") && !hudFrame.includes("Analyser"));
+check("the radio card draws EQ from the playing state", hudFrame.includes('data-eq=""') && hudFrame.includes("radio?.on ? (") && !hudFrame.includes("AudioContext") && !hudFrame.includes("Analyser"));
 check("Room sound label is at least 13px", hudCss.includes(".hudf-switch { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }"));
 const globals = readFileSync(path.join(root, "app/globals.css"), "utf8");
 const tagLayer = readFileSync(path.join(root, "components/room/name-tag-layer.tsx"), "utf8");
