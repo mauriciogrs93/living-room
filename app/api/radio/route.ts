@@ -30,10 +30,10 @@ async function post(req: Request) {
     }
     const body = await readJson(req);
     if (!body.ok) return body.response;
-    const value = body.value && typeof body.value === "object" ? (body.value as { intent?: unknown; lat?: unknown; lon?: unknown }) : {};
+    const value = body.value && typeof body.value === "object" ? (body.value as { intent?: unknown; lat?: unknown; lon?: unknown; station?: unknown }) : {};
     const intent = typeof value.intent === "string" ? value.intent : "";
-    if (intent !== "on" && intent !== "off" && intent !== "next" && intent !== "tune") {
-      return json({ ok: false, error: 'Send {"intent":"on"}, "off", "next", or "tune".' }, 400);
+    if (intent !== "on" && intent !== "off" && intent !== "next" && intent !== "prev" && intent !== "tune") {
+      return json({ ok: false, error: 'Send {"intent":"on"}, "off", "next", "prev", or "tune".' }, 400);
     }
     let stations: RadioStation[] | undefined;
     const lat = typeof value.lat === "number" ? value.lat : Number.NaN;
@@ -41,8 +41,9 @@ async function post(req: Request) {
     if (intent !== "off" && Number.isFinite(lat) && Number.isFinite(lon) && (await engine.stationsStale())) {
       stations = await stationsNear(lat, lon);
     }
-    const mapped = intent === "tune" ? "next" : intent;
-    return json(await engine.controlRadio(mapped, stations));
+    const result = await engine.controlRadio(intent, stations, intent === "tune" ? value.station : undefined);
+    if (!result.ok) return json({ ok: false, error: result.error }, result.status);
+    return json(result);
   } catch (error) {
     const failure = roomFailure(error);
     if (failure) return failure;

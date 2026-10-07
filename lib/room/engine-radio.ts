@@ -1,5 +1,5 @@
 import { type RoomHost } from "./engine-host";
-import { currentStation } from "./house";
+import { currentStation, FALLBACK_STATIONS } from "./house";
 import {
   type AgentRecord,
   type RadioStation,
@@ -19,22 +19,47 @@ export function stationsStale(room: RoomHost, maxMs = 30 * 60 * 1000) {
     return Date.now() - room.house.stationsAt > maxMs;
   }
 
-export function controlRadio(room: RoomHost, intent: "on" | "off" | "next", stations?: RadioStation[]): { ok: true; message: string; name: string; on: boolean; url: string } {
+export type RadioIntent = "on" | "off" | "next" | "prev" | "tune";
+
+function stationList(room: RoomHost, incoming?: RadioStation[]) {
+  if (incoming && incoming.length > 0 && room.stationsStale()) return incoming.slice(0, 8);
+  return room.house.stations.length > 0 ? room.house.stations : FALLBACK_STATIONS;
+}
+
+export function controlRadio(
+  room: RoomHost,
+  intent: RadioIntent,
+  stations?: RadioStation[],
+  tuneAt?: unknown,
+): { ok: true; message: string; name: string; on: boolean; url: string } | { ok: false; error: string; status: 400 } {
+    const nextList = stationList(room, stations);
+    if (intent === "tune") {
+      const length = nextList.length;
+      if (typeof tuneAt !== "number" || !Number.isInteger(tuneAt) || tuneAt < 0 || tuneAt >= length) {
+        return { ok: false, error: "Pick a station from the list.", status: 400 };
+      }
+    }
     if (stations && stations.length > 0 && room.stationsStale()) {
       room.house.stations = stations.slice(0, 8);
       room.house.stationsAt = Date.now();
-      room.house.radioIndex = 0;
+      if (intent !== "tune" && intent !== "prev") room.house.radioIndex = 0;
     }
     if (intent === "off") {
       room.house.radioOn = false;
       room.syncRadio();
       room.log("A viewer turned the radio off.", undefined, "viewer:radio");
       room.emit();
-      const station = currentStation(room.house);
-      return { ok: true, on: false, name: station.name, url: "", message: "The radio is off." };
+      const playing = currentStation(room.house);
+      return { ok: true, on: false, name: playing.name, url: "", message: "The radio is off." };
     }
     if (intent === "on") room.house.radioOn = true;
-    else {
+    else if (intent === "prev") {
+      room.house.radioOn = true;
+      room.house.radioIndex -= 1;
+    } else if (intent === "tune") {
+      room.house.radioOn = true;
+      room.house.radioIndex = tuneAt as number;
+    } else {
       room.house.radioOn = true;
       room.house.radioIndex += 1;
     }

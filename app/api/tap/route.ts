@@ -27,6 +27,12 @@ async function post(req: Request) {
       });
     }
     const body = await req.json().catch(() => null);
+    if (body && typeof body === "object" && (body as { id?: unknown }).id === "tv" && Object.prototype.hasOwnProperty.call(body, "channel")) {
+      if (viewer.role !== "owner") return forbiddenViewer(viewer.setCookies);
+      const switched = await engine.setTvChannel((body as { channel?: unknown }).channel);
+      if (!switched.ok) return json({ ok: false, error: switched.message }, switched.status);
+      return json(switched);
+    }
     const result = await engine.viewerTap(body);
     if (!result.ok) return json({ ok: false, error: result.message }, result.status);
     return json(result);

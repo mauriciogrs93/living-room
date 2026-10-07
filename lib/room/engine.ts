@@ -107,7 +107,7 @@ import {
   dogAct as dogActFn,
   pokeDog as pokeDogFn,
 } from "./engine-dog";
-import { viewerTap as viewerTapFn } from "./engine-viewer";
+import { setTvChannel as setTvChannelFn, viewerTap as viewerTapFn } from "./engine-viewer";
 import {
   doorAct as doorActFn,
   doorBrief as doorBriefFn,
@@ -280,6 +280,10 @@ export class RoomEngine {
     return viewerTapFn(this as unknown as RoomHost, raw);
   }
 
+  setTvChannel(channel: unknown) {
+    return setTvChannelFn(this as unknown as RoomHost, channel);
+  }
+
   setStations(stations: RadioStation[]) {
     return setStationsFn(this as unknown as RoomHost, stations);
   }
@@ -288,8 +292,8 @@ export class RoomEngine {
     return stationsStaleFn(this as unknown as RoomHost, maxMs);
   }
 
-  controlRadio(intent: "on" | "off" | "next", stations?: RadioStation[]): { ok: true; message: string; name: string; on: boolean; url: string } {
-    return controlRadioFn(this as unknown as RoomHost, intent, stations);
+  controlRadio(intent: "on" | "off" | "next" | "prev" | "tune", stations?: RadioStation[], station?: unknown) {
+    return controlRadioFn(this as unknown as RoomHost, intent, stations, station);
   }
 
   books(): Book[] {

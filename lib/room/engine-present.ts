@@ -9,6 +9,7 @@ import {
   currentStation,
   dogPose,
   currentPlantStage,
+  FALLBACK_STATIONS,
   pruneDiary,
 } from "./house";
 import { ROOM } from "./layout";
@@ -19,6 +20,30 @@ import {
   type RoomObject,
   type Snapshot,
 } from "./types";
+
+/** Names only. No URLs, no control or bidi marks, 60 characters, at most 8. */
+export function publicStationName(raw: string) {
+  return raw
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60);
+}
+
+function publicRadio(room: RoomHost) {
+  const list = room.house.stations.length > 0 ? room.house.stations : FALLBACK_STATIONS;
+  const capped = list.slice(0, 8);
+  const index = ((room.house.radioIndex % capped.length) + capped.length) % capped.length;
+  const station = currentStation(room.house);
+  return {
+    on: room.house.radioOn,
+    name: publicStationName(station.name) || station.name.slice(0, 60),
+    url: room.house.radioOn ? station.url : "",
+    stations: capped.map((item) => publicStationName(item.name)).filter((name) => name.length > 0),
+    index,
+  };
+}
 
 export function snapshot(room: RoomHost): Snapshot {
     const now = Date.now();
@@ -40,11 +65,7 @@ export function snapshot(room: RoomHost): Snapshot {
       books: bookIndex(room.house.books),
       diary: pruneDiary(room.house.diary, now).slice(-40),
       drawings: room.house.drawings.slice(-6),
-      radio: {
-        on: room.house.radioOn,
-        name: currentStation(room.house).name,
-        url: room.house.radioOn ? currentStation(room.house).url : "",
-      },
+      radio: publicRadio(room),
       door: {
         locked: room.door?.locked !== false,
         knocking: (room.door?.knocks.length ?? 0) > 0,

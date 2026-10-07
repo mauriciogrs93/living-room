@@ -483,12 +483,16 @@ export class VersionedRoom {
     return this.inMail(() => this.mutate((engine) => engine.viewerTap(raw)));
   }
 
+  setTvChannel(channel: unknown) {
+    return this.inMail(() => this.mutate((engine) => engine.setTvChannel(channel)));
+  }
+
   stationsStale() {
     return this.inMail(() => this.peek((engine) => engine.stationsStale()));
   }
 
-  controlRadio(intent: "on" | "off" | "next", stations?: RadioStation[]) {
-    return this.inMail(() => this.mutate((engine) => engine.controlRadio(intent, stations)));
+  controlRadio(intent: "on" | "off" | "next" | "prev" | "tune", stations?: RadioStation[], station?: unknown) {
+    return this.inMail(() => this.mutate((engine) => engine.controlRadio(intent, stations, station)));
   }
 
   books(): Promise<Book[]> {

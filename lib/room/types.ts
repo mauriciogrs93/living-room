@@ -207,7 +207,7 @@ export type Snapshot = {
   books: { id: string; title: string; pages: number }[];
   diary: DiaryLine[];
   drawings: Drawing[];
-  radio: { on: boolean; name: string; url: string };
+  radio: { on: boolean; name: string; url: string; stations: string[]; index: number };
   /** Public door only. Names, notes, invite codes, and the trusted list stay off this object. */
   door: { locked: boolean; knocking: boolean };
 };

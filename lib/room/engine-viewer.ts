@@ -1,7 +1,26 @@
-import { CHANNELS, outsideView } from "./content";
+import { CHANNELS, channelById, outsideView } from "./content";
 import { type RoomHost } from "./engine-host";
 import { waterPlantNow } from "./house";
 import { type RoomObject } from "./types";
+
+export function setTvChannel(room: RoomHost, channel: unknown): { ok: true; message: string } | { ok: false; message: string; status: number } {
+  if (typeof channel !== "number" || !Number.isInteger(channel)) {
+    return { ok: false, message: "Pick a channel from the list.", status: 400 };
+  }
+  const picked = channelById(channel);
+  if (!picked) return { ok: false, message: "Pick a channel from the list.", status: 400 };
+  const object = room.findObject("tv");
+  if (!object) return { ok: false, message: "Nothing there to tap.", status: 404 };
+  object.state.power = true;
+  object.state.channel = picked.id;
+  object.state.channelName = picked.name;
+  object.state.channelColor = picked.color;
+  object.state.channelAccent = picked.accent;
+  const message = `A viewer switched the television to ${picked.name}.`;
+  room.log(message, undefined, "viewer:tv_channel");
+  room.emit();
+  return { ok: true, message };
+}
 
 function bodyId(raw: unknown) {
   if (!raw || typeof raw !== "object" || !("id" in raw)) return "";

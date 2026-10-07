@@ -244,7 +244,7 @@ export interface RoomHost {
   useComputer(agent: AgentRecord, object: RoomObject, pending: PendingAction): ActionOutcome;
   setStations(stations: RadioStation[]): void;
   stationsStale(maxMs?: number): boolean;
-  controlRadio(intent: "on" | "off" | "next", stations?: RadioStation[]): { ok: true; message: string; name: string; on: boolean; url: string };
+  controlRadio(intent: "on" | "off" | "next" | "prev" | "tune", stations?: RadioStation[], station?: unknown): { ok: true; message: string; name: string; on: boolean; url: string } | { ok: false; error: string; status: 400 };
   useRadio(agent: AgentRecord, object: RoomObject, action: string): ActionOutcome;
   syncRadio(): void;
   books(): Book[];
