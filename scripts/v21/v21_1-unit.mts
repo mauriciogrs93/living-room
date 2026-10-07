@@ -316,6 +316,25 @@ const nearExp = Math.floor(Date.now() / 1000) + 30;
 const near = await proxy(new NextRequest("https://stubref.supabase.co/room", { headers: { cookie: `sb-stubref-auth-token=${encodeURIComponent(JSON.stringify({ access_token: "x", refresh_token: "r", expires_at: nearExp }))}` } }));
 check("proxy makes no auth call without a cookie or while the token is fresh, and never redirects", afterQuiet === 0 && afterFar === 0 && quiet.status === 200 && far.status === 200 && near.status === 200 && !quiet.headers.get("location") && !near.headers.get("location"), `quiet ${afterQuiet} far ${afterFar} near ${fetches}`);
 
+const authStrings = await import("../../lib/auth/strings");
+const { PasswordOffer } = await import("../../components/account/password-offer");
+check(
+  "change-password strings are Writer's final copy",
+  authStrings.YOU_SET_PASSWORD === "Set a password" &&
+    authStrings.YOU_CHANGE_PASSWORD === "Change password" &&
+    authStrings.CHANGE_TITLE === "Change password" &&
+    authStrings.CURRENT_PASSWORD === "Current password" &&
+    authStrings.NEW_PASSWORD === "New password" &&
+    authStrings.CANCEL === "Cancel" &&
+    authStrings.PASSWORD_HINT === "At least 12 characters." &&
+    authStrings.NOT_NOW === "Not now" &&
+    authStrings.OFFER_TITLE === "Set a password",
+);
+const changeCard = renderToStaticMarkup(createElement(PasswordOffer, { passwordSet: true }));
+const firstOffer = renderToStaticMarkup(createElement(PasswordOffer, { passwordSet: false }));
+check("the change card has current and new fields, Cancel, and no first-time body", changeCard.includes("Change password") && changeCard.includes("Current password") && changeCard.includes("New password") && changeCard.includes("Cancel") && changeCard.includes("At least 12 characters.") && !changeCard.includes("Not now") && !changeCard.includes("Next time, sign in"));
+check("the first-time offer still says Set a password and Not now", firstOffer.includes("Set a password") && firstOffer.includes("Not now") && firstOffer.includes("Next time, sign in with your email and password.") && !firstOffer.includes("Current password") && !firstOffer.includes(">Cancel<"));
+
 const fail = results.filter((r) => !r).length;
 console.log(`\nv21.1-unit: ${results.length - fail} passed, ${fail} failed, ${results.length} total`);
 process.exit(fail ? 1 : 0);

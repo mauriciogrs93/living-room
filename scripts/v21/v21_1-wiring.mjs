@@ -21,7 +21,7 @@ const check = (name, ok, detail = "") => {
 const ALLOW = new Set([
   "sign-in", "show-password", "magic", "create-account", "magic-submit", "back-to-password",
   "resend", "different-email", "back-to-signin", "create-submit", "save-password", "not-now",
-  "offer-show", "offer-scrim", "offer-close", "you-set-password", "sign-out", "leave",
+  "offer-show", "offer-show-current", "offer-scrim", "offer-close", "cancel", "you-set-password", "sign-out", "leave",
 ]);
 
 const browser = await chromium.launch({ executablePath: CHROME, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
@@ -123,6 +123,7 @@ try {
   check("Not now dismisses on this device only", stored.later === "1" && stored.keys.every((key) => localOk.has(key)) && !stored.keys.some((key) => key.startsWith("sb-") || key.includes("auth-token")), stored.keys.join(","));
   await page.click("[data-ctl=nav-you]");
   await page.waitForSelector("[data-auth-control=you-set-password]");
+  check("before a password the You link reads Set a password", (await page.locator("[data-ctl=you-set-password]").innerText()) === "Set a password");
   const youControls = unknown(await controls(page, ".hud-card-body"));
   check("every You-panel control is known", youControls.length === 0, JSON.stringify(youControls));
   await page.click("[data-auth-control=you-set-password]");
@@ -132,6 +133,7 @@ try {
   await page.waitForSelector("[data-password-saved]", { timeout: 15000 });
   check("Save password confirms and mentions other devices", (await page.locator("[data-password-saved]").innerText()) === "Password saved. You're signed out on your other devices.");
   await page.waitForSelector("[data-password-offer]", { state: "detached", timeout: 5000 });
+  check("after save the You link reads Change password", (await page.locator("[data-ctl=you-set-password]").innerText()) === "Change password");
   const badge = await page.locator("[data-ctl=signout]").boundingBox();
   const badgeColor = await page.locator("[data-ctl=signout]").evaluate((el) => getComputedStyle(el).color);
   check("Sign out is at least 44px and not red", Boolean(badge) && badge.height >= 44 && badgeColor !== "rgb(163, 58, 28)", badgeColor);
@@ -144,8 +146,15 @@ try {
   await page.waitForSelector("[data-owner-badge]", { timeout: 20000 });
   check("password sign-in does not auto-open the offer", (await page.locator("[data-password-offer]").count()) === 0);
   await page.click("[data-ctl=nav-you]");
+  check("a returning owner still sees Change password", (await page.locator("[data-ctl=you-set-password]").innerText()) === "Change password");
   await page.click("[data-auth-control=you-set-password]");
   await page.waitForSelector("#offer-current");
+  const changeCard = await page.locator("[data-password-offer]").innerText();
+  check("the change card is titled Change password", (await page.locator("#offer-title").innerText()) === "Change password");
+  check("the change card has Current password, New password, Show on each, and Cancel", (await page.locator("label[for=offer-current]").innerText()) === "Current password" && (await page.locator("label[for=offer-password]").innerText()) === "New password" && (await page.locator("[data-auth-control=offer-show], [data-auth-control=offer-show-current]").count()) === 2 && (await page.locator("[data-auth-control=cancel]").innerText()) === "Cancel");
+  check("the change card is not the first-time offer", !changeCard.includes("Next time, sign in with your email and password.") && (await page.locator("[data-auth-control=not-now]").count()) === 0 && !changeCard.includes("Confirm"));
+  const changeControls = unknown(await controls(page, "[data-password-offer]"));
+  check("every change-password control is known", changeControls.length === 0, JSON.stringify(changeControls));
   await page.fill("#offer-current", "nope-nope-nope");
   await page.fill("#offer-password", nextPassword);
   await page.click("[data-auth-control=save-password]");

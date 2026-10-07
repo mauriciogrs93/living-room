@@ -53,8 +53,11 @@ export const OFFER_BODY = "Next time, sign in with your email and password.";
 export const NOT_NOW = "Not now";
 export const SET_TITLE = "Set a new password";
 export const NEW_PASSWORD = "New password";
-/** Security requires this field when a password already exists. Writer did not name it. */
 export const CURRENT_PASSWORD = "Current password";
+/** You panel and change card, once a password exists. */
+export const YOU_CHANGE_PASSWORD = "Change password";
+export const CHANGE_TITLE = "Change password";
+export const CANCEL = "Cancel";
 export const SAVE_PASSWORD = "Save password";
 export const SAVING = "Saving…";
 /** This save revokes other sessions, so Writer's extra sentence is included. */

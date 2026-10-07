@@ -188,7 +188,7 @@ try {
       check("phone: owner can mint a watch link", minted.ok && minted.link.includes("#watch="));
       watchLink = minted.link;
       await clickCtl(page, "nav-you", "owner", name);
-      check("phone: You has set-password and sign out", (await page.locator("[data-ctl=you-set-password]").count()) === 1 && (await page.locator("[data-ctl=you-signout]").count()) === 1);
+      check("phone: You offers Change password and sign out", (await page.locator("[data-ctl=you-set-password]").innerText()) === "Change password" && (await page.locator("[data-ctl=you-signout]").count()) === 1);
     }
     if (name === "short") {
       await clickCtl(page, "rail-tv", "owner", name);

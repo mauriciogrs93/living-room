@@ -5,10 +5,14 @@ import { refreshMe } from "./me";
 import { closePasswordOffer, dismissPasswordOffer } from "./password-offer-state";
 import { passwordIssue } from "@/lib/auth/password";
 import {
+  CANCEL,
+  CHANGE_TITLE,
   CURRENT_PASSWORD,
   ENTER_PASSWORD,
   HIDE,
   HIDE_PASSWORD,
+  LABEL_PASSWORD,
+  NEW_PASSWORD,
   NO_CONNECTION,
   NOT_NOW,
   OFFER_BODY,
@@ -23,7 +27,6 @@ import {
   TOO_LONG,
   TOO_MANY,
   TOO_SHORT,
-  LABEL_PASSWORD,
 } from "@/lib/auth/strings";
 
 /** First password, or a change when one already exists. Same card as sign-in. */
@@ -31,6 +34,7 @@ export function PasswordOffer({ passwordSet }: { passwordSet: boolean }) {
   const [password, setPassword] = useState("");
   const [current, setCurrent] = useState("");
   const [show, setShow] = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [saved, setSaved] = useState(false);
@@ -87,8 +91,8 @@ export function PasswordOffer({ passwordSet }: { passwordSet: boolean }) {
         <button type="button" className="password-offer-close" aria-label="Close" data-ctl="offer-close" data-auth-control="offer-close" onClick={() => dismissPasswordOffer()}>
           ×
         </button>
-        <h2 id="offer-title" className="landing-title signin-title">{OFFER_TITLE}</h2>
-        <p className="signin-hint">{OFFER_BODY}</p>
+        <h2 id="offer-title" className="landing-title signin-title">{passwordSet ? CHANGE_TITLE : OFFER_TITLE}</h2>
+        {passwordSet ? null : <p className="signin-hint">{OFFER_BODY}</p>}
         {saved ? (
           <p className="signin-note" role="status" data-password-saved="">
             {PASSWORD_SAVED}
@@ -97,15 +101,23 @@ export function PasswordOffer({ passwordSet }: { passwordSet: boolean }) {
           <form className="signin-form" onSubmit={(event) => void save(event)}>
             {passwordSet ? (
               <>
-                <label htmlFor="offer-current">
-                  {CURRENT_PASSWORD}
-                </label>
-                <input id="offer-current" name="currentPassword" type="password" autoComplete="current-password" value={current} onChange={(event) => setCurrent(event.target.value)} />
+                <label htmlFor="offer-current">{CURRENT_PASSWORD}</label>
+                <div className="signin-password">
+                  <input
+                    id="offer-current"
+                    name="currentPassword"
+                    type={showCurrent ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={current}
+                    onChange={(event) => setCurrent(event.target.value)}
+                  />
+                  <button type="button" className="signin-resend" aria-pressed={showCurrent} aria-label={showCurrent ? HIDE_PASSWORD : SHOW_PASSWORD} data-ctl="offer-show-current" data-auth-control="offer-show-current" onClick={() => setShowCurrent((value) => !value)}>
+                    {showCurrent ? HIDE : SHOW}
+                  </button>
+                </div>
               </>
             ) : null}
-            <label htmlFor="offer-password">
-              {LABEL_PASSWORD}
-            </label>
+            <label htmlFor="offer-password">{passwordSet ? NEW_PASSWORD : LABEL_PASSWORD}</label>
             <div className="signin-password">
               <input
                 id="offer-password"
@@ -115,7 +127,7 @@ export function PasswordOffer({ passwordSet }: { passwordSet: boolean }) {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
-              <button type="button" className="signin-resend" aria-pressed={show} aria-label={show ? HIDE_PASSWORD : SHOW_PASSWORD} data-auth-control="offer-show" onClick={() => setShow((value) => !value)}>
+              <button type="button" className="signin-resend" aria-pressed={show} aria-label={show ? HIDE_PASSWORD : SHOW_PASSWORD} data-ctl="offer-show" data-auth-control="offer-show" onClick={() => setShow((value) => !value)}>
                 {show ? HIDE : SHOW}
               </button>
             </div>
@@ -123,15 +135,15 @@ export function PasswordOffer({ passwordSet }: { passwordSet: boolean }) {
             <button type="submit" className="invite-copy signin-submit mono" data-ctl="offer-save" data-auth-control="save-password" disabled={busy} aria-busy={busy}>
               {busy ? SAVING : SAVE_PASSWORD}
             </button>
-            <button
-              type="button"
-              className="signin-text"
-              data-ctl="offer-not-now"
-              data-auth-control="not-now"
-              onClick={() => dismissPasswordOffer()}
-            >
-              {NOT_NOW}
-            </button>
+            {passwordSet ? (
+              <button type="button" className="signin-text" data-ctl="offer-cancel" data-auth-control="cancel" onClick={() => closePasswordOffer()}>
+                {CANCEL}
+              </button>
+            ) : (
+              <button type="button" className="signin-text" data-ctl="offer-not-now" data-auth-control="not-now" onClick={() => dismissPasswordOffer()}>
+                {NOT_NOW}
+              </button>
+            )}
           </form>
         )}
         {note ? (
