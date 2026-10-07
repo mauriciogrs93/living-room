@@ -29,6 +29,10 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   poweredByHeader: false,
+  // Baked into the client bundle. Production builds set "off", so no query can enable the figure lineup.
+  env: {
+    NEXT_PUBLIC_FIGURE_LINEUP: process.env.VERCEL_ENV === "production" ? "off" : "on",
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

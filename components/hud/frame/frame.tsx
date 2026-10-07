@@ -31,7 +31,7 @@ import {
   DAY,
   DUSK,
   HERE,
-  HERE_EMPTY,
+  hereEmptyCopy,
   HOUSE,
   LOOK_OUTSIDE,
   MUTE,
@@ -570,7 +570,9 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
             {actionNote ? <p className="is-info hudf-quiet">{actionNote}</p> : null}
           </>
         )}
-        {(shown === "here" || shown === "people") && <HereList model={model} agents={agents} />}
+        {(shown === "here" || shown === "people") && (
+          <HereList model={model} agents={agents} empty={shown === "here" ? hereEmptyCopy(role, agents.length) : ""} />
+        )}
         {shown === "people" && owner ? <DoorSection model={model} /> : null}
         {shown === "activity" && <ActivitySection model={model} watcher={!owner} />}
         {shown === "invite" && owner ? <InviteSection model={model} /> : null}
@@ -830,8 +832,15 @@ function SignForm({ ctl, label }: { ctl: string; label: string }) {
   );
 }
 
-function HereList({ model, agents }: { model: HudModel; agents: PublicAgent[] }) {
-  if (!agents.length) return <p className="is-info hudf-quiet">{HERE_EMPTY}</p>;
+function HereList({ model, agents, empty }: { model: HudModel; agents: PublicAgent[]; empty: string }) {
+  if (!agents.length) {
+    if (!empty) return null;
+    return (
+      <p className="is-info hudf-quiet" data-here-empty="">
+        {empty}
+      </p>
+    );
+  }
   return (
     <div className="hudf-list">
       {agents.map((agent) => (

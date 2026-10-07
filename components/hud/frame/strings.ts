@@ -24,6 +24,11 @@ export function fitApartmentTitle(title: string, maxChars = 80): string {
 export const BADGE_WATCH = "WATCHING · READ-ONLY";
 export const HERE = "Here";
 export const HERE_EMPTY = "No one's home right now.";
+
+/** Watchers with an empty room get one quiet line. Owners, and any room with an agent, get none. */
+export function hereEmptyCopy(role: string, agentCount = 0): string {
+  return role === "watch" && agentCount === 0 ? HERE_EMPTY : "";
+}
 export const RADIO_OFF = "The radio is off.";
 export const PLAY = "Play";
 export const STOP = "Stop";

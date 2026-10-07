@@ -15,6 +15,7 @@ import { DoorMesh, type DoorMeshProps } from "./maquette/door-mesh";
 import { MinimalHud, floorOfY, minimalHud } from "./maquette/minimal-hud";
 import { HouseFallback, RoomStageBoundary } from "./house-fallback";
 import { ComputerOverlay, ComputerProvider } from "./computer-desk";
+import { lineupCount as lineupAsked } from "@/lib/room/lineup";
 import { FLOORS, HOUSE, stagePose } from "@/lib/room/layout";
 import { HudAnchors } from "@/components/hud/anchors-bridge";
 import { DeckContext, FidgetNote, FidgetProvider } from "./interact";
@@ -42,15 +43,11 @@ const LANDSCAPE_CSS = `@media (orientation: landscape) and (max-height: 500px) {
   .room-root .sheet-caption { top: 50% !important; bottom: auto !important; transform: translateY(-50%); max-width: 190px; }
 }`;
 
-/** Design-only figure line-up (?debug=1&lineup=1): all agents standing in the kitchen, faces to the camera. */
+/** Design-only figure line-up (?debug=1&lineup=1|4|10). Production builds cannot turn it on. */
 let LINEUP_BOX: THREE.Box3 | null = null;
 function lineupCount() {
-  if (typeof window === "undefined" || !debugFlag()) return 0;
-  const raw = new URLSearchParams(window.location.search).get("lineup");
-  // lineup=1 is the existing 3-figure probe. 4 and 10 are the figure-merge gates, still debug-only.
-  if (raw === "1") return 3;
-  if (raw === "4" || raw === "10") return Number(raw);
-  return 0;
+  if (typeof window === "undefined") return 0;
+  return lineupAsked(window.location.search);
 }
 function lineupFlag() {
   return lineupCount() > 0;

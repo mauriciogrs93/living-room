@@ -161,6 +161,10 @@ try {
     const floating = (await page.locator(".hudf-card.is-float").count()) > 0;
     if (name === "desk") check("desk: card floats and has no scrim", floating && !sheet && !scrim);
     else check(`${name}: card is a sheet over a scrim`, sheet && scrim && !floating);
+    if (name === "phone") {
+      const scrimBg = await page.evaluate(() => getComputedStyle(document.querySelector("[data-ctl=sheet-scrim]")).backgroundColor);
+      check("phone: scrim wash is rgba(43, 45, 49, 0.28)", scrimBg === "rgba(43, 45, 49, 0.28)", scrimBg);
+    }
     const focused = await page.evaluate(() => document.activeElement?.tagName);
     check(`${name}: Today moves focus into the card`, focused === "H2", focused || "");
     if (name !== "desk") {
@@ -172,6 +176,12 @@ try {
       if (gap) await page.mouse.click(gap.x, gap.y);
       taps.push({ role: "owner", ctl: "sheet-scrim", size: name, at: Date.now() });
       check(`${name}: scrim closes the sheet`, (await page.locator(".hudf-card").count()) === 0);
+      if (name === "phone") {
+        await clickCtl(page, "here-tab", "owner", name);
+        await page.waitForSelector(".hudf-card h2");
+        check("phone: owner Here stays blank when nobody is home", (await page.locator("[data-here-empty]").count()) === 0);
+        await page.keyboard.press("Escape");
+      }
     } else {
       await page.keyboard.press("Escape");
       check("desk: Escape closes the card", (await page.locator(".hudf-card").count()) === 0);
@@ -300,6 +310,10 @@ try {
   await watcher.waitForTimeout(400);
   const hereTitle = (await watcher.locator(".hudf-card h2").count()) ? await watcher.locator(".hudf-card h2").innerText() : "";
   check("watcher: the door opens Here", hereTitle === "Here", `${hereTitle} @ ${hit}`);
+  const hereNames = await watcher.locator("[data-ctl=here-name]").count();
+  const hereEmpty = (await watcher.locator("[data-here-empty]").count()) ? await watcher.locator("[data-here-empty]").innerText() : "";
+  if (hereNames === 0) check("watcher: an empty Here says no one's home", hereEmpty === "No one's home right now.", hereEmpty);
+  else check("watcher: Here drops the empty line once someone is home", hereEmpty === "", hereEmpty);
   check("watcher: the door does not toast", (await watcher.locator(".hudf-toast").count()) === 0);
   check("watcher: the door sends no request", watchBag.api.length === beforeDoor);
   await watcher.keyboard.press("Escape");
