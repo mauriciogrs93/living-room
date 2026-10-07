@@ -3,7 +3,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Box3, BoxGeometry, BufferAttribute, type Camera, type Object3D, MeshBasicMaterial, SRGBColorSpace, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, LatheGeometry, MeshPhysicalMaterial, MeshStandardMaterial, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, type BufferGeometry, type Group, type Material, type Mesh } from "three";
+import { Bone, Box3, BoxGeometry, BufferAttribute, type Camera, type Object3D, Matrix4, Mesh, MeshBasicMaterial, Quaternion, SRGBColorSpace, Skeleton, SkinnedMesh, Uint16BufferAttribute, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, LatheGeometry, MeshPhysicalMaterial, MeshStandardMaterial, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, type BufferGeometry, type Group, type Material } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FLOORS, HOUSE, kettleSpot, stagePose } from "@/lib/room/layout";
 import { motionPoint } from "@/lib/room/paths";
@@ -331,6 +331,121 @@ function ghostOf(m: Material) {
   return g;
 }
 
+type FigureRig = {
+  mesh: SkinnedMesh;
+  torso: Bone;
+  head: Bone;
+  eye: Bone;
+  leftArm: Bone;
+  rightArm: Bone;
+  foreL: Bone;
+  foreR: Bone;
+  legs: Bone[];
+  knees: Bone[];
+  shins: Bone[];
+  feet: Bone[];
+  snack: Mesh;
+  book: Mesh;
+};
+
+/** One skinned mesh per figure. Vertex colours carry the shirt. Bones keep the walk, blink, and head turn. */
+function buildRig(color: string, hair: HairStyle, tilt: number, material: Material, snackMat: Material, bookMat: Material): FigureRig {
+  const fig = figureGeo();
+  const bones: Bone[] = [];
+  const make = (parent: Bone | null, x = 0, y = 0, z = 0) => {
+    const next = new Bone();
+    next.position.set(x, y, z);
+    parent?.add(next);
+    bones.push(next);
+    return next;
+  };
+  const root = make(null);
+  const torso = make(root);
+  const head = make(torso, 0, HEAD_Y, 0.012);
+  const tiltBone = make(head);
+  tiltBone.rotation.z = tilt * 0.6;
+  const eye = make(tiltBone, 0, 0.002, 0.0905);
+  eye.scale.set(1, 0.9, 0.45);
+  const leftArm = make(torso, -SHOULDER.x, SHOULDER.y - 0.022, 0);
+  const foreL = make(leftArm, 0, -UPPER, 0);
+  const rightArm = make(torso, SHOULDER.x, SHOULDER.y - 0.022, 0);
+  const foreR = make(rightArm, 0, -UPPER, 0);
+  const legs: Bone[] = [];
+  const knees: Bone[] = [];
+  const shins: Bone[] = [];
+  const feet: Bone[] = [];
+  for (const x of [-0.08, 0.08]) {
+    const leg = make(root, x, HIP_PIVOT, 0);
+    const knee = make(leg, 0, -THIGH, 0);
+    const shin = make(knee);
+    const foot = make(knee, 0, -SHIN, 0);
+    legs.push(leg);
+    knees.push(knee);
+    shins.push(shin);
+    feet.push(foot);
+  }
+  root.updateMatrixWorld(true);
+
+  const pieces: BufferGeometry[] = [];
+  const add = (geo: BufferGeometry, bone: Bone, x = 0, y = 0, z = 0) => {
+    const baked = geo.clone();
+    const local = new Matrix4().compose(new Vector3(x, y, z), new Quaternion(), new Vector3(1, 1, 1));
+    baked.applyMatrix4(new Matrix4().multiplyMatrices(bone.matrixWorld, local));
+    const count = baked.attributes.position.count;
+    const index = new Uint16Array(count * 4);
+    const weight = new Float32Array(count * 4);
+    const which = bones.indexOf(bone);
+    for (let i = 0; i < count; i += 1) {
+      index[i * 4] = which;
+      weight[i * 4] = 1;
+    }
+    baked.setAttribute("skinIndex", new Uint16BufferAttribute(index, 4));
+    baked.setAttribute("skinWeight", new BufferAttribute(weight, 4));
+    pieces.push(baked);
+  };
+  add(torsoFor(color), torso);
+  add(headGeo(hair), tiltBone);
+  add(fig.eyes, eye);
+  add(fig.arm, leftArm);
+  add(fig.fore, foreL);
+  add(fig.arm, rightArm);
+  add(fig.fore, foreR);
+  for (let i = 0; i < 2; i += 1) {
+    add(fig.thigh, legs[i]!, 0, -THIGH / 2, 0);
+    add(fig.shin, shins[i]!, 0, -SHIN / 2, 0);
+    add(fig.foot, feet[i]!, 0, -0.012, 0.03);
+  }
+  const geometry = mergeGeometries(pieces);
+  if (!geometry) throw new Error("figure merge produced no geometry");
+  for (const piece of pieces) piece.dispose();
+  const mesh = new SkinnedMesh(geometry, material);
+  mesh.name = "figure";
+  mesh.frustumCulled = false;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  mesh.add(root);
+  mesh.updateMatrixWorld(true);
+  mesh.bind(new Skeleton(bones));
+  const snack = new Mesh(new SphereGeometry(0.04, 14, 10), snackMat);
+  snack.position.set(0, -FORE - 0.05, 0.04);
+  snack.visible = false;
+  snack.castShadow = false;
+  foreR.add(snack);
+  const book = new Mesh(new BoxGeometry(0.14, 0.026, 0.1), bookMat);
+  book.position.set(0, -FORE - 0.04, 0.06);
+  book.rotation.set(0.4, 0.2, 0);
+  book.visible = false;
+  book.castShadow = false;
+  foreR.add(book);
+  return { mesh, torso, head, eye, leftArm, rightArm, foreL, foreR, legs, knees, shins, feet, snack, book };
+}
+
+/** One merged figure, for the draw-call gate. Not used by the room. */
+export function figureRigForTest(color: string) {
+  const mats = figureMats(color);
+  return buildRig(color, "bare", 0.2, mats.figure, mats.snack, mats.prop);
+}
+
 const BLOBS = new Map<boolean, ShaderMaterial>();
 function sharedBlob(night: boolean) {
   let m = BLOBS.get(night);
@@ -377,18 +492,20 @@ export function AgentAvatar({
   const labelPoint = useRef(new Vector3());
   const { camera, size, gl, scene } = useThree();
   const deck = useContext(DeckContext);
-  const leftArm = useRef<Group>(null);
-  const rightArm = useRef<Group>(null);
-  const foreL = useRef<Group>(null);
-  const foreR = useRef<Group>(null);
-  const legs = useRef<(Group | null)[]>([]);
-  const knees = useRef<(Group | null)[]>([]);
-  const shins = useRef<(Group | null)[]>([]);
-  const feetRef = useRef<(Group | null)[]>([]);
-  const torso = useRef<Group>(null);
-  const head = useRef<Group>(null);
-  const eyeL = useRef<Mesh>(null);
-  const eyeR = useRef<Mesh>(null);
+  const leftArm = useRef<Object3D>(null);
+  const rightArm = useRef<Object3D>(null);
+  const foreL = useRef<Object3D>(null);
+  const foreR = useRef<Object3D>(null);
+  const legs = useRef<(Object3D | null)[]>([]);
+  const knees = useRef<(Object3D | null)[]>([]);
+  const shins = useRef<(Object3D | null)[]>([]);
+  const feetRef = useRef<(Object3D | null)[]>([]);
+  const torso = useRef<Object3D>(null);
+  const head = useRef<Object3D>(null);
+  const eyeL = useRef<Object3D>(null);
+  const eyeR = useRef<Object3D>(null);
+  const propSnack = useRef<Mesh | null>(null);
+  const propBook = useRef<Mesh | null>(null);
   const phase = useRef(0);
   const lastStage = useRef({ x: 0, z: 0 });
   const climb = useRef(stagePose(agent.position.x, agent.position.z).y);
@@ -402,6 +519,32 @@ export function AgentAvatar({
 
   // one muted accent per agent (torso), plaster for the rest. Per-agent materials so "away" ghosting stays local.
   const mats = useMemo(() => figureMats(agent.color), [agent.color]);
+  const rig = useMemo(() => buildRig(agent.color, hairOf(agent.name), tilt, mats.figure, mats.snack, mats.prop), [agent.color, agent.name, tilt, mats]);
+  useLayoutEffect(() => {
+    torso.current = rig.torso;
+    head.current = rig.head;
+    eyeL.current = rig.eye;
+    eyeR.current = rig.eye;
+    leftArm.current = rig.leftArm;
+    rightArm.current = rig.rightArm;
+    foreL.current = rig.foreL;
+    foreR.current = rig.foreR;
+    legs.current = rig.legs;
+    knees.current = rig.knees;
+    shins.current = rig.shins;
+    feetRef.current = rig.feet;
+    propSnack.current = rig.snack;
+    propBook.current = rig.book;
+    return () => {
+      rig.mesh.geometry.dispose();
+      rig.snack.geometry.dispose();
+      rig.book.geometry.dispose();
+    };
+  }, [rig]);
+  useLayoutEffect(() => {
+    if (propSnack.current) propSnack.current.visible = agent.holding?.kind === "snack";
+    if (propBook.current) propBook.current.visible = agent.holding?.kind === "book";
+  }, [rig, agent.holding]);
   useEffect(() => () => void FIGURE_RECTS.delete(agent.id), [agent.id]);
   const blob = useMemo(() => sharedBlob(night), [night]);
 
@@ -714,11 +857,9 @@ export function AgentAvatar({
     );
   });
 
-  const legX = 0.08;
-  const fig = figureGeo();
   return (
     <>
-      <mesh name="avatar-blob" ref={shadow} rotation={[-Math.PI / 2, 0, 0]} position={[agent.position.x, 0.006, agent.position.z]} material={blob} renderOrder={2} raycast={() => null}>
+      <mesh name="avatar-blob" ref={shadow} frustumCulled={false} rotation={[-Math.PI / 2, 0, 0]} position={[agent.position.x, 0.006, agent.position.z]} material={blob} renderOrder={2} raycast={() => null}>
         <planeGeometry args={[0.8 * FIG * 1.12, 0.8 * FIG * 1.12]} />
       </mesh>
       <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[agent.position.x, 0.008, agent.position.z]} renderOrder={3} raycast={() => null} material={ringMat(night)}>
@@ -734,71 +875,7 @@ export function AgentAvatar({
         }}
       >
         <group scale={FIG} rotation={[agent.lie ? -Math.PI / 2 : 0, 0, 0]}>
-          <group ref={torso}>
-            <mesh material={mats.figure} geometry={torsoFor(agent.color)} dispose={null} />
-            <group ref={head} name="head" position={[0, HEAD_Y, 0.012]}>
-              <group rotation={[0, 0, tilt * 0.6]}>
-                <mesh material={mats.figure} geometry={headGeo(hairOf(agent.name))} dispose={null} />
-                <mesh ref={eyeL} position={[0, 0.002, 0.0905]} scale={[1, 0.85, 0.45]} material={mats.figure} geometry={fig.eyes} dispose={null} />
-              </group>
-            </group>
-            <group ref={leftArm} position={[-SHOULDER.x, SHOULDER.y - 0.022, 0]}>
-              <mesh material={mats.figure} geometry={fig.arm} dispose={null} />
-              <group ref={foreL} position={[0, -UPPER, 0]}>
-                <mesh material={mats.figure} geometry={fig.fore} dispose={null} />
-              </group>
-            </group>
-            <group ref={rightArm} position={[SHOULDER.x, SHOULDER.y - 0.022, 0]}>
-              <mesh material={mats.figure} geometry={fig.arm} dispose={null} />
-              <group ref={foreR} position={[0, -UPPER, 0]}>
-                <mesh material={mats.figure} geometry={fig.fore} dispose={null} />
-                {agent.holding?.kind === "snack" && (
-                  <mesh position={[0, -FORE - 0.05, 0.04]} material={mats.snack}>
-                    <sphereGeometry args={[0.04, 14, 10]} />
-                  </mesh>
-                )}
-                {agent.holding?.kind === "book" && (
-                  <mesh position={[0, -FORE - 0.04, 0.06]} rotation={[0.4, 0.2, 0]} material={mats.prop}>
-                    <boxGeometry args={[0.14, 0.026, 0.1]} />
-                  </mesh>
-                )}
-              </group>
-            </group>
-          </group>
-          {[0, 1].map((i) => (
-            <group
-              key={i}
-              ref={(node) => {
-                legs.current[i] = node;
-              }}
-              position={[i === 0 ? -legX : legX, HIP_PIVOT, 0]}
-            >
-              <mesh position={[0, -THIGH / 2, 0]} material={mats.figure} geometry={fig.thigh} dispose={null} />
-              <group
-                ref={(node) => {
-                  knees.current[i] = node;
-                }}
-                position={[0, -THIGH, 0]}
-              >
-                <group
-                  ref={(node) => {
-                    shins.current[i] = node;
-                  }}
-                >
-                  <mesh position={[0, -SHIN / 2, 0]} material={mats.figure} geometry={fig.shin} dispose={null} />
-                </group>
-                <group
-                  ref={(node) => {
-                    feetRef.current[i] = node;
-                  }}
-                  position={[0, -SHIN, 0]}
-                >
-                  {/* rounded foot: plants the figure */}
-                  <mesh position={[0, -0.012, 0.03]} material={mats.figure} geometry={fig.foot} dispose={null} />
-                </group>
-              </group>
-            </group>
-          ))}
+          <primitive object={rig.mesh} />
         </group>
       </group>
     </>

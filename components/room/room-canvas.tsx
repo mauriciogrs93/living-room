@@ -44,22 +44,33 @@ const LANDSCAPE_CSS = `@media (orientation: landscape) and (max-height: 500px) {
 
 /** Design-only figure line-up (?debug=1&lineup=1): all agents standing in the kitchen, faces to the camera. */
 let LINEUP_BOX: THREE.Box3 | null = null;
+function lineupCount() {
+  if (typeof window === "undefined" || !debugFlag()) return 0;
+  const raw = new URLSearchParams(window.location.search).get("lineup");
+  // lineup=1 is the existing 3-figure probe. 4 and 10 are the figure-merge gates, still debug-only.
+  if (raw === "1") return 3;
+  if (raw === "4" || raw === "10") return Number(raw);
+  return 0;
+}
 function lineupFlag() {
-  return typeof window !== "undefined" && debugFlag() && new URLSearchParams(window.location.search).get("lineup") === "1";
+  return lineupCount() > 0;
 }
 function lineupAgents(agents: LiveSnapshot["agents"]): LiveSnapshot["agents"] {
+  const count = lineupCount();
   const f = FLOORS[0];
   // clear kitchen floor between the counter run (z -0.72) and the table/chair (z >= 0.55), left of the stair foot
   const z = 0.12;
   const xs = [-0.2, 0.35, 0.86];
   const yaws = [0.1, -0.06, 0.24];
   const box = new THREE.Box3();
-  const out = agents.slice(0, 3).map((a, i) => {
-    const w = stagePose(xs[i], z);
+  const out = agents.slice(0, count).map((a, i) => {
+    const x = count === 3 ? xs[i]! : -1.15 + (i * 2.3) / Math.max(1, count - 1);
+    const yaw = count === 3 ? yaws[i]! : 0.08;
+    const w = stagePose(x, z);
     void f;
     box.expandByPoint(new THREE.Vector3(w.x - 0.3, w.y, w.z - 0.25));
     box.expandByPoint(new THREE.Vector3(w.x + 0.3, w.y + 1.72, w.z + 0.25));
-    return { ...a, position: { x: xs[i], y: f.y, z }, yaw: yaws[i], anchor: "feet" as const, pose: "idle" as const, status: "", motion: null, speech: null, lie: false, away: false, emote: null, objectId: null, holding: null } as (typeof agents)[number];
+    return { ...a, position: { x, y: f.y, z }, yaw, anchor: "feet" as const, pose: "idle" as const, status: "", motion: null, speech: null, lie: false, away: false, emote: null, objectId: null, holding: null } as (typeof agents)[number];
   });
   LINEUP_BOX = box;
   return out;
@@ -491,6 +502,9 @@ function GlStats() {
   const scene = useThree((state) => state.scene);
   const n = useRef(0);
   useEffect(() => {
+    (window as unknown as { __forceShadow?: () => void }).__forceShadow = () => {
+      gl.shadowMap.needsUpdate = true;
+    };
     (window as unknown as { __glDump?: () => unknown }).__glDump = () => {
       const rows: Array<Record<string, unknown>> = [];
       scene.traverseVisible((o) => {
@@ -506,7 +520,10 @@ function GlStats() {
       });
       return rows;
     };
-  }, [scene]);
+    return () => {
+      delete (window as unknown as { __forceShadow?: () => void }).__forceShadow;
+    };
+  }, [scene, gl]);
   useFrame(() => {
     n.current += 1;
     const w = window as unknown as { __glStats?: Record<string, number> };
