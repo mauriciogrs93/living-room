@@ -38,7 +38,6 @@ export const PREVIOUS = "Previous station";
 export const NEXT = "Next station";
 export const PLAYING = "Playing";
 export const PLAYS = (station: string) => `Plays ${station}`;
-export const STREAM_FAIL = "Can't play this station right now.";
 /** Writer: fixed line under Play when the stream itself fails. Not an autoplay block. */
 export const STATION_CANT_PLAY = "This station can't play right now.";
 export const ACTION_FAIL = "That didn't go through. Try again.";

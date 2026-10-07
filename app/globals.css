@@ -1305,7 +1305,7 @@ html[data-floor-frame]:not([data-floor-frame="all"]) .sheet-caption {
 .signin-form input:focus-visible { outline: 2px solid #e07a3d; outline-offset: 1px; }
 .signin-form .invite-copy { justify-content: center; }
 /* r1: the main action uses the dark filled button (as Copy and Play) */
-.signin-form .signin-submit { width: 100%; min-height: 44px; border-color: #2B2D31; background: #2B2D31; color: #f7f5f0; }
+.signin-form .signin-submit { width: 100%; height: 44px; min-height: 44px; border-color: #2B2D31; background: #2B2D31; color: #f7f5f0; font-size: 12px; }
 .signin-secondary {
   width: 100%; min-height: 44px; padding: 0 18px;
   border: 1px solid #2d3136; border-radius: 4px; background: transparent; color: #2d3136;

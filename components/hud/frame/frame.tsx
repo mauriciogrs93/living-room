@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { createPortal } from "react-dom";
 import { signOut } from "@/components/account/me";
 import { useAmbience } from "@/components/room/ambience";
+export { AmbienceContext, type AmbienceValue } from "@/components/room/ambience";
 import { useAtmosphere } from "@/components/room/atmosphere";
 import { MAQUETTE } from "@/components/room/maquette/config";
 import { anchorPoint } from "@/components/hud/anchors";
@@ -59,7 +60,6 @@ import {
   SHOW_CONTROLS,
   STOP,
   STATION_CANT_PLAY,
-  STREAM_FAIL,
   SUNRISE,
   SUNSET,
   TITLE_OWNER,
@@ -257,7 +257,6 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
 
   useEffect(() => onRadioNotice((message) => {
     if (message === "fail") setRadioNote(ACTION_FAIL);
-    else if (message === "stream") setRadioNote(STREAM_FAIL);
     else setRadioNote("");
   }), []);
 
@@ -514,11 +513,9 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
               </div>
             ) : null}
             <RadioActionButtons action={action} owner={owner} live={Boolean(radio?.on)} />
-            {failed ? (
-              <p className="hudf-station-fail" data-station-fail="" role="status" aria-live="polite">
-                {STATION_CANT_PLAY}
-              </p>
-            ) : null}
+            <p className="hudf-station-fail" data-station-fail="" role="status" aria-live="polite">
+              {failed ? STATION_CANT_PLAY : ""}
+            </p>
             {owner && !radio?.on && station ? <p className="is-info hudf-quiet">{PLAYS(station)}</p> : null}
             {showPlaying ? (
               <p className="is-info hudf-quiet hudf-now" data-playing="">

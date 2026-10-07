@@ -1,5 +1,6 @@
 // HUD unit checks. No network, no email.
 //   npx tsx scripts/hud/hud-unit.mts
+import "./css-stub.mts";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { HOUSE_ZONE_SHORT, houseClockLabel, sunriseTime, sunsetTime } from "../../lib/house-clock";
@@ -16,10 +17,12 @@ import { fitTagBoxes, joinToast, placeTags, plainName, stackLabel, stackListBox,
 import { orderAgents } from "../../lib/room/activity-pin";
 import { STATIONS, stationUrl } from "../../lib/room/fixed-stations";
 import { createRadioPlayback, type RadioSink } from "../../lib/room/radio-playback";
-import { connectRadio, playFromCard, pressMutePill, roomSoundOff, setRoomSoundOff } from "../../components/room/ambience";
+import { connectRadio, noteRadioServer, playFromCard, pressMutePill, roomSoundOff, setRoomSoundOff } from "../../components/room/ambience";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { RadioActionButtons } from "../../components/hud/frame/radio-actions";
+import { AmbienceContext, HudFrame, type AmbienceValue } from "../../components/hud/frame/frame";
+import type { HudModel } from "../../components/hud/model";
+import type { LiveSnapshot } from "../../components/use-room";
 import { deviceMuted, mutePillIcon, mutePillLabel, mutePillMayUnmute, mutePillVisible, playingLineVisible, RADIO_CONTROLS, radioControlLabel, roomSoundStoredOff, stationRowMayUnmute } from "../../lib/room/room-sound";
 
 const results: boolean[] = [];
@@ -369,20 +372,75 @@ type SoundPage = {
   owner: boolean;
   radioOpen: boolean;
 };
+function blankSnapshot(live: boolean): LiveSnapshot {
+  return {
+    serverTime: 0,
+    receivedAt: 0,
+    room: { id: "room", name: "Room", description: "", bounds: { minX: 0, maxX: 1, minZ: 0, maxZ: 1 } },
+    objects: [],
+    agents: [],
+    events: [],
+    houseGuests: false,
+    dog: { x: 0, z: 0, mode: "nap", mood: "quiet" },
+    books: [],
+    diary: [],
+    drawings: [],
+    radio: { on: live, name: "Night", url: "", stations: ["Night", "Day"], index: 0 },
+    door: { locked: false, knocking: false },
+  };
+}
 function soundPage(input: SoundPage) {
-  const action = radioControlLabel(input);
-  const pill = mutePillVisible(input);
+  const value: AmbienceValue = {
+    muted: input.roomSoundOff,
+    held: input.held,
+    hearing: input.hearing,
+    blocked: input.blocked,
+    started: input.started,
+    soundOff: input.roomSoundOff,
+    failed: input.failed,
+    toggleMute: () => {},
+    pressMutePill: () => {},
+    playFromCard: () => {},
+    stopRadio: () => {},
+  };
+  const model: HudModel = {
+    snapshot: blankSnapshot(input.live),
+    status: "live",
+    now: Date.parse("2026-10-06T16:00:00.000Z"),
+    origin: "http://127.0.0.1",
+    selectedId: null,
+    selectAgent: () => {},
+    openBooks: () => {},
+    diaryOpen: false,
+    setDiaryOpen: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
-      "div",
-      null,
-      pill ? createElement("button", { type: "button", "data-ctl": "mute-pill" }, input.held ? strings.UNMUTE : strings.MUTE) : null,
-      input.radioOpen ? createElement(RadioActionButtons, { action, owner: input.owner, live: input.live }) : null,
+      AmbienceContext.Provider,
+      { value },
+      createElement(HudFrame, {
+        role: input.owner ? "owner" : "watch",
+        model,
+        section: input.radioOpen ? "radio" : input.sheetOpen ? "activity" : null,
+        open: () => {},
+        close: () => {},
+        children: null,
+      }),
     ),
   );
 }
+function buttonTexts(html: string, ctl: string) {
+  const out: string[] = [];
+  const re = /<button\b([^>]*)>([\s\S]*?)<\/button>/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) {
+    if (!match[1].includes(`data-ctl="${ctl}"`)) continue;
+    out.push(match[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim());
+  }
+  return out;
+}
 function noUnmute(html: string) {
-  return !html.includes('data-ctl="mute-pill"') && !html.includes(strings.UNMUTE);
+  return !html.includes('data-ctl="mute-pill"') && !buttonTexts(html, "radio-mute").includes(strings.UNMUTE) && !buttonTexts(html, "mute-pill").includes(strings.UNMUTE);
 }
 const soundBase: SoundPage = {
   hearing: false,
@@ -396,20 +454,42 @@ const soundBase: SoundPage = {
   owner: false,
   radioOpen: true,
 };
-const playHtml = soundPage({ ...soundBase, roomSoundOff: true, live: false, started: false });
+const playHtml = soundPage({ ...soundBase, roomSoundOff: true, live: true, started: false, hearing: false });
 check(
   "Play state renders a Play button",
-  playHtml.includes(`>${strings.PLAY}<`) && playHtml.includes("▶") && playHtml.includes('data-ctl="radio-resume"') && noUnmute(playHtml),
+    buttonTexts(playHtml, "radio-resume").join(" ") === `▶${strings.PLAY}` &&
+    buttonTexts(playHtml, "radio-mute").length === 0 &&
+    buttonTexts(playHtml, "mute-pill").length === 0 &&
+    !playHtml.includes(strings.STATION_CANT_PLAY) &&
+    playHtml.includes('role="status"') &&
+    playHtml.includes('aria-live="polite"'),
 );
 const muteHtml = soundPage({ ...soundBase, hearing: true });
 check(
   "Mute state renders a Mute button",
-  muteHtml.includes(`>${strings.MUTE}<`) && muteHtml.includes('data-ctl="radio-mute"') && !muteHtml.includes(strings.UNMUTE),
+  buttonTexts(muteHtml, "radio-mute").join(" ") === strings.MUTE &&
+    buttonTexts(muteHtml, "radio-resume").length === 0 &&
+    buttonTexts(muteHtml, "mute-pill").length === 0 &&
+    !buttonTexts(muteHtml, "radio-mute").includes(strings.PLAYING) &&
+    muteHtml.includes("data-playing"),
 );
-const unmuteHtml = soundPage({ ...soundBase, held: true });
+const unmuteHtml = soundPage({ ...soundBase, held: true, hearing: false });
 check(
   "Unmute state renders an Unmute button",
-  unmuteHtml.includes(`>${strings.UNMUTE}<`) && unmuteHtml.includes('data-ctl="radio-mute"') && unmuteHtml.includes('data-ctl="mute-pill"'),
+  buttonTexts(unmuteHtml, "radio-mute").join(" ") === strings.UNMUTE &&
+    buttonTexts(unmuteHtml, "radio-resume").length === 0 &&
+    buttonTexts(unmuteHtml, "mute-pill").length === 0 &&
+    !unmuteHtml.includes(strings.PLAYING),
+);
+const watcherOff = soundPage({ ...soundBase, live: false, hearing: false, started: false, roomSoundOff: false });
+check(
+  "a watcher with the radio off sees no Play",
+  watcherOff.includes(strings.RADIO_OFF) &&
+    watcherOff.includes("hudf-quiet") &&
+    !watcherOff.includes("hudf-station-fail\">" + strings.RADIO_OFF) &&
+    buttonTexts(watcherOff, "radio-resume").length === 0 &&
+    buttonTexts(watcherOff, "radio-play").length === 0 &&
+    !watcherOff.includes(strings.STATION_CANT_PLAY),
 );
 check("Room sound Off leaves no pill and no Unmute button", noUnmute(soundPage({ ...soundBase, roomSoundOff: true, held: true, hearing: true })));
 check("a blocked play leaves no pill and no Unmute button", noUnmute(soundPage({ ...soundBase, blocked: true, held: true, hearing: true })));
@@ -461,6 +541,8 @@ function radioSink() {
   let attr: string | null = null;
   const calls = { play: 0, load: 0, pause: 0, src: [] as string[] };
   let failName: string | null = null;
+  let defer = false;
+  let pendingReject: ((error: Error) => void) | null = null;
   const audio = {
     calls,
     get src() {
@@ -484,6 +566,12 @@ function radioSink() {
     },
     play() {
       calls.play += 1;
+      if (defer) {
+        defer = false;
+        return new Promise<void>((_resolve, reject) => {
+          pendingReject = reject;
+        });
+      }
       if (failName) {
         const err = new Error("https://evil.example/secret MediaError boom");
         err.name = failName;
@@ -498,8 +586,18 @@ function radioSink() {
       }
       return Promise.resolve();
     },
-    failNext(name = "AbortError") {
+    failNext(name = "NotSupportedError") {
       failName = name;
+    },
+    deferNext() {
+      defer = true;
+    },
+    rejectDeferred(name: string) {
+      const err = new Error("https://evil.example/secret MediaError boom");
+      err.name = name;
+      const reject = pendingReject;
+      pendingReject = null;
+      reject?.(err);
     },
   };
   return audio;
@@ -583,9 +681,9 @@ function installStorage(value?: string | null) {
   const playsAfterBlock = audio.calls.play;
   player.follow(1);
   check("NotAllowedError does not retry or change src", audio.calls.play === playsAfterBlock && audio.getAttribute("src") === srcAfterBlock && snap.failed === false);
-  audio.failNext("AbortError");
+  audio.failNext("NotSupportedError");
   player.gesture();
-  check("a failed tap sets the failed flag and does not use the browser message", snap.failed === true && snap.blocked === true && snap.started === false && !JSON.stringify(snap).includes("evil") && !JSON.stringify(snap).includes("AbortError") && !JSON.stringify(snap).includes("https://"));
+  check("a failed tap sets the failed flag and does not use the browser message", snap.failed === true && snap.blocked === true && snap.started === false && !JSON.stringify(snap).includes("evil") && !JSON.stringify(snap).includes("NotSupportedError") && !JSON.stringify(snap).includes("https://"));
   const srcAfterFail = audio.getAttribute("src");
   const playsAfterFail = audio.calls.play;
   const srcWrites = audio.calls.src.length;
@@ -632,6 +730,48 @@ function installStorage(value?: string | null) {
   check("mute persists across a station change", audio.calls.play === mutedPlays && audio.getAttribute("src") === null);
   playFromCard();
   check("Play while muted starts unmuted from the fixed list", roomSoundOff() === false && audio.calls.play === mutedPlays + 1 && audio.getAttribute("src") === stationUrl(2));
+}
+
+async function cancelBeforeStart(kind: "mute" | "off" | "station") {
+  const audio = radioSink();
+  let snap = { blocked: false, hearing: false, started: false, index: 0, failed: false };
+  const player = createRadioPlayback(audio as unknown as RadioSink, {
+    roomSoundOff: () => false,
+    deviceHeld: () => false,
+    onChange(state) {
+      snap = state;
+    },
+  });
+  const started = performance.now();
+  audio.deferNext();
+  player.gesture();
+  if (kind === "mute") player.mute();
+  else if (kind === "off") player.stop();
+  else player.follow(2);
+  audio.rejectDeferred("AbortError");
+  await Promise.resolve();
+  const elapsed = performance.now() - started;
+  return elapsed < 100 && snap.failed === false && !JSON.stringify(snap).includes("AbortError") && !JSON.stringify(snap).includes("evil") && !JSON.stringify(snap).includes(strings.STATION_CANT_PLAY);
+}
+check("Play then Mute within 100ms shows no fail line", await cancelBeforeStart("mute"));
+check("Play then Off within 100ms shows no fail line", await cancelBeforeStart("off"));
+check("Play then a station change within 100ms shows no fail line", await cancelBeforeStart("station"));
+
+{
+  installStorage("0");
+  const audio = radioSink();
+  connectRadio(audio);
+  playFromCard();
+  const pauses = audio.calls.pause;
+  const src = audio.getAttribute("src");
+  noteRadioServer(false);
+  check(
+    "a snapshot with radio.on still false does not stop Play",
+    src !== null && audio.getAttribute("src") === src && audio.calls.pause === pauses && audio.calls.play === 1,
+  );
+  noteRadioServer(true);
+  noteRadioServer(false);
+  check("a snapshot confirms Off only after the server showed the radio on", audio.getAttribute("src") === null && audio.calls.pause > pauses);
 }
 
 const hudCssFile = readFileSync(path.join(root, "app/hud.css"), "utf8");
@@ -690,14 +830,31 @@ check(
     hudFrame.includes("data-playing=") &&
     hudFrame.includes("playingLineVisible(hearing, blocked)") &&
     hudCss.includes(".hudf button.hudf-play.is-resume") &&
-    hudCss.includes("min-width: 96px;"),
+    hudCss.includes("width: 96px;") &&
+    hudCss.includes("min-width: 96px;") &&
+    hudCss.includes("padding: 0 16px;") &&
+    hudCss.includes("justify-content: center;") &&
+    radioActions.includes("RADIO_CONTROLS.play && live") &&
+    radioActions.includes("hudf-quiet") &&
+    !radioActions.includes("PLAYING") &&
+    !radioActions.includes("hudf-station-fail"),
+);
+const resumeAt = hudCss.indexOf(".hudf button.hudf-play.is-resume");
+const resumeCss = resumeAt >= 0 ? hudCss.slice(resumeAt, resumeAt + 500) : "";
+check(
+  "Play, Mute, and Unmute share a 96px centered box",
+  resumeCss.includes("width: 96px;") && resumeCss.includes("min-width: 96px;") && resumeCss.includes("padding: 0 16px;") && resumeCss.includes("justify-content: center;"),
 );
 check(
   "a stream failure shows the fixed line and a polite live region",
   strings.STATION_CANT_PLAY === "This station can't play right now." &&
-    hudFrame.includes("{STATION_CANT_PLAY}") &&
+    !("STREAM_FAIL" in strings) &&
+    !text.includes("Can't play this station right now.") &&
+    hudFrame.includes("{failed ? STATION_CANT_PLAY : \"\"}") &&
+    hudFrame.includes('role="status"') &&
     hudFrame.includes('aria-live="polite"') &&
     hudFrame.includes('data-station-fail=""') &&
+    !hudFrame.includes("STREAM_FAIL") &&
     !hudFrame.includes("error.message") &&
     !hudFrame.includes("MediaError") &&
     hudCss.includes(".hudf-station-fail") &&

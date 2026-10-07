@@ -8,23 +8,23 @@ import { MUTE, PLAY, RADIO_OFF, UNMUTE } from "./strings";
 export function RadioActionButtons({ action, owner, live }: { action: RadioControl; owner: boolean; live: boolean }) {
   return (
     <>
-      {action === RADIO_CONTROLS.play && (live || !owner) ? (
+      {action === RADIO_CONTROLS.play && live ? (
         <button type="button" className="hudf-play is-resume" data-ctl="radio-resume" onClick={() => playFromCard()}>
           <span aria-hidden="true">▶</span>
           {PLAY}
         </button>
       ) : null}
       {action === RADIO_CONTROLS.unmute ? (
-        <button type="button" className="hudf-play" data-ctl="radio-mute" onClick={pressMutePill}>
+        <button type="button" className="hudf-play is-resume" data-ctl="radio-mute" onClick={pressMutePill}>
           {UNMUTE}
         </button>
       ) : null}
       {action === RADIO_CONTROLS.mute && !owner ? (
-        <button type="button" className="hudf-play" data-ctl="radio-mute" onClick={pressMutePill}>
+        <button type="button" className="hudf-play is-resume" data-ctl="radio-mute" onClick={pressMutePill}>
           {MUTE}
         </button>
       ) : null}
-      {!owner && !live && action !== RADIO_CONTROLS.play ? <p className="is-info hudf-quiet">{RADIO_OFF}</p> : null}
+      {!owner && !live ? <p className="is-info hudf-quiet">{RADIO_OFF}</p> : null}
     </>
   );
 }

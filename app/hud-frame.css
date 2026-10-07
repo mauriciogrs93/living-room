@@ -345,7 +345,9 @@
 .hudf button.hudf-mute-pill .hudf-eq i { height: 12px; }
 .hudf button.hudf-play.is-resume {
   box-sizing: border-box;
-  width: auto;
+  flex: none;
+  flex-shrink: 0;
+  width: 96px;
   min-width: 96px;
   height: 44px;
   padding: 0 16px;
@@ -353,11 +355,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  text-align: center;
   background: #2b2d31;
   color: #fff;
   border-radius: 22px;
   font-size: 16px;
   line-height: 1;
+}
+.hudf-row > button.hudf-play.is-resume {
+  flex: none;
+  width: 96px;
+  min-width: 96px;
 }
 .hudf-station-fail {
   margin: 0;
@@ -526,7 +534,7 @@
   border-radius: 12px;
 }
 .hudf .hudf-play { flex: none; align-self: flex-start; min-height: 44px; height: 44px; max-height: 44px; flex-shrink: 0; width: auto; }
-.hudf-body > .hudf-play[data-ctl="radio-mute"] { flex: 0 0 auto; align-self: flex-start; box-sizing: border-box; width: auto; height: 44px; min-height: 44px; max-height: 44px; padding: 0 18px; line-height: 44px; }
+.hudf-body > .hudf-play[data-ctl="radio-mute"] { flex: none; align-self: flex-start; box-sizing: border-box; width: 96px; min-width: 96px; height: 44px; min-height: 44px; max-height: 44px; padding: 0 16px; line-height: 44px; justify-content: center; text-align: center; }
 .hudf .hudf-watch-btn {
   position: relative;
   z-index: 1;

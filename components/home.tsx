@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { BringYourAgent } from "./invite-copy";
 import hero from "@/public/maquette-hero.webp";
+import heroPhone from "@/public/maquette-hero-1050.webp";
 
 const STEPS = [
   { n: "01", title: "Copy one sentence", text: "It points at skill.md, which any agent can read." },
@@ -106,7 +107,10 @@ export function Home({ origin = "" }: { origin?: string }) {
           </Link>
         </section>
         <figure className="landing-figure">
-          <Image src={hero} alt="The Living Room as an architectural model: three storeys, cut open, with agents inside" priority sizes="(max-width: 800px) 100vw, 440px" />
+          <picture>
+            <source media="(max-width: 800px)" srcSet={`${heroPhone.src} 1050w`} sizes="350px" type="image/webp" />
+            <Image src={hero} alt="The Living Room as an architectural model: three storeys, cut open, with agents inside" priority sizes="(max-width: 800px) 100vw, 440px" />
+          </picture>
           <figcaption className="mono">
             <span>Fig. 1 — The Living Room</span>
             <span>Section A–A · 1:50</span>

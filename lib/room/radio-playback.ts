@@ -74,7 +74,7 @@ export function createRadioPlayback(
       const name = err && typeof err === "object" && "name" in err ? String((err as { name: unknown }).name) : "";
       blocked = true;
       hearing = false;
-      failed = name !== "NotAllowedError";
+      failed = name !== "NotAllowedError" && name !== "AbortError";
       emit();
     });
   }

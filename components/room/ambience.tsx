@@ -6,7 +6,7 @@ import { createRadioPlayback, type PlaybackSnapshot, type RadioSink } from "@/li
 import { mutePillMayUnmute, roomSoundStoredOff } from "@/lib/room/room-sound";
 import { useAtmosphere } from "./atmosphere";
 
-type AmbienceValue = {
+export type AmbienceValue = {
   muted: boolean;
   held: boolean;
   hearing: boolean;
@@ -49,6 +49,23 @@ function subscribeMute(listener: () => void) {
 
 let radioAudio: RadioSink | null = null;
 let playback: ReturnType<typeof createRadioPlayback> | null = null;
+/** Last radio.on the server actually showed. Null until the first snapshot. */
+let confirmedOn: boolean | null = null;
+
+/**
+ * A snapshot. Stop only after the server has shown the radio on, then off.
+ * A snapshot that is still off must not cut off a Play tap that has not been confirmed.
+ * Returns true when playback should follow the station index.
+ */
+export function noteRadioServer(on: boolean): boolean {
+  const wasOn = confirmedOn === true;
+  confirmedOn = on;
+  if (!on) {
+    if (wasOn) playback?.stop();
+    return false;
+  }
+  return true;
+}
 let playSnap: PlaybackSnapshot = { blocked: false, hearing: false, started: false, index: 0, failed: false };
 const playListeners = new Set<() => void>();
 let pillHeld = false;
@@ -73,6 +90,7 @@ function readPlay() {
 const boundAudio = new WeakSet<HTMLAudioElement>();
 
 export function connectRadio(audio: RadioSink) {
+  confirmedOn = null;
   radioAudio = audio;
   playback = createRadioPlayback(audio, {
     roomSoundOff,
@@ -136,7 +154,7 @@ export function pressMutePill() {
   playback?.mute();
 }
 
-const AmbienceContext = createContext<AmbienceValue>({
+export const AmbienceContext = createContext<AmbienceValue>({
   muted: true,
   held: false,
   hearing: false,
@@ -265,9 +283,10 @@ export function Ambience({ snapshot, children }: { snapshot: LiveSnapshot | null
     if (!audioRef.current) return;
     ensurePlayback(audioRef.current);
     if (!snapshot?.radio.on) {
-      playback?.stop();
+      noteRadioServer(false);
       return;
     }
+    noteRadioServer(true);
     playback?.follow(snapshot.radio.index);
   }, [snapshot?.radio.on, snapshot?.radio.index]);
 

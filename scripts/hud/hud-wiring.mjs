@@ -1241,7 +1241,12 @@ try {
   check("watcher: title is The apartment", (await watcher.locator(".hudf-title b").innerText()) === "The apartment");
   check("watcher: the header pill says Watching", (await watcher.locator(".hudf-badge[data-watch-badge]").innerText()).trim() === "Watching");
   await clickCtl(watcher, "rail-radio", "watch", "phone");
-  await watcher.waitForSelector("[data-ctl=radio-mute], [data-ctl=radio-resume]", { timeout: 8000 });
+  await watcher.waitForFunction(() => {
+    const card = document.querySelector(".hudf-card");
+    if (!card) return false;
+    if (card.querySelector("[data-ctl=radio-mute], [data-ctl=radio-resume]")) return true;
+    return (card.textContent || "").includes("The radio is off.");
+  }, { timeout: 8000 });
   const watchRadio = await watcher.evaluate(() => {
     const mute = document.querySelector("[data-ctl=radio-mute]");
     const resume = document.querySelector("[data-ctl=radio-resume]");
@@ -1257,6 +1262,8 @@ try {
         else if (node.nodeType === Node.ELEMENT_NODE && node.getAttribute("aria-hidden") !== "true") bits.push(node.textContent || "");
       }
     }
+    const offNode = [...document.querySelectorAll(".hudf-card p")].find((node) => (node.textContent || "").trim() === "The radio is off.");
+    const fail = document.querySelector("[data-station-fail]");
     return {
       mute: mute?.textContent?.trim() || "",
       muteH: muteBox ? Math.round(muteBox.height) : 0,
@@ -1267,10 +1274,19 @@ try {
       meterH: meterBox ? Math.round(meterBox.height) : 0,
       pill: document.querySelectorAll("[data-ctl=mute-pill]").length,
       unmute: [...document.querySelectorAll("button")].filter((btn) => (btn.textContent || "").trim() === "Unmute").length,
+      resumeCount: document.querySelectorAll("[data-ctl=radio-resume]").length,
+      offPlain: Boolean(offNode && offNode.classList.contains("hudf-quiet") && !offNode.classList.contains("hudf-station-fail")),
+      failText: (fail?.textContent || "").trim(),
     };
   });
   check("phone: a fresh watcher does not read Unmute", watchRadio.mute !== "Unmute" && watchRadio.unmute === 0 && watchRadio.pill === 0, JSON.stringify(watchRadio));
-  if (watchRadio.playing) {
+  if (watchRadio.offPlain && watchRadio.resumeCount === 0 && !watchRadio.playing && watchRadio.mute !== "Mute") {
+    check(
+      "phone: a watcher sees the radio is off, with no Play",
+      watchRadio.offPlain && watchRadio.resumeCount === 0 && watchRadio.unmute === 0 && watchRadio.pill === 0 && watchRadio.failText === "" && watchRadio.meterH === 0,
+      JSON.stringify(watchRadio),
+    );
+  } else if (watchRadio.playing) {
     check("phone: the card renders Mute while audio is playing", watchRadio.mute === "Mute" && watchRadio.muteH >= 44 && watchRadio.muteH <= 48, JSON.stringify(watchRadio));
     check("phone: the playing meter is about 14px tall", watchRadio.meterH >= 12 && watchRadio.meterH <= 16, JSON.stringify(watchRadio));
   } else if (watchRadio.mute === "Mute") {
