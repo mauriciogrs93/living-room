@@ -121,9 +121,7 @@ try {
   const stored = await page.evaluate(() => ({ later: localStorage.getItem("lr-set-password-later"), keys: Object.keys(localStorage) }));
   const localOk = new Set(["lr-set-password-later", "living-room-seen-replies", "living-room-mute"]);
   check("Not now dismisses on this device only", stored.later === "1" && stored.keys.every((key) => localOk.has(key)) && !stored.keys.some((key) => key.startsWith("sb-") || key.includes("auth-token")), stored.keys.join(","));
-  await page.click("[data-hud=fab]");
-  await page.waitForSelector("[data-hud-tab=you]", { timeout: 15000 });
-  await page.click("[data-hud-tab=you]");
+  await page.click("[data-ctl=nav-you]");
   await page.waitForSelector("[data-auth-control=you-set-password]");
   const youControls = unknown(await controls(page, ".hud-card-body"));
   check("every You-panel control is known", youControls.length === 0, JSON.stringify(youControls));
@@ -145,8 +143,7 @@ try {
   await page.click("[data-auth-control=sign-in]");
   await page.waitForSelector("[data-owner-badge]", { timeout: 20000 });
   check("password sign-in does not auto-open the offer", (await page.locator("[data-password-offer]").count()) === 0);
-  await page.click("[data-hud=fab]");
-  await page.click("[data-hud-tab=you]");
+  await page.click("[data-ctl=nav-you]");
   await page.click("[data-auth-control=you-set-password]");
   await page.waitForSelector("#offer-current");
   await page.fill("#offer-current", "nope-nope-nope");
