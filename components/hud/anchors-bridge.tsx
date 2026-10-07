@@ -4,6 +4,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useRef } from "react";
 import * as THREE from "three";
 import type { LiveSnapshot } from "@/components/use-room";
+import { anchorLift, windowAnchor } from "@/lib/room/anchor-heights";
 import { stagePose } from "@/lib/room/layout";
 import { publishAnchors, type ScreenPoint } from "./anchors";
 
@@ -37,8 +38,13 @@ export function HudAnchors({ snapshot }: { snapshot: LiveSnapshot }) {
       put(`agent:${agent.id}`, staged.x, agent.position.y + staged.y + 1.05, staged.z);
     }
     for (const object of live.objects) {
+      if (object.id === "window") {
+        const glass = windowAnchor();
+        put("object:window", glass.x, glass.y, glass.z);
+        continue;
+      }
       const staged = stagePose(object.position.x, object.position.z);
-      put(`object:${object.id}`, staged.x, staged.y + 0.7, staged.z);
+      put(`object:${object.id}`, staged.x, staged.y + anchorLift(object.id), staged.z);
     }
     if (live.dog) {
       const staged = stagePose(live.dog.x, live.dog.z);

@@ -245,7 +245,7 @@ export const SPOTS: Record<string, Record<string, Vec3>> = {
   },
   radio: {
     sideboard: { x: -1.82, y: 0, z: 5.7 },
-    shelf: { x: 0.7, y: 0, z: 4.15 },
+    shelf: { x: 0.7, y: 0, z: 4.19 },
   },
 };
 
