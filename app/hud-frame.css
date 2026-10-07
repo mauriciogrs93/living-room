@@ -83,7 +83,7 @@
 .hudf-strip span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .hudf-strip em { font-style: normal; color: var(--muted); font-size: 11px; }
 .hudf-nav { grid-area: nav; z-index: 50; display: flex; align-items: stretch; justify-content: space-around; min-height: var(--nav-h); }
-.hudf-nav button { flex: 1; max-width: 84px; min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; }
+.hudf-nav button { flex: 1 0 44px; max-width: 84px; min-width: 44px; min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; }
 .hudf-nav button.is-on { color: var(--ink); font-weight: 600; }
 .hudf-pill { grid-area: pill; display: none; justify-self: center; align-items: center; gap: 8px; height: 52px; padding: 4px; border-radius: 26px; background: #f3efe7; border: 1px solid var(--line); }
 .hudf-pill button { min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 22px; font-size: 13px; font-weight: 600; }

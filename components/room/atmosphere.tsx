@@ -36,8 +36,8 @@ export function useAtmosphere() {
 }
 
 /**
- * v19: one house clock in the owner's time zone. No geolocation prompt, no IP lookups (geojs, ipwho)
- * and no weather call (open-meteo): nothing about the visitor leaves the browser.
+ * v19: one house clock in the owner's time zone. No location prompt, no IP lookup,
+ * and no weather call: nothing about the visitor leaves the browser.
  * Night follows the real sunset at the house (sun below −6°). sessionStorage overrides stay for QA.
  */
 function readForcedHour() {

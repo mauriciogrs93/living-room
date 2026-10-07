@@ -4,6 +4,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useRef } from "react";
 import * as THREE from "three";
 import type { LiveSnapshot } from "@/components/use-room";
+import { doorLeafAnchor } from "@/components/room/maquette/door-mesh";
 import { anchorLift, windowAnchor } from "@/lib/room/anchor-heights";
 import { stagePose } from "@/lib/room/layout";
 import { publishAnchors, type ScreenPoint } from "./anchors";
@@ -50,6 +51,8 @@ export function HudAnchors({ snapshot }: { snapshot: LiveSnapshot }) {
       const staged = stagePose(live.dog.x, live.dog.z);
       put("dog", staged.x, staged.y + 0.35, staged.z);
     }
+    const door = doorLeafAnchor();
+    put("object:door", door.x, door.y, door.z);
     publishAnchors(next);
   });
 

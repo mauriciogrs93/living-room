@@ -27,6 +27,20 @@ export const DOOR_PLACEMENT = {
   height: 2.04,
 } as const;
 
+/**
+ * Stage-space centre of the leaf. The door is not a snapshot object, so the HUD
+ * ring and the watcher tap publish this point directly (no stagePose).
+ * The leaf hangs just inside the wall: local z 0.024 becomes world +x after rotationY.
+ */
+export function doorLeafAnchor() {
+  const leafH = DOOR_PLACEMENT.height - 0.02;
+  return {
+    x: DOOR_PLACEMENT.x + 0.024,
+    y: DOOR_PLACEMENT.y + 0.012 + leafH / 2,
+    z: DOOR_PLACEMENT.z,
+  };
+}
+
 export type DoorMeshProps = { locked: boolean; knocking: boolean; open: boolean; onTap?: () => void };
 
 const W = DOOR_PLACEMENT.width;

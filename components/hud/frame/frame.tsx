@@ -303,9 +303,10 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
 
   function swipeStart(event: ReactPointerEvent<HTMLDivElement>) {
     if (!sheet) return;
-    if ((event.target as HTMLElement).closest(".hudf-chips")) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select, .hudf-chips")) return;
     const body = bodyRef.current;
-    if (body && body.contains(event.target as Node) && body.scrollTop > 0) return;
+    if (body && body.contains(target) && body.scrollTop > 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     (event.currentTarget as HTMLElement).dataset.swipeY = String(event.clientY);
     (event.currentTarget as HTMLElement).dataset.swipeT = String(performance.now());
@@ -533,7 +534,9 @@ export function HudFrame({ role, model, section, open, close, children, overlay 
             {clock ? ` · ${clock}` : ""}
           </span>
         </div>
-        <span className={`hudf-badge is-info${owner ? "" : " is-watch"}`}>{owner ? OWNER_BADGE : BADGE_WATCH}</span>
+        <span className={`hudf-badge is-info${owner ? "" : " is-watch"}`} {...(owner ? { "data-owner-badge": "" } : { "data-watch-badge": "" })}>
+          {owner ? OWNER_BADGE : BADGE_WATCH}
+        </span>
         <button type="button" className="hudf-count" data-ctl="here-count" onClick={(event) => toggle("here", event)}>
           {agents.length} here
         </button>
@@ -659,7 +662,7 @@ function Rail({
 function SignForm({ ctl, label }: { ctl: string; label: string }) {
   return (
     <form method="post" action="/api/auth/signout" className="hudf-signout" onSubmit={(event) => { event.preventDefault(); void signOut(); }}>
-      <button type="submit" className="hudf-leave" data-ctl={ctl}>
+      <button type="submit" className="hudf-leave" data-ctl={ctl} data-auth-control={ctl.includes("signout") ? "sign-out" : "leave"}>
         {label}
       </button>
     </form>

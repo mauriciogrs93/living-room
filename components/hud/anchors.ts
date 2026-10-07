@@ -4,6 +4,9 @@ let points: Record<string, ScreenPoint> = {};
 
 export function publishAnchors(next: Record<string, ScreenPoint>) {
   points = next;
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1") {
+    (window as unknown as { __anchors?: Record<string, ScreenPoint> }).__anchors = next;
+  }
 }
 
 export function readAnchors() {
